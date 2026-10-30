@@ -12,7 +12,7 @@ export default function AHSPPage() {
   const [details, setDetails] = useState([]);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false); // <-- Tambahan State
+  const [isEditMode, setIsEditMode] = useState(false);
   const [overhead, setOverhead] = useState(15);
   const [projectId, setProjectId] = useState(null);
 
@@ -36,7 +36,7 @@ export default function AHSPPage() {
 
   const fetchDetails = async (templateId) => {
     const { data } = await supabase.from('ahsp_details')
-      .select(`id, koefisien, master_hsd(*)`) // Relasi master_hsd akan otomatis mengambil data
+      .select(`id, koefisien, master_hsd(*)`)
       .eq('ahsp_template_id', templateId);
     setDetails(data || []);
   };
@@ -49,11 +49,11 @@ export default function AHSPPage() {
     }
   }, [selectedTemplate]);
 
-  const handleSaveTemplate = async (formData, id = null) => {
+  const handleSaveTemplate = async (formData, isEdit) => {
     let error;
-    if (id) {
-      // Mode Edit: Update data
-      const res = await supabase.from('ahsp_templates').update(formData).eq('id', id);
+    if (isEdit && selectedTemplate) {
+      // Mode Edit: Update berdasarkan ID dari selectedTemplate
+      const res = await supabase.from('ahsp_templates').update(formData).eq('id', selectedTemplate.id);
       error = res.error;
     } else {
       // Mode Tambah: Insert data baru
@@ -194,7 +194,12 @@ export default function AHSPPage() {
         </div>
       </div>
 
-      <AhspTemplateModal isOpen={isTemplateModalOpen} onClose={() => { setIsTemplateModalOpen(false); setIsEditMode(false); }} onSave={handleSaveTemplate} initialData={isEditMode ? selectedTemplate : null} />
+      <AhspTemplateModal 
+        isOpen={isTemplateModalOpen} 
+        onClose={() => { setIsTemplateModalOpen(false); setIsEditMode(false); }} 
+        onSave={(formData) => handleSaveTemplate(formData, isEditMode)} 
+        initialData={isEditMode ? selectedTemplate : null} 
+      />
       <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTemplate?.id)} />
     </div>
   );

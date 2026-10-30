@@ -44,25 +44,42 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       let finalHsdId = selectedHsdId;
 
       if (mode === 'new') {
-        const { data: insertedHsd, error: insertError } = await supabase
+        // ⚠️ PERBAIKAN: Cek apakah item sudah ada di master_hsd
+        let { data: existingHsd } = await supabase
           .from('master_hsd')
-          .insert([{
-            project_id: ahspTemplate.project_id,
-            resource_type: newHsd.resource_type,
-            item_name: newHsd.item_name,
-            unit: newHsd.unit,
-            base_price: Number(newHsd.base_price)
-          }])
-          .select()
-          .single();
-          
-        if (insertError) throw insertError;
-        finalHsdId = insertedHsd.id;
+          .select('id')
+          .eq('project_id', ahspTemplate.project_id)
+          .eq('item_name', newHsd.item_name)
+          .eq('unit', newHsd.unit)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingHsd) {
+          // Jika sudah ada, gunakan ID yang ada (dan update harganya jika berubah)
+          finalHsdId = existingHsd.id;
+          await supabase.from('master_hsd').update({ base_price: Number(newHsd.base_price) }).eq('id', finalHsdId);
+        } else {
+          // Jika belum ada, buat baru
+          const { data: insertedHsd, error: insertError } = await supabase
+            .from('master_hsd')
+            .insert([{
+              project_id: ahspTemplate.project_id,
+              resource_type: newHsd.resource_type,
+              item_name: newHsd.item_name,
+              unit: newHsd.unit,
+              base_price: Number(newHsd.base_price)
+            }])
+            .select()
+            .single();
+            
+          if (insertError) throw insertError;
+          finalHsdId = insertedHsd.id;
+        }
       }
 
       if (!finalHsdId) throw new Error("Pilih komponen atau isi data baru.");
 
-      // ⚠️ PERBAIKAN: Gunakan hsd_id, bukan resource_id
+      // Simpan ke detail AHSP
       const { error: detailError } = await supabase.from('ahsp_details').insert([{
         ahsp_template_id: ahspTemplate.id,
         hsd_id: finalHsdId,
