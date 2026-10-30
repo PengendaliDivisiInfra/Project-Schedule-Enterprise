@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 
 
-import { supabase } from '../../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveSuccess }) {
   const [mode, setMode] = useState('existing');
@@ -181,4 +181,5 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
+
 
