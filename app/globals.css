@@ -1,3 +1,17 @@
+/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Warna Merah untuk Task di Jalur Kritis (Critical Path) */
+.critical-task .gantt-bar {
+  background-color: #dc2626 !important;
+  border-color: #b91c1c !important;
+}
+
+/* Styling untuk Logo */
+.brand-logo {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}

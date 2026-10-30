@@ -2,7 +2,9 @@
 module.exports = {
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}'
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    // TAMBAHKAN BARIS DI BAWAH INI
+    './node_modules/@bluemillstudio/gantt/dist/**/*.{js,mjs}',
   ],
   theme: {
     extend: {

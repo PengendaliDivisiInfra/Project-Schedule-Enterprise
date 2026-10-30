@@ -17,8 +17,10 @@
     "supabase:gen-types": "supabase gen types typescript --local > lib/types/supabase.ts"
   },
   "dependencies": {
+    "@bluemillstudio/gantt": "^0.11.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "@tanstack/react-table": "^8.21.3",
     "chart.js": "^4.4.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
@@ -27,7 +29,8 @@
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^18.3.1",
     "tailwind-merge": "^2.5.5",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zustand": "^5.0.16"
   },
   "devDependencies": {
     "@types/chart.js": "^2.9.41",
