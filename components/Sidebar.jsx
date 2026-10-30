@@ -6,6 +6,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const menus = [
     { name: 'Dashboard S-Curve', path: '/', icon: '📊' },
+    { name: 'Gantt Workspace', path: '/gantt', icon: '📅' }, // <-- Menu Baru
     { name: 'Tasks (WBS)', path: '/tasks', icon: '📝' },
     { name: 'AHSP', path: '/ahsp', icon: '📋' },
     { name: 'Resources', path: '/resources', icon: '📦' },
