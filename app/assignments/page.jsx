@@ -12,9 +12,7 @@ export default function AssignmentsPage() {
 
   const fetchData = async () => {
     try {
-      // Ambil tasks (filter summary='No')
       const { data: tData } = await supabase.from('wbs_tasks').select('*').eq('summary', 'No').order('wbs_code');
-      // Ambil templates
       const { data: aData } = await supabase.from('ahsp_templates').select('*');
       
       const uniqueTasks = tData 
@@ -32,53 +30,65 @@ export default function AssignmentsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Fungsi untuk menghitung Total F dari AHSP
+  // Fungsi untuk menghitung Total F dari AHSP dengan query yang lebih akurat
   const calculateAhspTotal = async (templateId) => {
-    const { data: details } = await supabase.from('ahsp_details')
-      .select(`koefisien, master_hsd(base_price)`)
+    // ⚠️ PERBAIKAN: Gunakan foreign key eksplisit (hsd_id) agar relasi terbaca sempurna
+    const { data: details, error: detailErr } = await supabase.from('ahsp_details')
+      .select(`
+        koefisien, 
+        master_hsd!hsd_id (base_price)
+      `)
       .eq('ahsp_template_id', templateId);
       
-    const { data: template } = await supabase.from('ahsp_templates')
+    if (detailErr) console.error("Error detail:", detailErr);
+
+    const { data: template, error: tempErr } = await supabase.from('ahsp_templates')
       .select('overhead_percent')
       .eq('id', templateId)
       .single();
 
-    let totalABC = 0;
-    details?.forEach(d => {
-      totalABC += d.koefisien * (d.master_hsd?.base_price || 0);
-    });
+    if (tempErr) console.error("Error template:", tempErr);
 
-    const overhead = template?.overhead_percent || 15;
-    return totalABC * (1 + (overhead / 100));
+    let totalABC = 0;
+    if (details && details.length > 0) {
+      details.forEach(d => {
+        // Pastikan data harganya ada
+        const price = d.master_hsd?.base_price || 0;
+        totalABC += Number(d.koefisien) * Number(price);
+      });
+    }
+
+    const overhead = Number(template?.overhead_percent) || 15;
+    const totalF = totalABC * (1 + (overhead / 100));
+    
+    // Cegah error NaN
+    return isNaN(totalF) ? 0 : totalF;
   };
 
   const handleAssign = async (taskId, templateId, volume) => {
     try {
       let calculatedCost = 0;
       
-      // Jika templateId dipilih, hitung biayanya
       if (templateId) {
         const ahspTotal = await calculateAhspTotal(templateId);
         calculatedCost = ahspTotal * (Number(volume) || 0);
       }
 
-      // Update Task dengan Template ID, Volume, dan Biaya Otomatis
       const { error } = await supabase.from('wbs_tasks')
         .update({ 
           ahsp_template_id: templateId || null, 
           volume: Number(volume) || 0,
-          cost: calculatedCost // <-- Otomatisasi Biaya
+          cost: calculatedCost
         })
         .eq('id', taskId);
       
       if (error) throw error;
-      fetchData(); // Refresh data
+      fetchData();
     } catch (err) {
       alert('Gagal update: ' + err.message);
     }
   };
 
-  // Tombol untuk sinkronisasi ulang semua biaya jika ada perubahan harga
   const handleSyncAll = async () => {
     if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP?')) return;
     setSyncing(true);
@@ -91,7 +101,7 @@ export default function AssignmentsPage() {
         }
       }
       fetchData();
-      alert('Sinkronisasi harga berhasil!');
+      alert('Sinkronisasi harga berhasil! Biaya Task telah di-update.');
     } catch (err) {
       alert('Gagal sinkronisasi: ' + err.message);
     } finally {
@@ -104,7 +114,7 @@ export default function AssignmentsPage() {
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-2xl font-bold">Assignment: WBS ke AHSP</h1>
-          <p className="text-sm text-gray-500 mt-1">Hubungkan pekerjaan jadwal (WBS) dengan Katalog AHSP. Biaya task akan dihitung otomatis (Volume × Harga AHSP).</p>
+          <p className="text-sm text-gray-500 mt-1">Hubungkan pekerjaan jadwal (WBS) dengan Katalog AHSP. Biaya task dihitung otomatis (Volume × Harga AHSP).</p>
         </div>
         <button 
           onClick={handleSyncAll} 
@@ -161,7 +171,7 @@ export default function AssignmentsPage() {
         </table>
         {tasks.length === 0 && !loading && (
           <div className="p-10 text-center text-gray-500">
-            Belum ada data WBS Task (pastikan tipe Task adalah 'Pekerjaan Leaf').
+            Belum ada data WBS Task.
           </div>
         )}
       </div>
