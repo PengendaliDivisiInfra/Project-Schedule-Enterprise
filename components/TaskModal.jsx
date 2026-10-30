@@ -1,20 +1,38 @@
 ﻿'use client';
 import { useState, useEffect } from 'react';
 
+// Helper untuk memotong timestamp menjadi YYYY-MM-DD
+const formatDateForInput = (dateString) => {
+  if (!dateString) return '';
+  try {
+    return new Date(dateString).toISOString().split('T')[0];
+  } catch (e) {
+    return '';
+  }
+};
+
 export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
   const [formData, setFormData] = useState({
     wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No'
   });
 
   useEffect(() => {
-    if (initialData) setFormData(initialData);
-    else setFormData({ wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No' });
+    if (initialData) {
+      setFormData({
+        ...initialData,
+        start_date: formatDateForInput(initialData.start_date),
+        end_date: formatDateForInput(initialData.end_date),
+      });
+    } else {
+      setFormData({ wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No' });
+    }
   }, [initialData, isOpen]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    // Saat disimpan, format tanggal YYYY-MM-DD akan dikembalikan ke timestamp oleh Supabase secara otomatis
     onSave(formData);
   };
 

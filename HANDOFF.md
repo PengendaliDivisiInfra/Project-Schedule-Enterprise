@@ -1,30 +1,30 @@
 ﻿# Project Handoff Document
 
-**Status Proyek:** 🟢 Aktif (Production Ready - V2)
+**Status Proyek:** 🟢 Aktif (Production Ready - V3)
 **Developer Utama:** [Nama Anda/Tim Anda]
 
 ---
 
 ## 1. Status Saat Ini (Current Status)
-Sistem telah di-deploy ke Vercel dan terhubung dengan Supabase. Aplikasi kini memiliki fitur manajemen proyek yang komprehensif:
-- **Fixed:** Error build supabaseKey is required dan konflik penamaan kolom (wbs vs wbs_code).
-- **Added:** Fitur CRUD (Create, Read, Update, Delete) penuh pada halaman Tasks (WBS).
-- **Added:** Gantt Chart interaktif (MS Project style) dengan visualisasi progres.
-- **Added:** Grafik S-Curve (Planned Value, Earned Value, Actual Cost) menggunakan Recharts.
-- **Added:** Halaman Resources (terhubung ke master_hsd) dan AHSP (terhubung ke wbs_tasks).
+Sistem telah di-deploy ke Vercel dan terhubung sepenuhnya dengan Supabase.
+- **Fixed:** Error build, penamaan kolom (wbs_code), ESLint quotes, dan format tanggal pada modal input.
+- **Added:** Fitur CRUD penuh (Tambah/Edit/Hapus) pada halaman Tasks.
+- **Added:** Gantt Chart interaktif dengan visualisasi bar progres.
+- **Added:** Grafik S-Curve (Recharts) untuk monitoring PV, EV, dan AC (memerlukan input biaya pada task).
+- **Added:** Halaman Resources dan AHSP dasar.
 
 ## 2. Yang Sedang Berjalan (Work in Progress)
-- Integrasi formula AHSP untuk menghitung harga satuan pekerjaan secara otomatis berdasarkan koefisien resource.
-- Fitur Autentikasi (Login) dan Role-Based Access Control (RBAC).
+- Integrasi perhitungan AHSP otomatis (menghubungkan tabel wbs_tasks dan master_hsd).
+- Fitur Login & Autentikasi (Saat ini aplikasi dapat diakses publik).
 
 ## 3. Known Issues (Masalah yang Diketahui)
-- Perhitungan S-Curve saat ini menggunakan estimasi linear sederhana dari total cost task.
-- Warning GoTrueClient instances di console browser (aman, hanya efek dari React StrictMode).
+- Grafik S-Curve akan tampak datar (Rp 0) jika belum ada task yang diberi nilai **Biaya (Cost)** lebih dari 0.
+- Warning GoTrueClient instances di console browser (aman, bawaan Supabase di React StrictMode).
 
 ## 4. Panduan Developer Selanjutnya (Next Steps)
-1. **Kalkulasi CPM:** Implementasikan algoritma Critical Path Method (CPM) yang sebenarnya pada tombol 'Recalculate'.
-2. **Relasi AHSP:** Buat tabel pivot hsp_details di Supabase untuk menghubungkan wbs_tasks dan master_hsd.
-3. **Real-time Sync:** Gunakan fitur Supabase Realtime agar perubahan data langsung terlihat tanpa refresh.
+1. **Isi Data Biaya:** Buka halaman Tasks -> Edit -> Masukkan nominal biaya (misal: 5000000). Grafik S-Curve akan otomatis terbentuk.
+2. **Implementasi CPM:** Tambahkan algoritma perhitungan *Critical Path Method* pada tombol 'Recalculate CPM'.
+3. **Relasi AHSP:** Buat form di halaman AHSP untuk memilih Material/Upah dari master_hsd dan mengalikannya dengan koefisien.
 
 ## 5. Kontak & Akses
 - **Vercel Dashboard:** [Link Vercel]
