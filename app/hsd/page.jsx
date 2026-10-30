@@ -11,38 +11,68 @@ export default function HSDPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        // Mengambil data dari ahsp_details dan menggabungkannya dengan master_hsd
+        // Query bersarang: HSD -> Detail AHSP -> Template AHSP -> Task (WBS)
         const { data, error } = await supabase
           .from('ahsp_details')
           .select(`
-            master_hsd ( id, item_name, resource_type, unit, base_price, kode )
+            master_hsd ( id, item_name, resource_type, unit, base_price, kode ),
+            ahsp_templates (
+              name,
+              wbs_tasks ( name, wbs_code )
+            )
           `);
 
         if (error) throw error;
 
-        // 1. Ambil objek master_hsd dan buang yang null
-        const allResources = data.map(d => d.master_hsd).filter(Boolean);
+        // Logika Pengelompokan & Pelacakan
+        const grouped = {};
 
-        // 2. Filter Duplikat berdasarkan kombinasi Nama, Satuan, dan Harga
-        const uniqueResources = Object.values(
-          allResources.reduce((acc, curr) => {
-            const key = `${curr.item_name}-${curr.unit}-${curr.base_price}`;
-            if (!acc[key]) {
-              acc[key] = curr;
+        data.forEach(row => {
+          const hsd = row.master_hsd;
+          const template = row.ahsp_templates;
+          
+          if (!hsd) return;
+
+          // Kunci unik berdasarkan Nama, Satuan, dan Harga
+          const key = `${hsd.item_name}-${hsd.unit}-${hsd.base_price}`;
+
+          if (!grouped[key]) {
+            grouped[key] = {
+              ...hsd,
+              usages: new Set() // Gunakan Set agar tidak ada teks yang duplikat
+            };
+          }
+
+          // Format teks penggunaan
+          if (template) {
+            let usageText = `AHSP: ${template.name}`;
+            
+            // Jika AHSP ini sudah di-assign ke Task (WBS)
+            if (template.wbs_tasks && template.wbs_tasks.length > 0) {
+               // Ambil task pertama (karena relasi wbs_tasks ke ahsp_template_id biasanya 1 ke banyak)
+               // Kita tampilkan semua task yang menggunakan AHSP ini
+               const taskNames = template.wbs_tasks.map(t => `[${t.wbs_code}] ${t.name}`).join(', ');
+               usageText += ` ➔ Task: ${taskNames}`;
+            } else {
+               usageText += ` ➔ (Belum di-assign ke Task)`;
             }
-            return acc;
-          }, {})
-        );
+            
+            grouped[key].usages.add(usageText);
+          }
+        });
 
-        // 3. Urutkan berdasarkan Tipe (Upah, Bahan, Alat) lalu Nama
-        const sorted = uniqueResources.sort((a, b) => {
+        // Ubah Set menjadi Array dan urutkan berdasarkan Tipe
+        const result = Object.values(grouped).map(item => ({
+          ...item,
+          usages: Array.from(item.usages)
+        })).sort((a, b) => {
           if (a.resource_type !== b.resource_type) {
             return a.resource_type.localeCompare(b.resource_type);
           }
           return a.item_name.localeCompare(b.item_name);
         });
 
-        setHsdList(sorted);
+        setHsdList(result);
       } catch (err) {
         console.error("Gagal memuat HSD:", err.message);
       } finally {
@@ -57,7 +87,7 @@ export default function HSDPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Harga Satuan Dasar (HSD)</h1>
-          <p className="text-sm text-gray-500 mt-1">Daftar komponen unik yang saat ini digunakan di dalam Katalog AHSP.</p>
+          <p className="text-sm text-gray-500 mt-1">Daftar komponen unik yang digunakan di AHSP beserta lokasi penggunaannya.</p>
         </div>
       </div>
       
@@ -65,11 +95,12 @@ export default function HSDPage() {
         <table className="w-full text-left">
           <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
             <tr>
-              <th className="p-4">Tipe</th>
-              <th className="p-4">Kode</th>
+              <th className="p-4 w-24">Tipe</th>
+              <th className="p-4 w-24">Kode</th>
               <th className="p-4">Nama Item</th>
-              <th className="p-4">Satuan</th>
-              <th className="p-4 text-right">Harga Dasar</th>
+              <th className="p-4 w-20">Satuan</th>
+              <th className="p-4 w-32 text-right">Harga Dasar</th>
+              <th className="p-4 w-1/3">Digunakan Pada (AHSP / Task)</th>
             </tr>
           </thead>
           <tbody className="text-sm divide-y divide-gray-100">
@@ -88,16 +119,25 @@ export default function HSDPage() {
                 <td className="p-4 font-medium">{r.item_name}</td>
                 <td className="p-4 text-gray-600">{r.unit}</td>
                 <td className="p-4 text-right font-bold text-gray-800">Rp {r.base_price?.toLocaleString('id-ID')}</td>
+                <td className="p-4">
+                  <div className="flex flex-col gap-1.5">
+                    {r.usages.map((usage, i) => (
+                      <div key={i} className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded border border-gray-200 w-fit">
+                        {usage}
+                      </div>
+                    ))}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         {hsdList.length === 0 && !loading && (
           <div className="p-10 text-center text-gray-500">
-            Belum ada komponen yang digunakan di dalam AHSP.
+            Belum ada komponen HSD yang digunakan di dalam AHSP.
           </div>
         )}
-        {loading && <div className="p-6 text-center text-blue-500">Memuat data HSD...</div>}
+        {loading && <div className="p-6 text-center text-blue-500">Memuat data pelacakan HSD...</div>}
       </div>
     </div>
   );
