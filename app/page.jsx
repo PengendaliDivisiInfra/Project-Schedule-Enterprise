@@ -28,73 +28,76 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  // Logika S-Curve Sederhana (Cumulative PV, EV, AC per Minggu)
+  // PERBAIKAN LOGIKA S-CURVE (INTERVAL HARIAN & KUMULATIF)
   const generateSCurveData = () => {
     const leafTasks = tasks.filter(t => t.summary !== 'Yes' && t.start_date && t.end_date);
     if (leafTasks.length === 0) return [];
 
     let minDate = new Date(leafTasks[0].start_date);
     let maxDate = new Date(leafTasks[0].end_date);
-    let totalBAC = 0;
-
+    
     leafTasks.forEach(t => {
       const s = new Date(t.start_date);
       const f = new Date(t.end_date);
       if (s < minDate) minDate = s;
       if (f > maxDate) maxDate = f;
-      totalBAC += Number(t.cost) || 0;
     });
+
+    // Reset jam ke 00:00 agar kalkulasi selisih hari akurat
+    minDate.setHours(0,0,0,0);
+    maxDate.setHours(0,0,0,0);
+    maxDate.setDate(maxDate.getDate() + 1); // Tambah 1 hari agar garis mencapai akhir
 
     const data = [];
     let currentDate = new Date(minDate);
-    let cumulativePV = 0;
-    let cumulativeEV = 0;
-    let cumulativeAC = 0;
 
     while (currentDate <= maxDate) {
-      let weeklyPV = 0;
-      let weeklyEV = 0;
+      let totalPV = 0;
+      let totalEV = 0;
       
       leafTasks.forEach(t => {
         const cost = Number(t.cost) || 0;
         const progress = Number(t.progress_percent) || 0;
         const s = new Date(t.start_date);
         const f = new Date(t.end_date);
+        s.setHours(0,0,0,0);
+        f.setHours(0,0,0,0);
+        
         const duration = Math.max(1, (f - s) / (1000 * 60 * 60 * 24));
 
-        // Kalkulasi PV (Linear)
-        if (currentDate >= f) weeklyPV += cost;
-        else if (currentDate >= s) {
+        // Kalkulasi PV (Planned Value) - Linear berdasarkan waktu
+        if (currentDate >= f) {
+          totalPV += cost;
+        } else if (currentDate >= s) {
           const elapsed = (currentDate - s) / (1000 * 60 * 60 * 24);
-          weeklyPV += cost * Math.min(1, elapsed / duration);
+          totalPV += cost * Math.min(1, elapsed / duration);
         }
 
-        // Kalkulasi EV (Berdasarkan progres saat ini - disederhanakan)
+        // Kalkulasi EV (Earned Value)
         if (currentDate >= s) {
-          weeklyEV += cost * (progress / 100);
+          totalEV += cost * (progress / 100);
         }
       });
 
-      // Kalkulasi AC diasumsikan sama dengan EV untuk demo
-      const weeklyAC = weeklyEV; 
+      // Asumsi AC = EV untuk demo
+      const totalAC = totalEV; 
 
-      cumulativePV = weeklyPV;
-      cumulativeEV = weeklyEV;
-      cumulativeAC = weeklyAC;
-
+      // Format label tanggal (contoh: "30 Okt")
       data.push({
         name: currentDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }),
-        PV: Math.round(cumulativePV),
-        EV: Math.round(cumulativeEV),
-        AC: Math.round(cumulativeAC),
+        PV: Math.round(totalPV),
+        EV: Math.round(totalEV),
+        AC: Math.round(totalAC),
       });
 
-      currentDate.setDate(currentDate.getDate() + 7); // Interval 7 hari
+      // Interval Harian (+1 hari)
+      currentDate.setDate(currentDate.getDate() + 1);
     }
     return data;
   };
 
   const scurveData = generateSCurveData();
+  const totalBAC = tasks.reduce((sum, t) => sum + (Number(t.cost) || 0), 0);
 
   return (
     <div>
@@ -111,7 +114,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <div className="text-xs text-gray-500 font-bold mb-2 tracking-wider">RAB PROJECT (BAC)</div>
-          <div className="text-2xl font-bold text-gray-800">Rp {tasks.reduce((sum, t) => sum + (Number(t.cost) || 0), 0).toLocaleString('id-ID')}</div>
+          <div className="text-2xl font-bold text-gray-800">Rp {totalBAC.toLocaleString('id-ID')}</div>
         </div>
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <div className="text-xs text-gray-500 font-bold mb-2 tracking-wider">SPI</div>
@@ -125,7 +128,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <div className="text-xs text-gray-500 font-bold mb-2 tracking-wider">EAC</div>
-          <div className="text-2xl font-bold text-gray-800">Rp {tasks.reduce((sum, t) => sum + (Number(t.cost) || 0), 0).toLocaleString('id-ID')}</div>
+          <div className="text-2xl font-bold text-gray-800">Rp {totalBAC.toLocaleString('id-ID')}</div>
         </div>
       </div>
 
@@ -138,12 +141,13 @@ export default function Dashboard() {
               <LineChart data={scurveData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" tick={{fontSize: 12}} />
-                <YAxis tickFormatter={(value) => `Rp ${value/1000000}M`} tick={{fontSize: 12}} />
+                {/* Format Y-Axis menjadi Jutaan (M) */}
+                <YAxis tickFormatter={(value) => `Rp ${(value/1000000).toFixed(1)}M`} tick={{fontSize: 12}} />
                 <Tooltip formatter={(value) => `Rp ${value.toLocaleString('id-ID')}`} />
                 <Legend />
-                <Line type="monotone" dataKey="PV" name="Planned Value" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="EV" name="Earned Value" stroke="#10b981" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="AC" name="Actual Cost" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="PV" name="Planned Value" stroke="#3b82f6" strokeWidth={3} dot={false} />
+                <Line type="monotone" dataKey="EV" name="Earned Value" stroke="#10b981" strokeWidth={3} dot={false} />
+                <Line type="monotone" dataKey="AC" name="Actual Cost" stroke="#ef4444" strokeWidth={3} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
