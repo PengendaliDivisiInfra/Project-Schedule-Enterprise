@@ -3,13 +3,18 @@ import { useMemo } from 'react';
 
 export default function GanttChart({ tasks }) {
   if (!tasks || tasks.length === 0) {
-    return <div className="p-6 text-center text-gray-500">Belum ada data task untuk ditampilkan di Gantt Chart.</div>;
+    return (
+      <div className="p-10 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed">
+        <p className="text-lg font-medium mb-2">Belum ada data Task.</p>
+        <p className="text-sm">Silakan buka halaman "Tasks (WBS)" dan klik tombol "Generate Data Dummy" untuk melihat contoh Gantt Chart.</p>
+      </div>
+    );
   }
 
   const leafTasks = tasks.filter(t => t.summary !== 'Yes' && t.start_date && t.finish_date);
   if (leafTasks.length === 0) return <div className="p-6 text-center text-gray-500">Tidak ada data tanggal valid.</div>;
 
-  // Hitung tanggal paling awal dan paling akhir
+  // Kalkulasi rentang tanggal
   let minDate = new Date(leafTasks[0].start_date);
   let maxDate = new Date(leafTasks[0].finish_date);
 
@@ -20,45 +25,85 @@ export default function GanttChart({ tasks }) {
     if (f > maxDate) maxDate = f;
   });
 
-  // Beri padding 2 hari di awal dan akhir
-  minDate.setDate(minDate.getDate() - 2);
-  maxDate.setDate(maxDate.getDate() + 2);
+  minDate.setDate(minDate.getDate() - 1); // Padding
+  maxDate.setDate(maxDate.getDate() + 3); // Padding
   const totalDays = Math.max(1, (maxDate - minDate) / (1000 * 60 * 60 * 24));
 
+  // Generate date headers (mingguan)
+  const dateHeaders = [];
+  let currentDate = new Date(minDate);
+  while (currentDate <= maxDate) {
+    dateHeaders.push(new Date(currentDate));
+    currentDate.setDate(currentDate.getDate() + 7);
+  }
+
   return (
-    <div className="overflow-x-auto bg-white rounded-lg border">
-      <div className="min-w-[800px]">
-        <div className="flex border-b bg-gray-100 text-sm font-semibold p-3 text-gray-700">
-           <div className="w-1/3">Task Name</div>
-           <div className="w-2/3 flex justify-between px-2">
-              <span>{minDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}</span>
-              <span>Timeline</span>
-              <span>{maxDate.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}</span>
-           </div>
+    <div className="overflow-x-auto bg-white rounded-lg border shadow-sm">
+      <div className="min-w-[900px]">
+        {/* Header Tabel */}
+        <div className="flex border-b bg-gray-100 font-semibold text-sm text-gray-700">
+          <div className="w-[35%] p-3 border-r flex gap-4">
+            <span className="w-12">WBS</span>
+            <span className="flex-1">Task Name</span>
+            <span className="w-24 text-center">Start</span>
+            <span className="w-24 text-center">Finish</span>
+          </div>
+          <div className="w-[65%] flex relative">
+            {dateHeaders.map((date, idx) => (
+              <div key={idx} className="flex-1 border-r p-3 text-center text-xs border-gray-200" style={{ minWidth: '80px' }}>
+                {date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="max-h-[500px] overflow-y-auto">
+
+        {/* Body Tabel */}
+        <div className="max-h-[600px] overflow-y-auto">
           {leafTasks.map((task, idx) => {
             const tStart = new Date(task.start_date);
             const tFinish = new Date(task.finish_date);
+            
+            // Hitung posisi bar
             const offsetDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
             const durationDays = Math.max(1, (tFinish - tStart) / (1000 * 60 * 60 * 24));
             
             const leftPercent = (offsetDays / totalDays) * 100;
             const widthPercent = (durationDays / totalDays) * 100;
+            const progress = Number(task.progress_percent) || 0;
+
+            // Warna bar berdasarkan progres
+            let barColor = "bg-blue-500";
+            if (progress === 100) barColor = "bg-green-500";
+            else if (progress > 0) barColor = "bg-blue-600";
 
             return (
-              <div key={task.id || idx} className="flex border-b hover:bg-gray-50 p-3 items-center">
-                <div className="w-1/3 pr-4 truncate text-sm">
-                  <span className="text-gray-400 text-xs mr-2">{task.wbs}</span>
-                  {task.name}
+              <div key={task.id || idx} className="flex border-b hover:bg-blue-50 transition-colors">
+                {/* Kolom Kiri (Data) */}
+                <div className="w-[35%] p-3 border-r flex gap-4 text-sm items-center">
+                  <span className="w-12 text-gray-500 font-mono text-xs">{task.wbs}</span>
+                  <span className="flex-1 font-medium truncate" title={task.name}>{task.name}</span>
+                  <span className="w-24 text-center text-xs text-gray-500">{tStart.toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}</span>
+                  <span className="w-24 text-center text-xs text-gray-500">{tFinish.toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}</span>
                 </div>
-                <div className="w-2/3 relative h-6 bg-gray-100 rounded">
+
+                {/* Kolom Kanan (Timeline Bar) */}
+                <div className="w-[65%] relative flex items-center bg-gray-50/50">
+                  {/* Grid background */}
+                  <div className="absolute inset-0 flex">
+                     {dateHeaders.map((_, i) => <div key={i} className="flex-1 border-r border-gray-100"></div>)}
+                  </div>
+                  
+                  {/* Task Bar */}
                   <div
-                    className="absolute top-0 h-full bg-blue-500 rounded flex items-center justify-end pr-2 text-xs text-white font-medium overflow-hidden shadow-sm"
+                    className={`absolute h-6 rounded-md shadow-sm flex items-center overflow-hidden ${barColor}`}
                     style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
-                    title={`${task.start_date} s/d ${task.finish_date} (${task.progress_percent}%)`}
+                    title={`${task.name} (${progress}%)`}
                   >
-                     {task.progress_percent > 0 && <span>{task.progress_percent}%</span>}
+                    {/* Progress Fill */}
+                    <div className="h-full bg-black/20 absolute top-0 left-0" style={{ width: `${progress}%` }}></div>
+                    <span className="text-[10px] text-white font-bold px-2 z-10 w-full truncate">
+                      {progress > 0 ? `${progress}%` : ''}
+                    </span>
                   </div>
                 </div>
               </div>

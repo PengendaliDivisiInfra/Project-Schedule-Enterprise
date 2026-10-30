@@ -7,36 +7,70 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [projectId, setProjectId] = useState(null);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        // Ambil project pertama yang tersedia
-        let { data: projects } = await supabase.from('projects').select('id').limit(1);
-        let projectId = projects?.[0]?.id;
-        
-        // Fallback ke wbs_tasks jika tabel projects kosong
-        if (!projectId) {
-          let { data: tasksData } = await supabase.from('wbs_tasks').select('project_id').limit(1);
-          projectId = tasksData?.[0]?.project_id;
-        }
-
-        if (projectId) {
-          const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs', { ascending: true });
-          setTasks(data || []);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+  const fetchTasks = async () => {
+    setLoading(true);
+    try {
+      let { data: projects } = await supabase.from('projects').select('id').limit(1);
+      let pid = projects?.[0]?.id;
+      
+      if (!pid) {
+        let { data: tData } = await supabase.from('wbs_tasks').select('project_id').limit(1);
+        pid = tData?.[0]?.project_id;
       }
+
+      // Jika benar-benar kosong, gunakan ID Dummy statis
+      if (!pid) pid = '00000000-0000-0000-0000-000000000000';
+
+      setProjectId(pid);
+      const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs', { ascending: true });
+      setTasks(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    loadData();
-  }, []);
+  };
+
+  useEffect(() => { fetchTasks(); }, []);
+
+  const handleSeedData = async () => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      const dummyTasks = [
+        { project_id: projectId, wbs: '1', name: 'Pekerjaan Persiapan', summary: 'Yes', start_date: '2026-10-01', finish_date: '2026-10-31' },
+        { project_id: projectId, wbs: '1.1', name: 'Mobilisasi & Demobilisasi', summary: 'No', start_date: '2026-10-01', finish_date: '2026-10-07', duration: 6, progress_percent: 100, cost: 5000000 },
+        { project_id: projectId, wbs: '1.2', name: 'Direksi Keet & Gudang', summary: 'No', start_date: '2026-10-05', finish_date: '2026-10-15', duration: 10, progress_percent: 50, cost: 15000000 },
+        { project_id: projectId, wbs: '2', name: 'Pekerjaan Tanah & Pondasi', summary: 'Yes', start_date: '2026-10-15', finish_date: '2026-11-15' },
+        { project_id: projectId, wbs: '2.1', name: 'Galian Tanah Pondasi', summary: 'No', start_date: '2026-10-16', finish_date: '2026-10-25', duration: 9, progress_percent: 0, cost: 25000000 },
+        { project_id: projectId, wbs: '2.2', name: 'Cor Beton Pondasi', summary: 'No', start_date: '2026-10-26', finish_date: '2026-11-10', duration: 15, progress_percent: 0, cost: 45000000 },
+      ];
+
+      const { error } = await supabase.from('wbs_tasks').upsert(dummyTasks, { onConflict: 'project_id, wbs' });
+      if (error) throw error;
+      
+      await fetchTasks(); // Refresh data
+      alert('Data Dummy Berhasil Dibuat!');
+    } catch (err) {
+      alert('Gagal membuat data dummy: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Task Management (WBS)</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Task Management (WBS)</h1>
+        {tasks.length === 0 && (
+          <button onClick={handleSeedData} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition">
+            + Generate Data Dummy
+          </button>
+        )}
+      </div>
+      
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-gray-100 border-b text-sm">
@@ -51,9 +85,9 @@ export default function TasksPage() {
           </thead>
           <tbody className="text-sm">
             {tasks.map((t) => (
-              <tr key={t.id} className="border-b hover:bg-gray-50">
+              <tr key={t.id} className={`border-b hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''}`}>
                 <td className="p-4">{t.wbs}</td>
-                <td className="p-4 font-medium">{t.name}</td>
+                <td className="p-4">{t.name}</td>
                 <td className="p-4">{t.start_date}</td>
                 <td className="p-4">{t.finish_date}</td>
                 <td className="p-4">{t.progress_percent}%</td>
@@ -62,8 +96,12 @@ export default function TasksPage() {
             ))}
           </tbody>
         </table>
-        {tasks.length === 0 && !loading && <div className="p-6 text-center text-gray-500">Database Anda kosong. Silakan import data WBS terlebih dahulu.</div>}
-        {loading && <div className="p-6 text-center text-gray-500">Memuat data...</div>}
+        {tasks.length === 0 && !loading && (
+          <div className="p-10 text-center text-gray-500">
+            Database Tasks kosong. Klik tombol "+ Generate Data Dummy" di atas untuk mencoba fitur Gantt Chart.
+          </div>
+        )}
+        {loading && <div className="p-6 text-center text-blue-500">Memproses data...</div>}
       </div>
     </div>
   );
