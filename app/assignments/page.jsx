@@ -8,7 +8,6 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
   const [templates, setTemplates] = useState([]);
-  const [templateCosts, setTemplateCosts] = useState({});
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
@@ -16,26 +15,11 @@ export default function AssignmentsPage() {
     setLoading(true);
     try {
       const { data: tData } = await supabase.from('wbs_tasks').select('*').eq('summary', 'No').order('wbs_code');
-      const { data: aData } = await supabase.from('ahsp_templates').select('*');
+      const { data: aData } = await supabase.from('ahsp_templates').select('id, name, unit, total_harga_ahsp');
       
       const uniqueTasks = tData ? Array.from(new Map(tData.map(item => [item.wbs_code, item])).values()) : [];
       setTasks(uniqueTasks);
       setTemplates(aData || []);
-
-      // ⚡ OPTIMASI: Ambil semua detail AHSP sekaligus, bukan looping
-      const { data: details } = await supabase.from('ahsp_details').select(`
-        ahsp_template_id, koefisien, master_hsd!hsd_id (base_price)
-      `);
-      
-      const costs = {};
-      aData?.forEach(tpl => {
-        const tplDetails = details?.filter(d => d.ahsp_template_id === tpl.id) || [];
-        const totalABC = tplDetails.reduce((sum, d) => sum + (d.koefisien * (d.master_hsd?.base_price || 0)), 0);
-        const overhead = Number(tpl.overhead_percent) || 15;
-        costs[tpl.id] = totalABC * (1 + (overhead / 100));
-      });
-      setTemplateCosts(costs);
-      
     } catch (err) {
       console.error(err);
     } finally {
@@ -49,7 +33,8 @@ export default function AssignmentsPage() {
     try {
       let calculatedCost = 0;
       if (templateId) {
-        calculatedCost = (templateCosts[templateId] || 0) * (Number(volume) || 0);
+        const tpl = templates.find(t => t.id === templateId);
+        calculatedCost = (tpl?.total_harga_ahsp || 0) * (Number(volume) || 0);
       }
 
       const { error } = await supabase.from('wbs_tasks')
@@ -64,17 +49,18 @@ export default function AssignmentsPage() {
   };
 
   const handleSyncAll = async () => {
-    if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP?')) return;
+    if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP terbaru?')) return;
     setSyncing(true);
     try {
       for (const task of tasks) {
         if (task.ahsp_template_id) {
-          const calculatedCost = (templateCosts[task.ahsp_template_id] || 0) * (task.volume || 0);
+          const tpl = templates.find(t => t.id === task.ahsp_template_id);
+          const calculatedCost = (tpl?.total_harga_ahsp || 0) * (task.volume || 0);
           await supabase.from('wbs_tasks').update({ cost: calculatedCost }).eq('id', task.id);
         }
       }
       fetchData();
-      alert('Sinkronisasi harga berhasil!');
+      alert('Sinkronisasi harga berhasil! Kurva-S akan ter-update.');
     } catch (err) {
       alert('Gagal sinkronisasi: ' + err.message);
     } finally {

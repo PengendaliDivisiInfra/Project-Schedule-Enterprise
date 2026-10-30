@@ -12,15 +12,11 @@ export default function HSDPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [projectId, setProjectId] = useState(null);
   
-  // State Form
-  const [formData, setFormData] = useState({
-    id: null, kode: '', resource_type: 'Bahan', item_name: '', unit: '', base_price: 0
-  });
+  const [formData, setFormData] = useState({ id: null, kode: '', resource_type: 'Bahan', item_name: '', unit: '', base_price: 0 });
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Ambil Project ID
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id;
       if (!pid) {
@@ -29,37 +25,25 @@ export default function HSDPage() {
       }
       setProjectId(pid);
 
-      // Ambil Master HSD
       const { data: hsd } = await supabase.from('master_hsd').select('*').order('resource_type').order('item_name');
       
-      // Ambil Data Penggunaan (Traceability)
       const { data: usages } = await supabase.from('ahsp_details').select(`
-        hsd_id, ahsp_templates ( name, wbs_tasks ( wbs_code, name ) )
+        hsd_id, ahsp_templates ( name )
       `);
 
-      // Gabungkan data penggunaan
       const usageMap = {};
       usages?.forEach(u => {
         if (!u.hsd_id) return;
         if (!usageMap[u.hsd_id]) usageMap[u.hsd_id] = [];
-        
         const templateName = u.ahsp_templates?.name;
         if (templateName && !usageMap[u.hsd_id].includes(templateName)) {
           usageMap[u.hsd_id].push(templateName);
         }
       });
 
-      const combined = (hsd || []).map(item => ({
-        ...item,
-        used_in: usageMap[item.id] || []
-      }));
-
+      const combined = (hsd || []).map(item => ({ ...item, used_in: usageMap[item.id] || [] }));
       setHsdList(combined);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -85,9 +69,7 @@ export default function HSDPage() {
       setIsEditing(false);
       setFormData({ id: null, kode: '', resource_type: 'Bahan', item_name: '', unit: '', base_price: 0 });
       fetchData();
-    } catch (err) {
-      alert('Gagal menyimpan: ' + err.message);
-    }
+    } catch (err) { alert('Gagal menyimpan: ' + err.message); }
   };
 
   const handleEdit = (item) => {
@@ -114,7 +96,7 @@ export default function HSDPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Harga Satuan Dasar (HSD)</h1>
-          <p className="text-sm text-gray-500 mt-1">Database induk Material, Upah, dan Alat. Perubahan harga di sini akan mempengaruhi seluruh AHSP dan Task.</p>
+          <p className="text-sm text-gray-500 mt-1">Database induk Material, Upah, dan Alat.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => fetchData()} className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-200 transition">
@@ -126,7 +108,6 @@ export default function HSDPage() {
         </div>
       </div>
 
-      {/* Form Tambah/Edit */}
       {isAdding && (
         <div className="bg-white p-6 rounded-xl shadow-sm border mb-6">
           <h3 className="font-bold mb-4">{isEditing ? 'Edit HSD' : 'Tambah HSD Baru'}</h3>
@@ -164,7 +145,6 @@ export default function HSDPage() {
         </div>
       )}
 
-      {/* Tabel HSD */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Memuat Data HSD..." /> : (
           <table className="w-full text-left">
@@ -210,11 +190,6 @@ export default function HSDPage() {
               ))}
             </tbody>
           </table>
-        )}
-        {hsdList.length === 0 && !loading && (
-          <div className="p-10 text-center text-gray-500">
-            Database HSD masih kosong. Silakan klik &quot;+ Tambah HSD Baru&quot; untuk memasukkan data material/upah.
-          </div>
         )}
       </div>
     </div>
