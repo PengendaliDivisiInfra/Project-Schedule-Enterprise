@@ -8,6 +8,61 @@ export default function AssignmentsPage() {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // --- ENGINE ROLLUP WBS (BOTTOM-UP) ---
+  const runRollupEngine = (inputTasks) => {
+    const taskMap = {};
+    const roots = [];
+
+    inputTasks.forEach(task => {
+      taskMap[task.id] = { ...task, children: [] };
+    });
+
+    inputTasks.forEach(task => {
+      const mappedItem = taskMap[task.id];
+      let parentId = null;
+
+      if (mappedItem.wbs_code && mappedItem.wbs_code.includes('.')) {
+        const wbsParts = mappedItem.wbs_code.split('.');
+        wbsParts.pop();
+        const parentWbs = wbsParts.join('.');
+        const parentFound = inputTasks.find(p => p.wbs_code === parentWbs);
+        if (parentFound) parentId = parentFound.id;
+      }
+
+      if (parentId && taskMap[parentId]) {
+        taskMap[parentId].children.push(mappedItem);
+        taskMap[parentId].is_summary = true;
+      } else {
+        roots.push(mappedItem);
+      }
+    });
+
+    const executeRollup = (node) => {
+      if (!node.children || node.children.length === 0) {
+        return node.cost;
+      }
+      let accumulatedCost = 0;
+      node.children.forEach(child => {
+        accumulatedCost += executeRollup(child);
+      });
+      node.cost = accumulatedCost;
+      node.volume = 0; 
+      return node.cost;
+    };
+
+    roots.forEach(root => executeRollup(root));
+
+    const flatResult = [];
+    const flatten = (node) => {
+      const { children, ...clean } = node;
+      flatResult.push(clean);
+      if (children) children.forEach(flatten);
+    };
+    roots.forEach(flatten);
+
+    return flatResult.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -24,7 +79,9 @@ export default function AssignmentsPage() {
           is_summary: t.summary === 'Yes'
         }));
 
-        setTasks(formattedTasks);
+        // ⚡ OTOMATISASI: Jalankan Rollup di frontend agar UI PASTI benar
+        const rolledUpTasks = runRollupEngine(formattedTasks);
+        setTasks(rolledUpTasks);
       }
       setTemplates(aData || []);
     } catch (err) {
@@ -38,7 +95,7 @@ export default function AssignmentsPage() {
 
   const handleAssign = async (taskId, templateId, volume) => {
     try {
-      // ⚠️ PERBAIKAN: JANGAN kirim 'cost' manual. Biarkan trigger database yang menghitung!
+      // Kirim data ke database, Trigger DB yang akan menghitung cost
       const { error } = await supabase.from('wbs_tasks')
         .update({ 
           ahsp_template_id: templateId || null, 
@@ -48,7 +105,7 @@ export default function AssignmentsPage() {
       
       if (error) throw error;
       
-      // Tarik ulang data agar hasil kalkulasi dari trigger langsung muncul di layar
+      // Tarik ulang data agar angka terbaru dari database langsung muncul
       fetchData(); 
     } catch (err) {
       alert('Gagal update: ' + err.message);
