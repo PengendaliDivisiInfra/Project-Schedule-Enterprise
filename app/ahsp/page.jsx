@@ -1,38 +1,62 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import AhspTemplateModal from '../../components/AhspTemplateModal';
 import AssignmentModal from '../../components/AssignmentModal';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export default function AHSPPage() {
-  const [tasks, setTasks] = useState([]);
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [ahspDetails, setAhspDetails] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [details, setDetails] = useState([]);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [overhead, setOverhead] = useState(15);
+  const [projectId, setProjectId] = useState(null);
 
-  const fetchTasks = async () => {
-    const { data } = await supabase.from('wbs_tasks').select('*').eq('summary', 'No').order('wbs_code');
-    setTasks(data || []);
+  const fetchTemplates = async () => {
+    let { data: projects } = await supabase.from('projects').select('id').limit(1);
+    let pid = projects?.[0]?.id || '00000000-0000-0000-0000-000000000000';
+    setProjectId(pid);
+
+    const { data } = await supabase.from('ahsp_templates').select('*').eq('project_id', pid).order('created_at', { ascending: false });
+    setTemplates(data || []);
+    if (data?.length > 0 && !selectedTemplate) setSelectedTemplate(data[0]);
   };
 
-  const fetchAhspDetails = async (taskId) => {
+  const fetchDetails = async (templateId) => {
     const { data } = await supabase.from('ahsp_details')
       .select(`koefisien, master_hsd(*)`)
-      .eq('task_id', taskId);
-    setAhspDetails(data || []);
+      .eq('ahsp_template_id', templateId);
+    setDetails(data || []);
   };
 
-  useEffect(() => { fetchTasks(); }, []);
-  
+  useEffect(() => { fetchTemplates(); }, []);
   useEffect(() => {
-    if (selectedTask) fetchAhspDetails(selectedTask.id);
-  }, [selectedTask]);
+    if (selectedTemplate) {
+      fetchDetails(selectedTemplate.id);
+      setOverhead(selectedTemplate.overhead_percent || 15);
+    }
+  }, [selectedTemplate]);
+
+  const handleSaveTemplate = async (formData) => {
+    const { error } = await supabase.from('ahsp_templates').insert([{ ...formData, project_id: projectId }]);
+    if (error) alert(error.message);
+    else { setIsTemplateModalOpen(false); fetchTemplates(); }
+  };
+
+  const handleUpdateOverhead = async (val) => {
+    setOverhead(val);
+    if (selectedTemplate) {
+      await supabase.from('ahsp_templates').update({ overhead_percent: val }).eq('id', selectedTemplate.id);
+    }
+  };
 
   // Logika Pengelompokan PUPR
-  const upah = ahspDetails.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'upah' || d.master_hsd?.resource_type?.toLowerCase() === 'tenaga kerja');
-  const bahan = ahspDetails.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'bahan' || d.master_hsd?.resource_type?.toLowerCase() === 'material');
-  const alat = ahspDetails.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'alat' || d.master_hsd?.resource_type?.toLowerCase() === 'peralatan');
+  const upah = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'upah' || d.master_hsd?.resource_type?.toLowerCase() === 'tenaga kerja');
+  const bahan = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'bahan' || d.master_hsd?.resource_type?.toLowerCase() === 'material');
+  const alat = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'alat' || d.master_hsd?.resource_type?.toLowerCase() === 'peralatan');
 
   const calcTotal = (items) => items.reduce((sum, item) => sum + (item.koefisien * (item.master_hsd?.base_price || 0)), 0);
   
@@ -40,10 +64,10 @@ export default function AHSPPage() {
   const totalB = calcTotal(bahan);
   const totalC = calcTotal(alat);
   const totalD = totalA + totalB + totalC;
-  const totalE = totalD * 0.15; // Asumsi Overhead & Profit 15%
+  const totalE = totalD * (overhead / 100);
   const totalF = totalD + totalE;
 
-  const renderRow = (item, index, group) => {
+  const renderRow = (item, index) => {
     const hargaSatuan = item.master_hsd?.base_price || 0;
     const jumlahHarga = item.koefisien * hargaSatuan;
     return (
@@ -61,41 +85,35 @@ export default function AHSPPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Analisa Harga Satuan Pekerjaan (AHSP)</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Katalog AHSP (Standar PUPR)</h1>
+        <button onClick={() => setIsTemplateModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Buat AHSP Baru</button>
+      </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Panel Kiri: Daftar Pekerjaan */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-fit">
-          <h2 className="font-bold mb-3 border-b pb-2">Daftar Pekerjaan</h2>
+          <h2 className="font-bold mb-3 border-b pb-2">Daftar Katalog AHSP</h2>
           <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-            {tasks.map(t => (
-              <button 
-                key={t.id} 
-                onClick={() => setSelectedTask(t)}
-                className={`w-full text-left p-3 rounded-lg border transition ${selectedTask?.id === t.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-gray-50'}`}
-              >
-                <div className="font-mono text-xs text-gray-500">{t.wbs_code}</div>
-                <div className="text-sm font-medium">{t.name}</div>
-                <div className="text-xs text-gray-400 mt-1">Vol: {t.volume || 0}</div>
+            {templates.map(t => (
+              <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`w-full text-left p-3 rounded-lg border transition ${selectedTemplate?.id === t.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-gray-50'}`}>
+                <div className="text-sm font-bold text-gray-800">{t.name}</div>
+                <div className="text-xs text-gray-500 mt-1">Satuan: {t.unit}</div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Panel Kanan: Tabel AHSP PUPR */}
         <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          {!selectedTask ? (
-            <div className="text-center text-gray-500 py-20">Pilih pekerjaan di sebelah kiri untuk melihat AHSP.</div>
+          {!selectedTemplate ? (
+            <div className="text-center text-gray-500 py-20">Pilih atau buat Katalog AHSP baru.</div>
           ) : (
             <div>
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h2 className="text-lg font-bold">{selectedTask.name}</h2>
-                  <p className="text-sm text-gray-500">WBS: {selectedTask.wbs_code} | Volume Task: {selectedTask.volume || 0}</p>
+                  <h2 className="text-lg font-bold">{selectedTemplate.name}</h2>
+                  <p className="text-sm text-gray-500">Satuan: {selectedTemplate.unit}</p>
                 </div>
-                <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">
-                  + Tambah Komponen
-                </button>
+                <button onClick={() => setIsDetailModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Tambah Komponen</button>
               </div>
 
               <table className="w-full border-collapse border border-gray-300">
@@ -111,24 +129,26 @@ export default function AHSPPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* A. TENAGA KERJA */}
                   <tr className="bg-gray-50 font-bold"><td className="border border-gray-300 p-2 text-sm" colSpan={7}>A. Tenaga Kerja</td></tr>
-                  {upah.map((item, i) => renderRow(item, i, 'A'))}
+                  {upah.map((item, i) => renderRow(item, i))}
                   <tr className="bg-gray-50 font-semibold"><td className="border border-gray-300 p-2 text-sm text-right" colSpan={6}>Jumlah Harga Tenaga Kerja (A)</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalA.toLocaleString('id-ID')}</td></tr>
 
-                  {/* B. BAHAN */}
                   <tr className="bg-gray-50 font-bold"><td className="border border-gray-300 p-2 text-sm" colSpan={7}>B. Bahan</td></tr>
-                  {bahan.map((item, i) => renderRow(item, i, 'B'))}
+                  {bahan.map((item, i) => renderRow(item, i))}
                   <tr className="bg-gray-50 font-semibold"><td className="border border-gray-300 p-2 text-sm text-right" colSpan={6}>Jumlah Harga Bahan (B)</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalB.toLocaleString('id-ID')}</td></tr>
 
-                  {/* C. PERALATAN */}
                   <tr className="bg-gray-50 font-bold"><td className="border border-gray-300 p-2 text-sm" colSpan={7}>C. Peralatan</td></tr>
-                  {alat.map((item, i) => renderRow(item, i, 'C'))}
+                  {alat.map((item, i) => renderRow(item, i))}
                   <tr className="bg-gray-50 font-semibold"><td className="border border-gray-300 p-2 text-sm text-right" colSpan={6}>Jumlah Harga Peralatan (C)</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalC.toLocaleString('id-ID')}</td></tr>
 
-                  {/* D, E, F */}
-                  <tr className="font-semibold"><td className="border border-gray-300 p-2 text-sm" colSpan={6}>D. Jumlah Harga Tenaga, Bahan dan Peralatan (A+B+C)</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalD.toLocaleString('id-ID')}</td></tr>
-                  <tr className="font-semibold"><td className="border border-gray-300 p-2 text-sm" colSpan={5}>E. Overhead + Profit (15%)</td><td className="border border-gray-300 p-2 text-sm text-right">15% x D</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalE.toLocaleString('id-ID')}</td></tr>
+                  <tr className="font-semibold"><td className="border border-gray-300 p-2 text-sm" colSpan={6}>D. Jumlah Harga (A+B+C)</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalD.toLocaleString('id-ID')}</td></tr>
+                  <tr className="font-semibold">
+                    <td className="border border-gray-300 p-2 text-sm" colSpan={5}>E. Overhead + Profit</td>
+                    <td className="border border-gray-300 p-2 text-sm text-right flex items-center justify-end gap-1">
+                      <input type="number" value={overhead} onChange={(e) => handleUpdateOverhead(e.target.value)} className="w-16 border rounded p-1 text-right text-xs" /> %
+                    </td>
+                    <td className="border border-gray-300 p-2 text-sm text-right">Rp {totalE.toLocaleString('id-ID')}</td>
+                  </tr>
                   <tr className="bg-blue-50 font-bold text-blue-900"><td className="border border-gray-300 p-2 text-sm" colSpan={6}>F. Harga Satuan Pekerjaan (D+E)</td><td className="border border-gray-300 p-2 text-sm text-right">Rp {totalF.toLocaleString('id-ID')}</td></tr>
                 </tbody>
               </table>
@@ -137,7 +157,8 @@ export default function AHSPPage() {
         </div>
       </div>
 
-      <AssignmentModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} task={selectedTask} onSaveSuccess={() => fetchAhspDetails(selectedTask.id)} />
+      <AhspTemplateModal isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)} onSave={handleSaveTemplate} />
+      <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTask?.id || selectedTemplate.id)} />
     </div>
   );
 }

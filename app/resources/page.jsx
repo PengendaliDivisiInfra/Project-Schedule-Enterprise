@@ -11,37 +11,41 @@ export default function ResourcesPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        // Ambil semua detail AHSP beserta relasinya
-        const { data, error } = await supabase.from('ahsp_details').select(`
-          koefisien,
-          wbs_tasks ( volume ),
-          master_hsd ( id, item_name, resource_type, unit, base_price, kode )
-        `);
+        // Ambil tasks yang sudah di-assign AHSP
+        const { data: tasks } = await supabase.from('wbs_tasks').select('*').not('ahsp_template_id', 'is', null);
         
-        if (error) throw error;
+        if (!tasks || tasks.length === 0) {
+          setLoading(false);
+          return;
+        }
 
-        // Logika Agregasi (Group By)
+        const templateIds = [...new Set(tasks.map(t => t.ahsp_template_id))];
+        
+        // Ambil detail AHSP untuk template tersebut
+        const { data: details } = await supabase.from('ahsp_details')
+          .select(`koefisien, ahsp_template_id, master_hsd ( id, item_name, resource_type, unit, base_price, kode )`)
+          .in('ahsp_template_id', templateIds);
+
         const grouped = {};
-        data.forEach(item => {
-          const hsd = item.master_hsd;
-          if (!hsd) return;
-          
-          const taskVol = item.wbs_tasks?.volume || 0;
-          const totalVol = taskVol * item.koefisien;
-          const totalCost = totalVol * (hsd.base_price || 0);
+        tasks.forEach(task => {
+          const taskDetails = details.filter(d => d.ahsp_template_id === task.ahsp_template_id);
+          const volume = task.volume || 0;
 
-          if (!grouped[hsd.id]) {
-            grouped[hsd.id] = {
-              ...hsd,
-              total_volume: 0,
-              total_cost: 0
-            };
-          }
-          grouped[hsd.id].total_volume += totalVol;
-          grouped[hsd.id].total_cost += totalCost;
+          taskDetails.forEach(detail => {
+            const hsd = detail.master_hsd;
+            if (!hsd) return;
+
+            const totalVol = volume * detail.koefisien;
+            const totalCost = totalVol * (hsd.base_price || 0);
+
+            if (!grouped[hsd.id]) {
+              grouped[hsd.id] = { ...hsd, total_volume: 0, total_cost: 0 };
+            }
+            grouped[hsd.id].total_volume += totalVol;
+            grouped[hsd.id].total_cost += totalCost;
+          });
         });
 
-        // Urutkan berdasarkan Tipe Resource (Upah, Bahan, Alat)
         const sorted = Object.values(grouped).sort((a, b) => a.resource_type.localeCompare(b.resource_type));
         setAggregatedResources(sorted);
       } catch (err) {
@@ -89,7 +93,7 @@ export default function ResourcesPage() {
             ))}
           </tbody>
         </table>
-        {aggregatedResources.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data AHSP yang diinputkan ke Task.</div>}
+        {aggregatedResources.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada Task yang di-assign ke AHSP atau Volume belum diisi.</div>}
         {loading && <div className="p-6 text-center text-blue-500">Menghitung agregasi...</div>}
       </div>
     </div>
