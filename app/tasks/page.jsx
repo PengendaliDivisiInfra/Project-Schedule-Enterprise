@@ -14,16 +14,14 @@ export default function TasksPage() {
     try {
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id;
-      
       if (!pid) {
         let { data: tData } = await supabase.from('wbs_tasks').select('project_id').limit(1);
         pid = tData?.[0]?.project_id;
       }
-
-      // Jika benar-benar kosong, gunakan ID Dummy statis
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
-
       setProjectId(pid);
+      
+      // Ambil data
       const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs', { ascending: true });
       setTasks(data || []);
     } catch (err) {
@@ -39,19 +37,20 @@ export default function TasksPage() {
     if (!projectId) return;
     setLoading(true);
     try {
+      // Gunakan kolom 'name' dan 'end_date'
       const dummyTasks = [
-        { project_id: projectId, wbs: '1', name: 'Pekerjaan Persiapan', summary: 'Yes', start_date: '2026-10-01', finish_date: '2026-10-31' },
-        { project_id: projectId, wbs: '1.1', name: 'Mobilisasi & Demobilisasi', summary: 'No', start_date: '2026-10-01', finish_date: '2026-10-07', duration: 6, progress_percent: 100, cost: 5000000 },
-        { project_id: projectId, wbs: '1.2', name: 'Direksi Keet & Gudang', summary: 'No', start_date: '2026-10-05', finish_date: '2026-10-15', duration: 10, progress_percent: 50, cost: 15000000 },
-        { project_id: projectId, wbs: '2', name: 'Pekerjaan Tanah & Pondasi', summary: 'Yes', start_date: '2026-10-15', finish_date: '2026-11-15' },
-        { project_id: projectId, wbs: '2.1', name: 'Galian Tanah Pondasi', summary: 'No', start_date: '2026-10-16', finish_date: '2026-10-25', duration: 9, progress_percent: 0, cost: 25000000 },
-        { project_id: projectId, wbs: '2.2', name: 'Cor Beton Pondasi', summary: 'No', start_date: '2026-10-26', finish_date: '2026-11-10', duration: 15, progress_percent: 0, cost: 45000000 },
+        { project_id: projectId, wbs: '1', name: 'Pekerjaan Persiapan', summary: 'Yes', start_date: '2026-10-01', end_date: '2026-10-31' },
+        { project_id: projectId, wbs: '1.1', name: 'Mobilisasi & Demobilisasi', summary: 'No', start_date: '2026-10-01', end_date: '2026-10-07', duration: 6, progress_percent: 100 },
+        { project_id: projectId, wbs: '1.2', name: 'Direksi Keet & Gudang', summary: 'No', start_date: '2026-10-05', end_date: '2026-10-15', duration: 10, progress_percent: 50 },
+        { project_id: projectId, wbs: '2', name: 'Pekerjaan Tanah & Pondasi', summary: 'Yes', start_date: '2026-10-15', end_date: '2026-11-15' },
+        { project_id: projectId, wbs: '2.1', name: 'Galian Tanah Pondasi', summary: 'No', start_date: '2026-10-16', end_date: '2026-10-25', duration: 9, progress_percent: 0 },
+        { project_id: projectId, wbs: '2.2', name: 'Cor Beton Pondasi', summary: 'No', start_date: '2026-10-26', end_date: '2026-11-10', duration: 15, progress_percent: 0 },
       ];
-
+      
       const { error } = await supabase.from('wbs_tasks').upsert(dummyTasks, { onConflict: 'project_id, wbs' });
       if (error) throw error;
       
-      await fetchTasks(); // Refresh data
+      await fetchTasks();
       alert('Data Dummy Berhasil Dibuat!');
     } catch (err) {
       alert('Gagal membuat data dummy: ' + err.message);
@@ -89,7 +88,7 @@ export default function TasksPage() {
                 <td className="p-4">{t.wbs}</td>
                 <td className="p-4">{t.name}</td>
                 <td className="p-4">{t.start_date}</td>
-                <td className="p-4">{t.finish_date}</td>
+                <td className="p-4">{t.end_date}</td>
                 <td className="p-4">{t.progress_percent}%</td>
                 <td className="p-4">Rp {t.cost?.toLocaleString('id-ID')}</td>
               </tr>
