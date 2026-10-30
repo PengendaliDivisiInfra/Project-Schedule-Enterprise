@@ -1,30 +1,30 @@
 ﻿import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export const dynamic = 'force-dynamic';
 
 export async function POST(request) {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
     const body = await request.json();
     const { project_id } = body;
 
     if (!project_id) return NextResponse.json({ error: 'project_id required' }, { status: 400 });
 
-    // 1. Ambil semua resource dari AHSP
     const { data: ahspDetails } = await supabase
       .from('ahsp_details')
       .select(`
         koefisien,
         master_hsd (id, resource_type, item_name, unit, base_price)
       `)
-      .eq('project_id', project_id); // Asumsi RLS atau filter manual
+      .eq('project_id', project_id); 
 
     if (!ahspDetails) return NextResponse.json({ ok: true, total: 0 });
 
-    // 2. Agregasi & kalkulasi rata-rata
     const buckets = {};
     ahspDetails.forEach(detail => {
       const hsd = detail.master_hsd;
@@ -44,13 +44,12 @@ export async function POST(request) {
       buckets[key].count += 1;
     });
 
-    // 3. Update/Insert ke master_hsd
     const upserts = Object.values(buckets).map(b => ({
       project_id,
       resource_type: b.resource_type,
       item_name: b.item_name,
       unit: b.unit,
-      base_price: b.total_harga / b.count, // Rata-rata
+      base_price: b.total_harga / b.count,
       updated_at: new Date().toISOString()
     }));
 

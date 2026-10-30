@@ -1,13 +1,15 @@
 ﻿import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export const dynamic = 'force-dynamic';
 
 export async function GET(request) {
   try {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('project_id');
     const statusDate = searchParams.get('status_date') || new Date().toISOString().split('T')[0];
@@ -19,7 +21,6 @@ export async function GET(request) {
     const windowEnd = new Date(statusD);
     windowEnd.setDate(windowEnd.getDate() + windowDays);
 
-    // Fetch tasks & readiness
     const { data: tasks } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId);
     const { data: readiness } = await supabase.from('lookahead_readiness').select('*').eq('project_id', projectId);
     
@@ -29,7 +30,6 @@ export async function GET(request) {
       if (t.summary === 'Yes') return false;
       const s = new Date(t.start_date);
       const f = new Date(t.finish_date);
-      // Task masuk window jika start <= windowEnd DAN finish >= statusDate
       return (s <= windowEnd && f >= statusD);
     }).map(t => {
       const rd = readinessMap.get(t.id) || { material_ready: false, alat_ready: false, tenaga_ready: false, volume: 0 };
