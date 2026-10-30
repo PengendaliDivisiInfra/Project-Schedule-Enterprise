@@ -83,7 +83,6 @@ export default function GanttWorkspace({ projectId }: { projectId: string }) {
         }}
         config={{
           showCriticalPath: true,
-          autoSchedule: true,
           calendar: { workDays: [1, 2, 3, 4, 5], holidays: [] },
         }}
       />
