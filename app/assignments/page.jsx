@@ -133,14 +133,27 @@ export default function AssignmentsPage() {
     if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP terbaru?')) return;
     setSyncing(true);
     try {
-      // ⚠️ PERBAIKAN: Ambil data harga AHSP terbaru langsung dari database
-      const { data: freshTemplates } = await supabase.from('ahsp_templates').select('id, total_harga_ahsp');
+      // ⚠️ PERBAIKAN: Ambil detail komponen untuk kalkulasi on-the-fly
+      const { data: freshTemplates } = await supabase.from('ahsp_templates').select(`
+        id, total_harga_ahsp, overhead_percent,
+        ahsp_details ( koefisien, master_hsd ( base_price ) )
+      `);
+      
       const freshTplMap = {};
-      freshTemplates?.forEach(t => freshTplMap[t.id] = t);
+      freshTemplates?.forEach(t => {
+        let finalPrice = t.total_harga_ahsp || 0;
+        
+        // Jika cache 0, hitung manual dari komponennya
+        if (finalPrice === 0 && t.ahsp_details && t.ahsp_details.length > 0) {
+          const murni = t.ahsp_details.reduce((sum, d) => sum + (d.koefisien * (d.master_hsd?.base_price || 0)), 0);
+          const overhead = (t.overhead_percent || 15) / 100;
+          finalPrice = murni * (1 + overhead);
+        }
+        freshTplMap[t.id] = { id: t.id, total_harga_ahsp: finalPrice };
+      });
 
       let recalculatedTasks = tasks.map(t => {
         if (!t.is_summary) {
-          // Gunakan harga dari freshTemplates, jika tidak ada baru fallback ke state templates
           const freshTpl = freshTplMap[t.ahsp_template_id];
           const fallbackTpl = templates.find(tpl => tpl.id === t.ahsp_template_id);
           
