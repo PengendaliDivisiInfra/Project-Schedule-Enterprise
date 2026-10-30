@@ -18,8 +18,10 @@ export default function AssignmentsPage() {
       const { data: aData } = await supabase.from('ahsp_templates').select('id, name, unit, total_harga_ahsp');
       
       if (tData) {
-        // Konversi awal: pastikan tipe data benar dan tambahkan flag is_summary
-        let formattedTasks = tData.map(t => ({
+        // ⚠️ PERBAIKAN: Saring duplikasi berdasarkan wbs_code (Frontend Deduplication)
+        const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
+
+        let formattedTasks = uniqueTasks.map(t => ({
           ...t,
           volume: Number(t.volume || 0),
           cost: Number(t.cost || 0),
@@ -43,12 +45,10 @@ export default function AssignmentsPage() {
     const taskMap = {};
     const roots = [];
 
-    // 1. Inisialisasi Map
     inputTasks.forEach(task => {
       taskMap[task.id] = { ...task, children: [] };
     });
 
-    // 2. Bangun Struktur Pohon (Tree) berdasarkan WBS Code
     inputTasks.forEach(task => {
       const mappedItem = taskMap[task.id];
       let parentId = null;
@@ -63,33 +63,27 @@ export default function AssignmentsPage() {
 
       if (parentId && taskMap[parentId]) {
         taskMap[parentId].children.push(mappedItem);
-        taskMap[parentId].is_summary = true; // Paksa jadi Summary jika punya anak
+        taskMap[parentId].is_summary = true;
       } else {
         roots.push(mappedItem);
       }
     });
 
-    // 3. Fungsi Rekursif Bottom-Up Rollup
     const executeRollup = (node) => {
       if (!node.children || node.children.length === 0) {
-        // Base Case: Leaf Node (Subtask murni)
         return node.cost;
       }
-
       let accumulatedCost = 0;
       node.children.forEach(child => {
         accumulatedCost += executeRollup(child);
       });
-
-      // Summary Task mengambil alih total biaya dari anak-anaknya
       node.cost = accumulatedCost;
-      node.volume = 0; // Volume induk selalu 0
+      node.volume = 0; // Induk volume 0
       return node.cost;
     };
 
     roots.forEach(root => executeRollup(root));
 
-    // 4. Flatten Tree Kembali
     const flatResult = [];
     const flatten = (node) => {
       const { children, ...clean } = node;
@@ -98,7 +92,6 @@ export default function AssignmentsPage() {
     };
     roots.forEach(flatten);
 
-    // Kembalikan urutan sesuai WBS
     return flatResult.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
   };
 
@@ -108,7 +101,7 @@ export default function AssignmentsPage() {
       const taskIndex = updatedTasks.findIndex(t => t.id === taskId);
       const task = updatedTasks[taskIndex];
       
-      if (task.is_summary) return; // Proteksi ganda: Induk tidak boleh diubah
+      if (task.is_summary) return; // Proteksi: Induk tidak bisa diubah
 
       let calculatedCost = 0;
       if (templateId) {
@@ -116,7 +109,6 @@ export default function AssignmentsPage() {
         calculatedCost = (tpl?.total_harga_ahsp || 0) * (Number(volume) || 0);
       }
 
-      // Update Task Anak
       updatedTasks[taskIndex] = { 
         ...task, 
         ahsp_template_id: templateId || null, 
@@ -124,11 +116,9 @@ export default function AssignmentsPage() {
         cost: calculatedCost 
       };
 
-      // Jalankan Rollup
       const rolledUpTasks = runRollupEngine(updatedTasks);
-      setTasks(rolledUpTasks); // Update state UI secara instan
+      setTasks(rolledUpTasks);
 
-      // Simpan ke Database
       const { error } = await supabase.from('wbs_tasks')
         .update({ ahsp_template_id: templateId || null, volume: Number(volume) || 0, cost: calculatedCost })
         .eq('id', taskId);
@@ -143,7 +133,6 @@ export default function AssignmentsPage() {
     if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP terbaru?')) return;
     setSyncing(true);
     try {
-      // 1. Hitung ulang semua leaf nodes
       let recalculatedTasks = tasks.map(t => {
         if (!t.is_summary) {
           const tpl = templates.find(tpl => tpl.id === t.ahsp_template_id);
@@ -153,21 +142,18 @@ export default function AssignmentsPage() {
         return { ...t };
       });
 
-      // 2. Jalankan Rollup ke Induk
       const finalTasks = runRollupEngine(recalculatedTasks);
       setTasks(finalTasks);
 
-      // 3. Bulk Update ke Database
       const updates = finalTasks.map(t => ({
         id: t.id, cost: t.cost, volume: t.volume, ahsp_template_id: t.ahsp_template_id
       }));
 
-      // Looping update per ID (Karena Supabase tidak mendukung multi-row update beda value secara native)
       for (const u of updates) {
         await supabase.from('wbs_tasks').update({ cost: u.cost, volume: u.volume, ahsp_template_id: u.ahsp_template_id }).eq('id', u.id);
       }
 
-      alert('Sinkronisasi harga berhasil! Biaya Induk telah di-rollup.');
+      alert('Sinkronisasi harga berhasil!');
     } catch (err) {
       alert('Gagal sinkronisasi: ' + err.message);
     } finally {
@@ -204,29 +190,35 @@ export default function AssignmentsPage() {
                 <tr key={t.id} className={`hover:bg-gray-50 ${t.is_summary ? 'bg-gray-100 font-bold' : ''}`}>
                   <td className="p-4 font-mono">{t.wbs_code}</td>
                   <td className="p-4">{t.is_summary ? '📁 ' : '📄 '} {t.name}</td>
+                  
+                  {/* ⚠️ PERBAIKAN UI: Dropdown & Input HANYA muncul untuk SubTask */}
                   <td className="p-4">
-                    {/* PROTEKSI: Disable dropdown jika ini Induk */}
-                    <select 
-                      value={t.ahsp_template_id || ''} 
-                      onChange={(e) => handleAssign(t.id, e.target.value, t.volume)} 
-                      disabled={t.is_summary}
-                      className={`w-full border rounded-lg p-2 text-sm ${t.is_summary ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : ''}`}
-                    >
-                      <option value="">-- Belum di-assign --</option>
-                      {templates.map(tpl => (
-                        <option key={tpl.id} value={tpl.id}>{tpl.name} ({tpl.unit})</option>
-                      ))}
-                    </select>
+                    {t.is_summary ? (
+                      <span className="text-gray-400 italic text-xs block text-center py-2 bg-gray-50 rounded border border-dashed">— Induk (Otomatis) —</span>
+                    ) : (
+                      <select 
+                        value={t.ahsp_template_id || ''} 
+                        onChange={(e) => handleAssign(t.id, e.target.value, t.volume)} 
+                        className="w-full border rounded-lg p-2 text-sm"
+                      >
+                        <option value="">-- Belum di-assign --</option>
+                        {templates.map(tpl => (
+                          <option key={tpl.id} value={tpl.id}>{tpl.name} ({tpl.unit})</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="p-4">
-                    {/* PROTEKSI: Disable input jika ini Induk */}
-                    <input 
-                      type="number" 
-                      value={t.volume || 0} 
-                      onChange={(e) => handleAssign(t.id, t.ahsp_template_id, e.target.value)} 
-                      disabled={t.is_summary}
-                      className={`w-full border rounded-lg p-2 text-sm ${t.is_summary ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : ''}`} 
-                    />
+                    {t.is_summary ? (
+                      <span className="text-gray-400 italic text-xs block text-center py-2">-</span>
+                    ) : (
+                      <input 
+                        type="number" 
+                        value={t.volume || 0} 
+                        onChange={(e) => handleAssign(t.id, t.ahsp_template_id, e.target.value)} 
+                        className="w-full border rounded-lg p-2 text-sm" 
+                      />
+                    )}
                   </td>
                   <td className="p-4 text-right text-gray-800">Rp {(t.cost || 0).toLocaleString('id-ID')}</td>
                 </tr>
