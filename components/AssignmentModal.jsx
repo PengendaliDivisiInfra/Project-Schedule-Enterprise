@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-export default function AssignmentModal({ isOpen, onClose, task }) {
+export default function AssignmentModal({ isOpen, onClose, task, onSaveSuccess }) {
   const [resources, setResources] = useState([]);
   const [selectedResource, setSelectedResource] = useState('');
   const [koefisien, setKoefisien] = useState(1);
@@ -12,7 +12,6 @@ export default function AssignmentModal({ isOpen, onClose, task }) {
 
   useEffect(() => {
     if (isOpen) {
-      // Ambil data master HSD
       supabase.from('master_hsd').select('*').then(({ data }) => setResources(data || []));
     }
   }, [isOpen]);
@@ -23,20 +22,15 @@ export default function AssignmentModal({ isOpen, onClose, task }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const resourceData = resources.find(r => r.id === selectedResource);
-      const totalHarga = (resourceData?.base_price || 0) * Number(koefisien);
-
-      // Simpan ke tabel ahsp_details (Pastikan tabel ini ada di Supabase)
       const { error } = await supabase.from('ahsp_details').insert([{
         project_id: task.project_id,
         task_id: task.id,
         resource_id: selectedResource,
-        koefisien: Number(koefisien),
-        total_harga: totalHarga
+        koefisien: Number(koefisien)
       }]);
 
       if (error) throw error;
-      alert('Resource berhasil ditambahkan ke pekerjaan!');
+      onSaveSuccess(); // Refresh data parent
       onClose();
     } catch (err) {
       alert('Gagal menyimpan: ' + err.message);
@@ -48,22 +42,22 @@ export default function AssignmentModal({ isOpen, onClose, task }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-        <h2 className="text-xl font-bold mb-1">Kelola Resource</h2>
-        <p className="text-sm text-gray-500 mb-4">Untuk Task: <span className="font-semibold text-gray-800">{task.name}</span></p>
+        <h2 className="text-xl font-bold mb-1">Tambah Komponen AHSP</h2>
+        <p className="text-sm text-gray-500 mb-4">Task: <span className="font-semibold text-gray-800">{task.name}</span></p>
         
         <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Pilih Material / Upah (HSD)</label>
+            <label className="block text-sm font-medium mb-1">Pilih Resource (HSD)</label>
             <select required value={selectedResource} onChange={e => setSelectedResource(e.target.value)} className="w-full border rounded-lg p-2 text-sm">
-              <option value="">-- Pilih Resource --</option>
+              <option value="">-- Pilih --</option>
               {resources.map(r => (
-                <option key={r.id} value={r.id}>{r.item_name} ({r.unit}) - Rp {r.base_price?.toLocaleString('id-ID')}</option>
+                <option key={r.id} value={r.id}>[{r.resource_type.toUpperCase()}] {r.item_name} ({r.unit})</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Koefisien (Qty)</label>
-            <input type="number" step="0.01" required value={koefisien} onChange={e => setKoefisien(e.target.value)} className="w-full border rounded-lg p-2 text-sm" />
+            <label className="block text-sm font-medium mb-1">Koefisien</label>
+            <input type="number" step="0.001" required value={koefisien} onChange={e => setKoefisien(e.target.value)} className="w-full border rounded-lg p-2 text-sm" />
           </div>
           
           <div className="flex justify-end gap-2 mt-6">
