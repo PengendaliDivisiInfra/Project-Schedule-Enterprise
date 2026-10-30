@@ -16,13 +16,23 @@ export default function AHSPPage() {
   const [projectId, setProjectId] = useState(null);
 
   const fetchTemplates = async () => {
-    let { data: projects } = await supabase.from('projects').select('id').limit(1);
-    let pid = projects?.[0]?.id || '00000000-0000-0000-0000-000000000000';
-    setProjectId(pid);
+    try {
+      let { data: projects } = await supabase.from('projects').select('id').limit(1);
+      let pid = projects?.[0]?.id || null;
+      setProjectId(pid);
 
-    const { data } = await supabase.from('ahsp_templates').select('*').eq('project_id', pid).order('created_at', { ascending: false });
-    setTemplates(data || []);
-    if (data?.length > 0 && !selectedTemplate) setSelectedTemplate(data[0]);
+      // Ambil semua template. Jika pid ada, filter. Jika tidak, ambil semua (fallback).
+      let query = supabase.from('ahsp_templates').select('*').order('created_at', { ascending: false });
+      if (pid) query = query.eq('project_id', pid);
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      
+      setTemplates(data || []);
+      if (data?.length > 0 && !selectedTemplate) setSelectedTemplate(data[0]);
+    } catch (err) {
+      console.error("Gagal fetch AHSP:", err.message);
+    }
   };
 
   const fetchDetails = async (templateId) => {
@@ -41,9 +51,19 @@ export default function AHSPPage() {
   }, [selectedTemplate]);
 
   const handleSaveTemplate = async (formData) => {
-    const { error } = await supabase.from('ahsp_templates').insert([{ ...formData, project_id: projectId }]);
-    if (error) alert(error.message);
-    else { setIsTemplateModalOpen(false); fetchTemplates(); }
+    // Jika projectId null, kita tetap izinkan simpan (buat sistem membuat project dummy atau abaikan)
+    const { error } = await supabase.from('ahsp_templates').insert([{ 
+      ...formData, 
+      project_id: projectId 
+    }]);
+    
+    if (error) {
+      alert('Gagal menyimpan: ' + error.message);
+      throw error;
+    } else {
+      setIsTemplateModalOpen(false);
+      fetchTemplates();
+    }
   };
 
   const handleUpdateOverhead = async (val) => {
@@ -53,13 +73,11 @@ export default function AHSPPage() {
     }
   };
 
-  // Logika Pengelompokan PUPR
   const upah = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'upah' || d.master_hsd?.resource_type?.toLowerCase() === 'tenaga kerja');
   const bahan = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'bahan' || d.master_hsd?.resource_type?.toLowerCase() === 'material');
   const alat = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'alat' || d.master_hsd?.resource_type?.toLowerCase() === 'peralatan');
 
   const calcTotal = (items) => items.reduce((sum, item) => sum + (item.koefisien * (item.master_hsd?.base_price || 0)), 0);
-  
   const totalA = calcTotal(upah);
   const totalB = calcTotal(bahan);
   const totalC = calcTotal(alat);
@@ -100,6 +118,7 @@ export default function AHSPPage() {
                 <div className="text-xs text-gray-500 mt-1">Satuan: {t.unit}</div>
               </button>
             ))}
+            {templates.length === 0 && <div className="text-xs text-gray-500 text-center py-4">Belum ada katalog.</div>}
           </div>
         </div>
 
@@ -158,7 +177,7 @@ export default function AHSPPage() {
       </div>
 
       <AhspTemplateModal isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)} onSave={handleSaveTemplate} />
-      <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTask?.id || selectedTemplate.id)} />
+      <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTemplate?.id)} />
     </div>
   );
 }

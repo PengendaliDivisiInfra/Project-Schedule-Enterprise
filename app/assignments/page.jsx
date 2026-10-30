@@ -10,8 +10,11 @@ export default function AssignmentsPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
+    // Ambil tasks (filter summary='No' agar hanya mengambil pekerjaan daun)
     const { data: tData } = await supabase.from('wbs_tasks').select('*').eq('summary', 'No').order('wbs_code');
+    // Ambil templates
     const { data: aData } = await supabase.from('ahsp_templates').select('*');
+    
     setTasks(tData || []);
     setTemplates(aData || []);
     setLoading(false);
@@ -72,7 +75,7 @@ export default function AssignmentsPage() {
             ))}
           </tbody>
         </table>
-        {tasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data WBS Task.</div>}
+        {tasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data WBS Task (pastikan tipe Task adalah 'Pekerjaan Leaf').</div>}
       </div>
     </div>
   );
