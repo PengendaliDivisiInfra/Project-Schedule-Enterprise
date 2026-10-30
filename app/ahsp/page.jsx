@@ -17,18 +17,16 @@ export default function AHSPPage() {
 
   const fetchTemplates = async () => {
     try {
-      // Ambil project id pertama untuk keperluan insert
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id || null;
       setProjectId(pid);
 
-      // ⚠️ PERBAIKAN: Hapus filter .eq('project_id', pid) agar semua data muncul
-      const { data, error } = await supabase.from('ahsp_templates').select('*').order('created_at', { ascending: false });
+      // ⚠️ PERBAIKAN: Hapus .order('created_at') karena kolom tersebut tidak ada di tabel Anda
+      const { data, error } = await supabase.from('ahsp_templates').select('*');
       
       if (error) throw error;
       
       setTemplates(data || []);
-      // Jika ada data tapi belum ada yang dipilih, pilih yang pertama
       if (data?.length > 0 && !selectedTemplate) {
         setSelectedTemplate(data[0]);
       }
