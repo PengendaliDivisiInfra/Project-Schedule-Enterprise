@@ -1,68 +1,12 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase'; // <-- Gunakan Singleton
+import { supabase } from '../../lib/supabase'; // Gunakan Singleton
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-
-  // --- ENGINE ROLLUP WBS (BOTTOM-UP) ---
-  const runRollupEngine = (inputTasks) => {
-    const taskMap = {};
-    const roots = [];
-
-    inputTasks.forEach(task => {
-      taskMap[task.id] = { ...task, children: [] };
-    });
-
-    inputTasks.forEach(task => {
-      const mappedItem = taskMap[task.id];
-      let parentId = null;
-
-      if (mappedItem.wbs_code && mappedItem.wbs_code.includes('.')) {
-        const wbsParts = mappedItem.wbs_code.split('.');
-        wbsParts.pop();
-        const parentWbs = wbsParts.join('.');
-        const parentFound = inputTasks.find(p => p.wbs_code === parentWbs);
-        if (parentFound) parentId = parentFound.id;
-      }
-
-      if (parentId && taskMap[parentId]) {
-        taskMap[parentId].children.push(mappedItem);
-        taskMap[parentId].is_summary = true;
-      } else {
-        roots.push(mappedItem);
-      }
-    });
-
-    const executeRollup = (node) => {
-      if (!node.children || node.children.length === 0) {
-        return node.cost;
-      }
-      let accumulatedCost = 0;
-      node.children.forEach(child => {
-        accumulatedCost += executeRollup(child);
-      });
-      node.cost = accumulatedCost;
-      node.volume = 0; 
-      return node.cost;
-    };
-
-    roots.forEach(root => executeRollup(root));
-
-    const flatResult = [];
-    const flatten = (node) => {
-      const { children, ...clean } = node;
-      flatResult.push(clean);
-      if (children) children.forEach(flatten);
-    };
-    roots.forEach(flatten);
-
-    return flatResult.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
-  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -80,8 +24,7 @@ export default function AssignmentsPage() {
           is_summary: t.summary === 'Yes'
         }));
 
-        const rolledUpTasks = runRollupEngine(formattedTasks);
-        setTasks(rolledUpTasks);
+        setTasks(formattedTasks);
       }
       setTemplates(aData || []);
     } catch (err) {
@@ -93,93 +36,23 @@ export default function AssignmentsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Handler ini sekarang hanya mengirim data ke database
+  // Kalkulasi (Volume x Harga dan Rollup) dilakukan otomatis oleh Trigger PostgreSQL
   const handleAssign = async (taskId, templateId, volume) => {
     try {
-      let updatedTasks = [...tasks];
-      const taskIndex = updatedTasks.findIndex(t => t.id === taskId);
-      const task = updatedTasks[taskIndex];
-      
-      if (task.is_summary) return;
-
-      let calculatedCost = 0;
-      if (templateId) {
-        const tpl = templates.find(t => t.id === templateId);
-        calculatedCost = (tpl?.total_harga_ahsp || 0) * (Number(volume) || 0);
-      }
-
-      updatedTasks[taskIndex] = { 
-        ...task, 
-        ahsp_template_id: templateId || null, 
-        volume: Number(volume) || 0, 
-        cost: calculatedCost 
-      };
-
-      const rolledUpTasks = runRollupEngine(updatedTasks);
-      setTasks(rolledUpTasks);
-
       const { error } = await supabase.from('wbs_tasks')
-        .update({ ahsp_template_id: templateId || null, volume: Number(volume) || 0, cost: calculatedCost })
+        .update({ 
+          ahsp_template_id: templateId || null, 
+          volume: Number(volume) || 0
+        })
         .eq('id', taskId);
       
       if (error) throw error;
+      
+      // Tarik ulang data agar angka terbaru dari database langsung muncul
+      fetchData(); 
     } catch (err) {
       alert('Gagal update: ' + err.message);
-    }
-  };
-
-  const handleSyncAll = async () => {
-    if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP terbaru?')) return;
-    setSyncing(true);
-    try {
-      // ⚠️ Ambil data relasi langsung untuk kalkulasi on-the-fly jika cache 0
-      const { data: freshTemplates } = await supabase.from('ahsp_templates').select(`
-        id, total_harga_ahsp, overhead_percent,
-        ahsp_details ( koefisien, master_hsd ( base_price ) )
-      `);
-      
-      const freshTplMap = {};
-      freshTemplates?.forEach(t => {
-        let finalPrice = Number(t.total_harga_ahsp) || 0;
-        
-        // Jika cache 0, hitung manual
-        if (finalPrice === 0 && t.ahsp_details && t.ahsp_details.length > 0) {
-          const murni = t.ahsp_details.reduce((sum, d) => sum + (d.koefisien * (d.master_hsd?.base_price || 0)), 0);
-          const overhead = (t.overhead_percent || 15) / 100;
-          finalPrice = murni * (1 + overhead);
-        }
-        freshTplMap[t.id] = { id: t.id, total_harga_ahsp: finalPrice };
-      });
-
-      let recalculatedTasks = tasks.map(t => {
-        if (!t.is_summary) {
-          const freshTpl = freshTplMap[t.ahsp_template_id];
-          const fallbackTpl = templates.find(tpl => tpl.id === t.ahsp_template_id);
-          
-          const hargaSatuan = freshTpl?.total_harga_ahsp || fallbackTpl?.total_harga_ahsp || 0;
-          const cost = hargaSatuan * (t.volume || 0);
-          
-          return { ...t, cost: cost };
-        }
-        return { ...t };
-      });
-
-      const finalTasks = runRollupEngine(recalculatedTasks);
-      setTasks(finalTasks);
-
-      // Simpan ke database
-      const updates = finalTasks.map(t => ({
-        id: t.id, cost: t.cost, volume: t.volume, ahsp_template_id: t.ahsp_template_id
-      }));
-
-      for (const u of updates) {
-        await supabase.from('wbs_tasks').update({ cost: u.cost, volume: u.volume, ahsp_template_id: u.ahsp_template_id }).eq('id', u.id);
-      }
-
-      alert('Sinkronisasi harga berhasil!');
-    } catch (err) {
-      alert('Gagal sinkronisasi: ' + err.message);
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -188,11 +61,8 @@ export default function AssignmentsPage() {
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-2xl font-bold">Assignment: WBS ke AHSP</h1>
-          <p className="text-sm text-gray-500 mt-1">Biaya task dihitung otomatis (Volume × Harga AHSP). Induk akan menjumlahkan biaya anak.</p>
+          <p className="text-sm text-gray-500 mt-1">Biaya task dikalkulasi otomatis secara <em>real-time</em> oleh Database Trigger.</p>
         </div>
-        <button onClick={handleSyncAll} disabled={syncing} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 shadow-sm">
-          {syncing ? <LoadingSpinner text="Sync..." /> : 'Sync Harga Semua Task'}
-        </button>
       </div>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
