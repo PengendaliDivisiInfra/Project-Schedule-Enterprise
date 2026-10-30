@@ -20,7 +20,7 @@ export default function Dashboard() {
         }
         
         if (projectId) {
-          const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs', { ascending: true });
+          const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs_code', { ascending: true });
           setTasks(data || []);
         }
       } catch (err) {
@@ -34,7 +34,6 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Header */}
       <div className="mb-6 flex justify-between items-center bg-white p-5 rounded-xl shadow-sm border border-gray-200">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Proyek Jembatan Cisomang (Enterprise)</h1>
@@ -46,7 +45,6 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Info Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-6">
         <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
           <div className="text-xs text-gray-500 font-bold mb-2 tracking-wider">RAB PROJECT (BAC)</div>
@@ -70,7 +68,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Gantt Chart Section */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         <div className="p-5 border-b border-gray-200 flex justify-between items-center bg-gray-50/50 rounded-t-xl">
           <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">

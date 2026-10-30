@@ -5,12 +5,12 @@ export default function GanttChart({ tasks }) {
     return (
       <div className="p-10 text-center text-gray-500 bg-gray-50 rounded-lg border border-dashed">
         <p className="text-lg font-medium mb-2">Belum ada data Task.</p>
-        <p className="text-sm">Silakan buka halaman "Tasks (WBS)" dan klik tombol "Generate Data Dummy".</p>
+        {/* Perbaikan tanda kutip ESLint */}
+        <p className="text-sm">Silakan buka halaman &quot;Tasks (WBS)&quot; dan klik tombol &quot;Generate Data Dummy&quot;.</p>
       </div>
     );
   }
 
-  // Filter: summary !== 'Yes', dan harus punya start_date & end_date
   const leafTasks = tasks.filter(t => t.summary !== 'Yes' && t.start_date && t.end_date);
   if (leafTasks.length === 0) return <div className="p-6 text-center text-gray-500">Tidak ada data tanggal valid.</div>;
 
@@ -73,7 +73,7 @@ export default function GanttChart({ tasks }) {
             return (
               <div key={task.id || idx} className="flex border-b hover:bg-blue-50 transition-colors">
                 <div className="w-[35%] p-3 border-r flex gap-4 text-sm items-center">
-                  <span className="w-12 text-gray-500 font-mono text-xs">{task.wbs}</span>
+                  <span className="w-12 text-gray-500 font-mono text-xs">{task.wbs_code}</span>
                   <span className="flex-1 font-medium truncate" title={task.name}>{task.name}</span>
                   <span className="w-24 text-center text-xs text-gray-500">{tStart.toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}</span>
                   <span className="w-24 text-center text-xs text-gray-500">{tFinish.toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}</span>
