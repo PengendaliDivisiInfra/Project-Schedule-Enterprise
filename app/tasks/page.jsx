@@ -28,13 +28,11 @@ export default function TasksPage() {
     try {
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id;
-      
       if (!pid) {
         let { data: tData } = await supabase.from('wbs_tasks').select('project_id').limit(1);
         pid = tData?.[0]?.project_id;
       }
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
-      
       setProjectId(pid);
       
       const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
@@ -45,18 +43,14 @@ export default function TasksPage() {
         
         if (result.error) {
           setEngineError(result.error);
-          setCpmTasks(result.tasks); // Tampilkan data mentah jika error
+          setCpmTasks(result.tasks);
         } else {
           setCpmTasks(result.tasks);
         }
       } else {
         setCpmTasks([]);
       }
-    } catch (err) { 
-      console.error(err); 
-    } finally { 
-      setLoading(false); 
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchTasks(); }, []);
@@ -121,8 +115,8 @@ export default function TasksPage() {
                 <th className="p-3 border-r">WBS</th>
                 <th className="p-3 border-r">Nama Task</th>
                 <th className="p-3 border-r text-center">Durasi</th>
-                <th className="p-3 border-r">Start</th>
-                <th className="p-3 border-r">Finish</th>
+                <th className="p-3 border-r">Start (ES)</th>
+                <th className="p-3 border-r">Finish (EF)</th>
                 <th className="p-3 border-r">Predecessors</th>
                 <th className="p-3 border-r text-center">Float</th>
                 <th className="p-3 border-r text-center">Progres</th>
@@ -132,12 +126,10 @@ export default function TasksPage() {
             <tbody className="text-sm divide-y divide-gray-100">
               {cpmTasks.map((t) => (
                 <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''} ${t.is_critical && t.summary !== 'Yes' ? 'text-red-700 bg-red-50' : ''}`}>
-                  
                   <td className="p-2 border-r text-center flex justify-center gap-1">
                     <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs disabled:opacity-50">⬅️</button>
                     <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs">➡️</button>
                   </td>
-
                   <td className="p-3 border-r font-mono">{t.wbs_code}</td>
                   <td className="p-3 border-r" style={{ paddingLeft: `${(t.indent_level || 0) * 20 + 12}px` }}>
                     {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
