@@ -1,31 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-export const dynamic = 'force-dynamic'; 
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+// Memastikan rute ini tidak di-cache dan dieksekusi secara dinamis saat runtime
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const { project_id } = await req.json();
-    if (!project_id) return NextResponse.json({ error: 'project_id required' }, { status: 400 });
+    // ─── INISIALISASI SUPABASE DIPINDAH KE DALAM SINI ───
+    // Ini mencegah error "supabaseKey is required" saat proses build di GitHub/Vercel
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // 1. Fetch Tasks & Dependencies
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Kredensial Supabase tidak ditemukan di Environment Variables.');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false },
+    });
+
+    // 1. Parse Body
+    const { project_id } = await req.json();
+    if (!project_id) {
+      return NextResponse.json({ error: 'project_id required' }, { status: 400 });
+    }
+
+    // 2. Fetch Tasks & Dependencies
     const { data: rawTasks, error: errTasks } = await supabase
-      .from('wbs_tasks').select('*').eq('project_id', project_id);
+      .from('wbs_tasks')
+      .select('*')
+      .eq('project_id', project_id);
     
     const { data: deps } = await supabase
-      .from('task_dependencies').select('*').eq('project_id', project_id);
+      .from('task_dependencies')
+      .select('*')
+      .eq('project_id', project_id);
 
     if (errTasks || !rawTasks || rawTasks.length === 0) {
       return NextResponse.json({ ok: true, tasks: [], critical_path: [], evm: null, resource_explosion: [] });
     }
 
-    // 2. Build Graph & Topological Sort
+    // 3. Build Graph & Topological Sort
     const taskMap = new Map(rawTasks.map(t => [t.id, { ...t, predecessors: [], es: 0, ef: 0, ls: 0, lf: 0, slack: 0 }]));
     deps?.forEach(d => taskMap.get(d.target_task_id)?.predecessors.push({ id: d.source_task_id, type: d.dependency_type, lag: d.lag_days }));
 
@@ -39,7 +54,7 @@ export async function POST(req: NextRequest) {
     };
     taskMap.forEach((_, id) => visit(id));
 
-    // 3. Forward Pass (Menghitung ES & EF)
+    // 4. Forward Pass (Menghitung ES & EF)
     order.forEach(id => {
       const task = taskMap.get(id)!;
       let maxEF = 0;
@@ -59,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     const projectFinish = Math.max(...Array.from(taskMap.values()).map(t => t.ef), 1);
 
-    // 4. Backward Pass (Menghitung LS, LF & Slack)
+    // 5. Backward Pass (Menghitung LS, LF & Slack)
     [...order].reverse().forEach(id => {
       const task = taskMap.get(id)!;
       const successors = Array.from(taskMap.values()).filter(t => t.predecessors.some((p: any) => p.id === id));
@@ -84,7 +99,7 @@ export async function POST(req: NextRequest) {
 
     const criticalPath = Array.from(taskMap.values()).filter(t => t.slack <= 0).map(t => t.id);
 
-    // 5. Resource Explosion (AHSP PUPR)
+    // 6. Resource Explosion (AHSP PUPR)
     const { data: assignments } = await supabase
       .from('task_ahsp_assignments')
       .select(`
@@ -135,7 +150,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 6. EVM Calculation (Project Level)
+    // 7. EVM Calculation (Project Level)
     let totalPV = 0, totalEV = 0;
     taskMap.forEach(t => {
       const taskRAB = resourceExplosion.find(r => r.task_id === t.id)?.grand_total || 0;
@@ -143,7 +158,11 @@ export async function POST(req: NextRequest) {
       totalEV += taskRAB * (Number(t.progress_percent) / 100);
     });
 
-    const { data: costs } = await supabase.from('actual_costs').select('cost_amount').in('task_id', Array.from(taskMap.keys()));
+    const { data: costs } = await supabase
+      .from('actual_costs')
+      .select('cost_amount')
+      .in('task_id', Array.from(taskMap.keys()));
+      
     const totalAC = costs?.reduce((sum, c) => sum + Number(c.cost_amount), 0) || 0;
 
     const cpi = totalAC > 0 ? totalEV / totalAC : 1;
@@ -164,6 +183,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (error: any) {
+    console.error('[API CPM Error]:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
