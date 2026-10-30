@@ -8,15 +8,15 @@ export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchData = async () => {
     try {
-      // Ambil tasks (filter summary='No' agar hanya mengambil pekerjaan daun)
+      // Ambil tasks (filter summary='No')
       const { data: tData } = await supabase.from('wbs_tasks').select('*').eq('summary', 'No').order('wbs_code');
       // Ambil templates
       const { data: aData } = await supabase.from('ahsp_templates').select('*');
       
-      // LOGIKA PENYARINGAN DUPLIKAT (Menghilangkan task dengan wbs_code yang sama)
       const uniqueTasks = tData 
         ? Array.from(new Map(tData.map(item => [item.wbs_code, item])).values())
         : [];
@@ -32,19 +32,89 @@ export default function AssignmentsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Fungsi untuk menghitung Total F dari AHSP
+  const calculateAhspTotal = async (templateId) => {
+    const { data: details } = await supabase.from('ahsp_details')
+      .select(`koefisien, master_hsd(base_price)`)
+      .eq('ahsp_template_id', templateId);
+      
+    const { data: template } = await supabase.from('ahsp_templates')
+      .select('overhead_percent')
+      .eq('id', templateId)
+      .single();
+
+    let totalABC = 0;
+    details?.forEach(d => {
+      totalABC += d.koefisien * (d.master_hsd?.base_price || 0);
+    });
+
+    const overhead = template?.overhead_percent || 15;
+    return totalABC * (1 + (overhead / 100));
+  };
+
   const handleAssign = async (taskId, templateId, volume) => {
-    const { error } = await supabase.from('wbs_tasks')
-      .update({ ahsp_template_id: templateId || null, volume: Number(volume) || 0 })
-      .eq('id', taskId);
-    
-    if (error) alert('Gagal update: ' + error.message);
-    else fetchData();
+    try {
+      let calculatedCost = 0;
+      
+      // Jika templateId dipilih, hitung biayanya
+      if (templateId) {
+        const ahspTotal = await calculateAhspTotal(templateId);
+        calculatedCost = ahspTotal * (Number(volume) || 0);
+      }
+
+      // Update Task dengan Template ID, Volume, dan Biaya Otomatis
+      const { error } = await supabase.from('wbs_tasks')
+        .update({ 
+          ahsp_template_id: templateId || null, 
+          volume: Number(volume) || 0,
+          cost: calculatedCost // <-- Otomatisasi Biaya
+        })
+        .eq('id', taskId);
+      
+      if (error) throw error;
+      fetchData(); // Refresh data
+    } catch (err) {
+      alert('Gagal update: ' + err.message);
+    }
+  };
+
+  // Tombol untuk sinkronisasi ulang semua biaya jika ada perubahan harga
+  const handleSyncAll = async () => {
+    if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP?')) return;
+    setSyncing(true);
+    try {
+      for (const task of tasks) {
+        if (task.ahsp_template_id) {
+          const ahspTotal = await calculateAhspTotal(task.ahsp_template_id);
+          const calculatedCost = ahspTotal * (task.volume || 0);
+          await supabase.from('wbs_tasks').update({ cost: calculatedCost }).eq('id', task.id);
+        }
+      }
+      fetchData();
+      alert('Sinkronisasi harga berhasil!');
+    } catch (err) {
+      alert('Gagal sinkronisasi: ' + err.message);
+    } finally {
+      setSyncing(false);
+    }
   };
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Assignment: WBS ke AHSP</h1>
-      <p className="text-sm text-gray-500 mb-4">Hubungkan pekerjaan jadwal (WBS) dengan Katalog AHSP dan tentukan volumenya.</p>
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Assignment: WBS ke AHSP</h1>
+          <p className="text-sm text-gray-500 mt-1">Hubungkan pekerjaan jadwal (WBS) dengan Katalog AHSP. Biaya task akan dihitung otomatis (Volume × Harga AHSP).</p>
+        </div>
+        <button 
+          onClick={handleSyncAll} 
+          disabled={syncing}
+          className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          {syncing ? 'Menyinkronkan...' : 'Sync Harga Semua Task'}
+        </button>
+      </div>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         <table className="w-full text-left">
@@ -54,6 +124,7 @@ export default function AssignmentsPage() {
               <th className="p-4">Nama Task (Jadwal)</th>
               <th className="p-4 w-1/3">Pilih AHSP Template</th>
               <th className="p-4 w-24">Volume</th>
+              <th className="p-4 text-right">Total Biaya (Rp)</th>
             </tr>
           </thead>
           <tbody className="text-sm divide-y divide-gray-100">
@@ -81,13 +152,16 @@ export default function AssignmentsPage() {
                     className="w-full border rounded-lg p-2 text-sm" 
                   />
                 </td>
+                <td className="p-4 text-right font-bold text-gray-800">
+                  Rp {(t.cost || 0).toLocaleString('id-ID')}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
         {tasks.length === 0 && !loading && (
           <div className="p-10 text-center text-gray-500">
-            Belum ada data WBS Task (pastikan tipe Task adalah &quot;Pekerjaan Leaf&quot;).
+            Belum ada data WBS Task (pastikan tipe Task adalah 'Pekerjaan Leaf').
           </div>
         )}
       </div>

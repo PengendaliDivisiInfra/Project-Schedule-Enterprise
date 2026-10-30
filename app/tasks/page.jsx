@@ -34,7 +34,12 @@ export default function TasksPage() {
   const handleSave = async (formData) => {
     try {
       if (editingTask) {
-        const { error } = await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
+        // Jika cost di-lock (karena ada ahsp_template_id), jangan update cost manual
+        const payload = editingTask.ahsp_template_id 
+          ? { ...formData, cost: editingTask.cost } 
+          : formData;
+
+        const { error } = await supabase.from('wbs_tasks').update(payload).eq('id', editingTask.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('wbs_tasks').insert([{ ...formData, project_id: projectId }]);
@@ -85,7 +90,15 @@ export default function TasksPage() {
                 <td className="p-4 text-gray-500">{t.start_date}</td>
                 <td className="p-4 text-gray-500">{t.end_date}</td>
                 <td className="p-4">{t.progress_percent}%</td>
-                <td className="p-4">Rp {t.cost?.toLocaleString('id-ID')}</td>
+                <td className="p-4">
+                  Rp {(t.cost || 0).toLocaleString('id-ID')}
+                  {/* Indikator jika biaya dikunci oleh AHSP */}
+                  {t.ahsp_template_id && (
+                    <span className="ml-2 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded" title="Biaya dikalkulasi otomatis dari AHSP">
+                      Auto
+                    </span>
+                  )}
+                </td>
                 <td className="p-4 flex justify-center gap-2">
                   <button onClick={() => { setEditingTask(t); setIsModalOpen(true); }} className="text-blue-600 hover:underline text-xs font-medium">Edit</button>
                   <button onClick={() => handleDelete(t.id)} className="text-red-600 hover:underline text-xs font-medium">Hapus</button>
