@@ -11,35 +11,6 @@ export default function AssignmentsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const { data: tData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
-      const { data: aData } = await supabase.from('ahsp_templates').select('id, name, unit, total_harga_ahsp');
-      
-      if (tData) {
-        // ⚠️ PERBAIKAN: Saring duplikasi berdasarkan wbs_code (Frontend Deduplication)
-        const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
-
-        let formattedTasks = uniqueTasks.map(t => ({
-          ...t,
-          volume: Number(t.volume || 0),
-          cost: Number(t.cost || 0),
-          is_summary: t.summary === 'Yes'
-        }));
-
-        setTasks(formattedTasks);
-      }
-      setTemplates(aData || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchData(); }, []);
-
   // --- ENGINE ROLLUP WBS (BOTTOM-UP) ---
   const runRollupEngine = (inputTasks) => {
     const taskMap = {};
@@ -78,7 +49,7 @@ export default function AssignmentsPage() {
         accumulatedCost += executeRollup(child);
       });
       node.cost = accumulatedCost;
-      node.volume = 0; // Induk volume 0
+      node.volume = 0; 
       return node.cost;
     };
 
@@ -95,13 +66,44 @@ export default function AssignmentsPage() {
     return flatResult.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
   };
 
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const { data: tData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
+      const { data: aData } = await supabase.from('ahsp_templates').select('id, name, unit, total_harga_ahsp');
+      
+      if (tData) {
+        const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
+        
+        let formattedTasks = uniqueTasks.map(t => ({
+          ...t,
+          volume: Number(t.volume || 0),
+          cost: Number(t.cost || 0),
+          is_summary: t.summary === 'Yes'
+        }));
+
+        // ⚡ OTOMATISASI: Jalankan Rollup sebelum data dilempar ke UI
+        const rolledUpTasks = runRollupEngine(formattedTasks);
+        
+        setTasks(rolledUpTasks);
+      }
+      setTemplates(aData || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
   const handleAssign = async (taskId, templateId, volume) => {
     try {
       let updatedTasks = [...tasks];
       const taskIndex = updatedTasks.findIndex(t => t.id === taskId);
       const task = updatedTasks[taskIndex];
       
-      if (task.is_summary) return; // Proteksi: Induk tidak bisa diubah
+      if (task.is_summary) return;
 
       let calculatedCost = 0;
       if (templateId) {
@@ -191,7 +193,6 @@ export default function AssignmentsPage() {
                   <td className="p-4 font-mono">{t.wbs_code}</td>
                   <td className="p-4">{t.is_summary ? '📁 ' : '📄 '} {t.name}</td>
                   
-                  {/* ⚠️ PERBAIKAN UI: Dropdown & Input HANYA muncul untuk SubTask */}
                   <td className="p-4">
                     {t.is_summary ? (
                       <span className="text-gray-400 italic text-xs block text-center py-2 bg-gray-50 rounded border border-dashed">— Induk (Otomatis) —</span>
