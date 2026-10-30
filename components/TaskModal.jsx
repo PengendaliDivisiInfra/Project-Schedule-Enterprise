@@ -6,34 +6,11 @@ const formatDateForInput = (dateString) => {
   try { return new Date(dateString).toISOString().split('T')[0]; } catch (e) { return ''; }
 };
 
-// Helper: Kalkulasi Tanggal Selesai berdasarkan Hari Kerja (Senin-Jumat)
-const calculateEndDate = (startDateStr, duration) => {
-  if (!startDateStr || !duration || duration <= 0) return startDateStr;
-  
-  let date = new Date(startDateStr);
-  let addedDays = 1; // Hari pertama dihitung 1
-  
-  // Jika tanggal mulai jatuh di Sabtu/Minggu, majukan ke Senin
-  while (date.getDay() === 0 || date.getDay() === 6) {
-    date.setDate(date.getDate() + 1);
-  }
-  const realStartDate = date.toISOString().split('T')[0];
-
-  // Looping menambah hari kerja
-  while (addedDays < duration) {
-    date.setDate(date.getDate() + 1);
-    if (date.getDay() !== 0 && date.getDay() !== 6) {
-      addedDays++;
-    }
-  }
-  return date.toISOString().split('T')[0];
-};
-
 export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
   const [formData, setFormData] = useState({
     wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, 
     progress_percent: 0, cost: 0, summary: 'No',
-    predecessors: '', constraints: 'ASAP', task_mode: 'Auto Scheduled'
+    predecessors: '', task_mode: 'Auto Scheduled'
   });
 
   useEffect(() => {
@@ -43,34 +20,20 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
         start_date: formatDateForInput(initialData.start_date),
         end_date: formatDateForInput(initialData.end_date),
         predecessors: initialData.predecessors || '',
-        constraints: initialData.constraints || 'ASAP',
         task_mode: initialData.task_mode || 'Auto Scheduled',
       });
     } else {
-      setFormData({ wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No', predecessors: '', constraints: 'ASAP', task_mode: 'Auto Scheduled' });
+      setFormData({ wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No', predecessors: '', task_mode: 'Auto Scheduled' });
     }
   }, [initialData, isOpen]);
 
-  // Efek untuk Auto-Calculate Finish Date
-  useEffect(() => {
-    if (formData.task_mode === 'Auto Scheduled' && formData.start_date && formData.duration) {
-      const calculatedEnd = calculateEndDate(formData.start_date, Number(formData.duration));
-      setFormData(prev => ({ ...prev, end_date: calculatedEnd }));
-    }
-  }, [formData.start_date, formData.duration, formData.task_mode]);
-
   if (!isOpen) return null;
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSave(formData);
-  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 overflow-y-auto pt-10 pb-10">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
-        <h2 className="text-xl font-bold mb-4">{initialData ? 'Edit Task (MS Project Mode)' : 'Tambah Task Baru'}</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <h2 className="text-xl font-bold mb-4">{initialData ? 'Edit Task' : 'Tambah Task Baru'}</h2>
+        <form onSubmit={(e) => { e.preventDefault(); onSave(formData); }} className="space-y-4">
           
           <div className="grid grid-cols-3 gap-4">
             <div>
@@ -95,7 +58,6 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
                 required 
                 value={formData.end_date} 
                 onChange={e => setFormData({...formData, end_date: e.target.value})} 
-                // Kunci input tanggal selesai jika mode Auto
                 disabled={formData.task_mode === 'Auto Scheduled'}
                 className={`w-full border rounded-lg p-2 text-sm ${formData.task_mode === 'Auto Scheduled' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`} 
               />
@@ -110,20 +72,11 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
              <div>
-              <label className="block text-sm font-medium mb-1">Predecessors (WBS)</label>
-              <input type="text" placeholder="Cth: 1.1, 1.2" value={formData.predecessors} onChange={e => setFormData({...formData, predecessors: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Constraints</label>
-              <select value={formData.constraints} onChange={e => setFormData({...formData, constraints: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
-                <option value="ASAP">As Soon As Possible</option>
-                <option value="MSO">Must Start On</option>
-                <option value="MFO">Must Finish On</option>
-                <option value="SNET">Start No Earlier Than</option>
-                <option value="FNLT">Finish No Later Than</option>
-              </select>
+              <label className="block text-sm font-medium mb-1">Predecessors (Format MS Project)</label>
+              <input type="text" placeholder="Cth: 1.1FS+2d, 1.2SS" value={formData.predecessors} onChange={e => setFormData({...formData, predecessors: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <p className="text-[10px] text-gray-500 mt-1">Gunakan format: WBS + Tipe (FS/SS/FF/SF) + Lag (contoh: 1.1FS+2d)</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Task Mode</label>
@@ -145,7 +98,6 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
             <div>
               <label className="block text-sm font-medium mb-1">Biaya (Rp)</label>
               <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className="w-full border rounded-lg p-2 text-sm" disabled={!!initialData?.ahsp_template_id} />
-              {initialData?.ahsp_template_id && <span className="text-[10px] text-blue-600 mt-1 block">Terkunci oleh AHSP</span>}
             </div>
           </div>
           

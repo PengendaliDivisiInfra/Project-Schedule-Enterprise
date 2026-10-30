@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import TaskModal from '../../components/TaskModal';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { calculateCPM } from '../../lib/cpmEngine';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -12,7 +13,8 @@ const formatDate = (dateString) => {
 };
 
 export default function TasksPage() {
-  const [tasks, setTasks] = useState([]);
+  const [rawTasks, setRawTasks] = useState([]);
+  const [cpmTasks, setCpmTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,7 +28,16 @@ export default function TasksPage() {
       setProjectId(pid);
       
       const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
-      setTasks(data || []);
+      setRawTasks(data || []);
+      
+      // Jalankan CPM Engine
+      if (data && data.length > 0) {
+        const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
+        const calculated = calculateCPM(data, projectStart);
+        setCpmTasks(calculated);
+      } else {
+        setCpmTasks([]);
+      }
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
@@ -57,55 +68,50 @@ export default function TasksPage() {
     } catch (err) { alert('Gagal menghapus: ' + err.message); }
   };
 
-  // Fungsi Indent & Outdent
   const handleIndent = async (taskId, currentLevel, type) => {
     let newLevel = currentLevel || 0;
     if (type === 'in' && newLevel < 5) newLevel++;
     if (type === 'out' && newLevel > 0) newLevel--;
-    
-    try {
-      await supabase.from('wbs_tasks').update({ indent_level: newLevel }).eq('id', taskId);
-      fetchTasks();
-    } catch (err) {
-      console.error(err);
-    }
+    await supabase.from('wbs_tasks').update({ indent_level: newLevel }).eq('id', taskId);
+    fetchTasks();
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Task Management (MS Project Engine)</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Task Management (CPM Engine)</h1>
+          <p className="text-sm text-gray-500 mt-1">Warna <span className="text-red-600 font-bold">Merah</span> menandakan Jalur Kritis (Total Float = 0).</p>
+        </div>
         <button onClick={() => { setEditingTask(null); setIsModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition shadow-sm">
           + Tambah Task
         </button>
       </div>
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
-        {loading ? <LoadingSpinner text="Memuat data Task..." /> : (
-          <table className="w-full text-left min-w-[1200px]">
+        {loading ? <LoadingSpinner text="Menghitung CPM..." /> : (
+          <table className="w-full text-left min-w-[1300px]">
             <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
               <tr>
                 <th className="p-3 border-r text-center w-24">Hierarki</th>
                 <th className="p-3 border-r">WBS</th>
                 <th className="p-3 border-r">Nama Task</th>
                 <th className="p-3 border-r text-center">Durasi</th>
-                <th className="p-3 border-r">Start</th>
-                <th className="p-3 border-r">Finish</th>
+                <th className="p-3 border-r">Start (ES)</th>
+                <th className="p-3 border-r">Finish (EF)</th>
                 <th className="p-3 border-r">Predecessors</th>
-                <th className="p-3 border-r">Mode</th>
+                <th className="p-3 border-r text-center">Float</th>
                 <th className="p-3 border-r text-center">Progres</th>
-                <th className="p-3 border-r">Biaya</th>
                 <th className="p-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
-              {tasks.map((t) => (
-                <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''}`}>
+              {cpmTasks.map((t) => (
+                <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''} ${t.is_critical && t.summary !== 'Yes' ? 'text-red-700 bg-red-50' : ''}`}>
                   
-                  {/* Kolom Interaktif Indent/Outdent */}
                   <td className="p-2 border-r text-center flex justify-center gap-1">
-                    <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs disabled:opacity-50" title="Outdent (Kurangi Indent)">⬅️</button>
-                    <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs" title="Indent (Tambah Indent)">➡️</button>
+                    <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs disabled:opacity-50">⬅️</button>
+                    <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs">➡️</button>
                   </td>
 
                   <td className="p-3 border-r font-mono">{t.wbs_code}</td>
@@ -113,14 +119,17 @@ export default function TasksPage() {
                     {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
                   </td>
                   <td className="p-3 border-r text-center">{t.duration} d</td>
-                  <td className="p-3 border-r text-gray-600">{formatDate(t.start_date)}</td>
-                  <td className="p-3 border-r text-gray-600">{formatDate(t.end_date)}</td>
-                  <td className="p-3 border-r text-gray-500">{t.predecessors || '-'}</td>
-                  <td className="p-3 border-r text-xs text-gray-500">{t.task_mode === 'Auto Scheduled' ? 'Auto' : 'Manual'}</td>
-                  <td className="p-3 border-r text-center">{t.progress_percent}%</td>
-                  <td className="p-3 border-r">
-                    Rp {(t.cost || 0).toLocaleString('id-ID')}
-                    {t.ahsp_template_id && <span className="ml-1 text-[10px] bg-blue-100 text-blue-700 px-1 rounded" title="Auto AHSP">Auto</span>}
+                  <td className="p-3 border-r font-medium">{formatDate(t.ES_date)}</td>
+                  <td className="p-3 border-r font-medium">{formatDate(t.EF_date)}</td>
+                  <td className="p-3 border-r text-gray-500 text-xs">{t.predecessors || '-'}</td>
+                  <td className="p-3 border-r text-center font-bold">
+                    {t.summary === 'Yes' ? '-' : (t.total_float || 0)}
+                  </td>
+                  <td className="p-3 border-r text-center">
+                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                      <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${t.progress_percent}%` }}></div>
+                    </div>
+                    {t.progress_percent}%
                   </td>
                   <td className="p-3 flex justify-center gap-2">
                     <button onClick={() => { setEditingTask(t); setIsModalOpen(true); }} className="text-blue-600 hover:underline text-xs">Edit</button>
@@ -131,7 +140,7 @@ export default function TasksPage() {
             </tbody>
           </table>
         )}
-        {tasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task.</div>}
+        {cpmTasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task.</div>}
       </div>
 
       <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingTask} />
