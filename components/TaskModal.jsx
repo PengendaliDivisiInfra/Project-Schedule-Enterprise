@@ -104,3 +104,4 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
     </div>
   );
 }
+

@@ -1,10 +1,10 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+
 import AhspTemplateModal from '../../components/AhspTemplateModal';
 import AssignmentModal from '../../components/AssignmentModal';
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+import { supabase } from '../../lib/supabase';
 
 export default function AHSPPage() {
   const [templates, setTemplates] = useState([]);
@@ -226,3 +226,4 @@ export default function AHSPPage() {
     </div>
   );
 }
+
