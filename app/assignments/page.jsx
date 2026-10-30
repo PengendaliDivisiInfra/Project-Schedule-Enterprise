@@ -82,9 +82,7 @@ export default function AssignmentsPage() {
           is_summary: t.summary === 'Yes'
         }));
 
-        // ⚡ OTOMATISASI: Jalankan Rollup sebelum data dilempar ke UI
         const rolledUpTasks = runRollupEngine(formattedTasks);
-        
         setTasks(rolledUpTasks);
       }
       setTemplates(aData || []);
@@ -135,10 +133,20 @@ export default function AssignmentsPage() {
     if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP terbaru?')) return;
     setSyncing(true);
     try {
+      // ⚠️ PERBAIKAN: Ambil data harga AHSP terbaru langsung dari database
+      const { data: freshTemplates } = await supabase.from('ahsp_templates').select('id, total_harga_ahsp');
+      const freshTplMap = {};
+      freshTemplates?.forEach(t => freshTplMap[t.id] = t);
+
       let recalculatedTasks = tasks.map(t => {
         if (!t.is_summary) {
-          const tpl = templates.find(tpl => tpl.id === t.ahsp_template_id);
-          const cost = tpl ? (tpl.total_harga_ahsp * t.volume) : 0;
+          // Gunakan harga dari freshTemplates, jika tidak ada baru fallback ke state templates
+          const freshTpl = freshTplMap[t.ahsp_template_id];
+          const fallbackTpl = templates.find(tpl => tpl.id === t.ahsp_template_id);
+          
+          const hargaSatuan = freshTpl?.total_harga_ahsp || fallbackTpl?.total_harga_ahsp || 0;
+          const cost = hargaSatuan * (t.volume || 0);
+          
           return { ...t, cost: cost };
         }
         return { ...t };
@@ -147,6 +155,7 @@ export default function AssignmentsPage() {
       const finalTasks = runRollupEngine(recalculatedTasks);
       setTasks(finalTasks);
 
+      // Simpan ke database
       const updates = finalTasks.map(t => ({
         id: t.id, cost: t.cost, volume: t.volume, ahsp_template_id: t.ahsp_template_id
       }));
