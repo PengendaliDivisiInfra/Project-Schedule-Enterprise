@@ -1,6 +1,7 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import TaskModal from '../../components/TaskModal';
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -8,6 +9,8 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -21,89 +24,81 @@ export default function TasksPage() {
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
       setProjectId(pid);
       
-      // Gunakan wbs_code untuk sorting
       const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
       setTasks(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
   useEffect(() => { fetchTasks(); }, []);
 
-  const handleSeedData = async () => {
-    if (!projectId) return;
-    setLoading(true);
+  const handleSave = async (formData) => {
     try {
-      // Gunakan properti wbs_code sesuai database
-      const dummyTasks = [
-        { project_id: projectId, wbs_code: '1', name: 'Pekerjaan Persiapan', summary: 'Yes', start_date: '2026-10-01', end_date: '2026-10-31' },
-        { project_id: projectId, wbs_code: '1.1', name: 'Mobilisasi & Demobilisasi', summary: 'No', start_date: '2026-10-01', end_date: '2026-10-07', duration: 6, progress_percent: 100 },
-        { project_id: projectId, wbs_code: '1.2', name: 'Direksi Keet & Gudang', summary: 'No', start_date: '2026-10-05', end_date: '2026-10-15', duration: 10, progress_percent: 50 },
-        { project_id: projectId, wbs_code: '2', name: 'Pekerjaan Tanah & Pondasi', summary: 'Yes', start_date: '2026-10-15', end_date: '2026-11-15' },
-        { project_id: projectId, wbs_code: '2.1', name: 'Galian Tanah Pondasi', summary: 'No', start_date: '2026-10-16', end_date: '2026-10-25', duration: 9, progress_percent: 0 },
-        { project_id: projectId, wbs_code: '2.2', name: 'Cor Beton Pondasi', summary: 'No', start_date: '2026-10-26', end_date: '2026-11-10', duration: 15, progress_percent: 0 },
-      ];
-      
-      // Coba insert. Jika error karena constraint, tangkap errornya
-      const { error } = await supabase.from('wbs_tasks').insert(dummyTasks);
+      if (editingTask) {
+        const { error } = await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('wbs_tasks').insert([{ ...formData, project_id: projectId }]);
+        if (error) throw error;
+      }
+      setIsModalOpen(false);
+      setEditingTask(null);
+      fetchTasks();
+    } catch (err) { alert('Gagal menyimpan: ' + err.message); }
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Yakin ingin menghapus task ini?')) return;
+    try {
+      const { error } = await supabase.from('wbs_tasks').delete().eq('id', id);
       if (error) throw error;
-      
-      await fetchTasks();
-      alert('Data Dummy Berhasil Dibuat!');
-    } catch (err) {
-      alert('Gagal membuat data dummy: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
+      fetchTasks();
+    } catch (err) { alert('Gagal menghapus: ' + err.message); }
   };
 
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Task Management (WBS)</h1>
-        {tasks.length === 0 && (
-          <button onClick={handleSeedData} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition">
-            + Generate Data Dummy
-          </button>
-        )}
+        <button onClick={() => { setEditingTask(null); setIsModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition shadow-sm">
+          + Tambah Task
+        </button>
       </div>
       
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="bg-gray-100 border-b text-sm">
+          <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
             <tr>
               <th className="p-4">WBS</th>
               <th className="p-4">Nama Task</th>
               <th className="p-4">Start</th>
               <th className="p-4">Finish</th>
-              <th className="p-4">Progress</th>
-              <th className="p-4">Cost</th>
+              <th className="p-4">Progres</th>
+              <th className="p-4">Biaya</th>
+              <th className="p-4 text-center">Aksi</th>
             </tr>
           </thead>
-          <tbody className="text-sm">
+          <tbody className="text-sm divide-y divide-gray-100">
             {tasks.map((t) => (
-              <tr key={t.id} className={`border-b hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''}`}>
-                <td className="p-4">{t.wbs_code}</td>
+              <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''}`}>
+                <td className="p-4 font-mono">{t.wbs_code}</td>
                 <td className="p-4">{t.name}</td>
-                <td className="p-4">{t.start_date}</td>
-                <td className="p-4">{t.end_date}</td>
+                <td className="p-4 text-gray-500">{t.start_date}</td>
+                <td className="p-4 text-gray-500">{t.end_date}</td>
                 <td className="p-4">{t.progress_percent}%</td>
                 <td className="p-4">Rp {t.cost?.toLocaleString('id-ID')}</td>
+                <td className="p-4 flex justify-center gap-2">
+                  <button onClick={() => { setEditingTask(t); setIsModalOpen(true); }} className="text-blue-600 hover:underline text-xs font-medium">Edit</button>
+                  <button onClick={() => handleDelete(t.id)} className="text-red-600 hover:underline text-xs font-medium">Hapus</button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
-        {tasks.length === 0 && !loading && (
-          <div className="p-10 text-center text-gray-500">
-            {/* Perbaikan tanda kutip ESLint */}
-            Database Tasks kosong. Klik tombol &quot;+ Generate Data Dummy&quot; di atas untuk mencoba fitur Gantt Chart.
-          </div>
-        )}
-        {loading && <div className="p-6 text-center text-blue-500">Memproses data...</div>}
+        {tasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task. Silakan tambah task baru.</div>}
+        {loading && <div className="p-6 text-center text-blue-500">Memuat data...</div>}
       </div>
+
+      <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingTask} />
     </div>
   );
 }

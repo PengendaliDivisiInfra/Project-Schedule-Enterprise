@@ -1,29 +1,30 @@
 ﻿# Project Handoff Document
 
-**Status Proyek:** 🟢 Aktif (Production Ready - Beta)
+**Status Proyek:** 🟢 Aktif (Production Ready - V2)
 **Developer Utama:** [Nama Anda/Tim Anda]
 
 ---
 
 ## 1. Status Saat Ini (Current Status)
-Sistem telah berhasil di-deploy ke Vercel dan terhubung dengan Supabase. 
-- **Fixed:** Error build `supabaseKey is required` pada API Routes (sudah dipindahkan ke runtime `force-dynamic`).
-- **Fixed:** Grafik S-Curve kosong (masalah parsing format angka Rupiah dan kalkulasi rentang tanggal).
-- **Added:** Layout aplikasi standar dengan Sidebar Navigasi.
-- **Added:** Halaman UI dasar untuk Tasks (WBS) dan HSD.
+Sistem telah di-deploy ke Vercel dan terhubung dengan Supabase. Aplikasi kini memiliki fitur manajemen proyek yang komprehensif:
+- **Fixed:** Error build supabaseKey is required dan konflik penamaan kolom (wbs vs wbs_code).
+- **Added:** Fitur CRUD (Create, Read, Update, Delete) penuh pada halaman Tasks (WBS).
+- **Added:** Gantt Chart interaktif (MS Project style) dengan visualisasi progres.
+- **Added:** Grafik S-Curve (Planned Value, Earned Value, Actual Cost) menggunakan Recharts.
+- **Added:** Halaman Resources (terhubung ke master_hsd) dan AHSP (terhubung ke wbs_tasks).
 
 ## 2. Yang Sedang Berjalan (Work in Progress)
-- Implementasi UI penuh untuk modul **AHSP**, **Resources**, dan **Assignments**.
-- Fitur CRUD (Create, Read, Update, Delete) pada tabel *Tasks* dan *HSD* (saat ini hanya *Read*).
+- Integrasi formula AHSP untuk menghitung harga satuan pekerjaan secara otomatis berdasarkan koefisien resource.
+- Fitur Autentikasi (Login) dan Role-Based Access Control (RBAC).
 
 ## 3. Known Issues (Masalah yang Diketahui)
-- `project_id` pada halaman `tasks/page.jsx` dan `hsd/page.jsx` masih di-*hardcode*. Perlu dibuatkan sistem *Project Selector* di Navbar.
-- Beberapa halaman masih berupa *placeholder*.
+- Perhitungan S-Curve saat ini menggunakan estimasi linear sederhana dari total cost task.
+- Warning GoTrueClient instances di console browser (aman, hanya efek dari React StrictMode).
 
 ## 4. Panduan Developer Selanjutnya (Next Steps)
-1. **Ganti Hardcode ID:** Cari `GANTI_DENGAN_ID_PROJECT_ANDA` di folder `app/tasks` dan `app/hsd`, lalu ganti dengan implementasi state global.
-2. **Buat Form Input:** Tambahkan form modal atau halaman baru untuk melakukan *Insert* dan *Update* data ke Supabase.
-3. **Selesaikan Modul AHSP:** Buat relasi antara tabel `ahsp_details`, `master_hsd`, dan `wbs_tasks`.
+1. **Kalkulasi CPM:** Implementasikan algoritma Critical Path Method (CPM) yang sebenarnya pada tombol 'Recalculate'.
+2. **Relasi AHSP:** Buat tabel pivot hsp_details di Supabase untuk menghubungkan wbs_tasks dan master_hsd.
+3. **Real-time Sync:** Gunakan fitur Supabase Realtime agar perubahan data langsung terlihat tanpa refresh.
 
 ## 5. Kontak & Akses
 - **Vercel Dashboard:** [Link Vercel]
