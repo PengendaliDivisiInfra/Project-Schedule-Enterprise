@@ -9,11 +9,12 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 
 const formatDate = (dateString) => {
   if (!dateString) return '-';
-  return new Date(dateString).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '-';
+  return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
 export default function TasksPage() {
-  const [rawTasks, setRawTasks] = useState([]);
   const [cpmTasks, setCpmTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [projectId, setProjectId] = useState(null);
@@ -23,14 +24,20 @@ export default function TasksPage() {
   const fetchTasks = async () => {
     setLoading(true);
     try {
+      // ⚠️ PERBAIKAN: Kembalikan logika fallback jika tabel projects kosong
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
-      let pid = projects?.[0]?.id || '00000000-0000-0000-0000-000000000000';
+      let pid = projects?.[0]?.id;
+      
+      if (!pid) {
+        let { data: tData } = await supabase.from('wbs_tasks').select('project_id').limit(1);
+        pid = tData?.[0]?.project_id;
+      }
+      if (!pid) pid = '00000000-0000-0000-0000-000000000000';
+      
       setProjectId(pid);
       
       const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
-      setRawTasks(data || []);
       
-      // Jalankan CPM Engine
       if (data && data.length > 0) {
         const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
         const calculated = calculateCPM(data, projectStart);
@@ -38,7 +45,11 @@ export default function TasksPage() {
       } else {
         setCpmTasks([]);
       }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error(err); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   useEffect(() => { fetchTasks(); }, []);
@@ -119,11 +130,11 @@ export default function TasksPage() {
                     {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
                   </td>
                   <td className="p-3 border-r text-center">{t.duration} d</td>
-                  <td className="p-3 border-r font-medium">{formatDate(t.ES_date)}</td>
-                  <td className="p-3 border-r font-medium">{formatDate(t.EF_date)}</td>
+                  <td className="p-3 border-r font-medium">{formatDate(t.ES_date || t.start_date)}</td>
+                  <td className="p-3 border-r font-medium">{formatDate(t.EF_date || t.end_date)}</td>
                   <td className="p-3 border-r text-gray-500 text-xs">{t.predecessors || '-'}</td>
                   <td className="p-3 border-r text-center font-bold">
-                    {t.summary === 'Yes' ? '-' : (t.total_float || 0)}
+                    {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
                   </td>
                   <td className="p-3 border-r text-center">
                     <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
@@ -140,7 +151,7 @@ export default function TasksPage() {
             </tbody>
           </table>
         )}
-        {cpmTasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task.</div>}
+        {cpmTasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task. Silakan tambah task baru.</div>}
       </div>
 
       <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingTask} />
