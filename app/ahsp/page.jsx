@@ -12,6 +12,7 @@ export default function AHSPPage() {
   const [details, setDetails] = useState([]);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false); // <-- Tambahan State
   const [overhead, setOverhead] = useState(15);
   const [projectId, setProjectId] = useState(null);
 
@@ -24,7 +25,6 @@ export default function AHSPPage() {
       if (error) throw error;
       
       setTemplates(data || []);
-      // Update selected template data agar sinkron jika baru diedit
       if (selectedTemplate) {
         const updated = data.find(t => t.id === selectedTemplate.id);
         if (updated) setSelectedTemplate(updated);
@@ -36,7 +36,7 @@ export default function AHSPPage() {
 
   const fetchDetails = async (templateId) => {
     const { data } = await supabase.from('ahsp_details')
-      .select(`id, koefisien, master_hsd(*)`)
+      .select(`id, koefisien, master_hsd(*)`) // Relasi master_hsd akan otomatis mengambil data
       .eq('ahsp_template_id', templateId);
     setDetails(data || []);
   };
@@ -52,15 +52,21 @@ export default function AHSPPage() {
   const handleSaveTemplate = async (formData, id = null) => {
     let error;
     if (id) {
+      // Mode Edit: Update data
       const res = await supabase.from('ahsp_templates').update(formData).eq('id', id);
       error = res.error;
     } else {
+      // Mode Tambah: Insert data baru
       const res = await supabase.from('ahsp_templates').insert([{ ...formData, project_id: projectId }]);
       error = res.error;
     }
 
     if (error) { alert('Gagal: ' + error.message); throw error; }
-    else { setIsTemplateModalOpen(false); fetchTemplates(); }
+    else { 
+      setIsTemplateModalOpen(false); 
+      setIsEditMode(false); 
+      fetchTemplates(); 
+    }
   };
 
   const handleDeleteComponent = async (detailId) => {
@@ -112,7 +118,7 @@ export default function AHSPPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Katalog AHSP (Standar PUPR)</h1>
-        <button onClick={() => { setSelectedTemplate(null); setIsTemplateModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Buat AHSP Baru</button>
+        <button onClick={() => { setSelectedTemplate(null); setIsEditMode(false); setIsTemplateModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Buat AHSP Baru</button>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -135,10 +141,9 @@ export default function AHSPPage() {
             <div>
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  {/* ⚠️ TOMBOL EDIT YANG JELAS */}
                   <div className="flex items-center gap-3">
                     <h2 className="text-lg font-bold">{selectedTemplate.name}</h2>
-                    <button onClick={() => setIsTemplateModalOpen(true)} className="text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 px-2 py-1 rounded border border-gray-300 transition">
+                    <button onClick={() => { setIsEditMode(true); setIsTemplateModalOpen(true); }} className="text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 px-2 py-1 rounded border border-gray-300 transition">
                       ✏️ Edit Nama/Satuan
                     </button>
                   </div>
@@ -189,7 +194,7 @@ export default function AHSPPage() {
         </div>
       </div>
 
-      <AhspTemplateModal isOpen={isTemplateModalOpen} onClose={() => setIsTemplateModalOpen(false)} onSave={handleSaveTemplate} initialData={selectedTemplate} />
+      <AhspTemplateModal isOpen={isTemplateModalOpen} onClose={() => { setIsTemplateModalOpen(false); setIsEditMode(false); }} onSave={handleSaveTemplate} initialData={isEditMode ? selectedTemplate : null} />
       <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTemplate?.id)} />
     </div>
   );

@@ -44,7 +44,6 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       let finalHsdId = selectedHsdId;
 
       if (mode === 'new') {
-        // Simpan ke master_hsd
         const { data: insertedHsd, error: insertError } = await supabase
           .from('master_hsd')
           .insert([{
@@ -63,10 +62,10 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
 
       if (!finalHsdId) throw new Error("Pilih komponen atau isi data baru.");
 
-      // ⚠️ PERBAIKAN: Hapus project_id dari insert ahsp_details
+      // ⚠️ PERBAIKAN: Gunakan hsd_id, bukan resource_id
       const { error: detailError } = await supabase.from('ahsp_details').insert([{
         ahsp_template_id: ahspTemplate.id,
-        resource_id: finalHsdId,
+        hsd_id: finalHsdId,
         koefisien: Number(koefisien)
       }]);
 
