@@ -1,39 +1,31 @@
 ﻿# Project Handoff Document - Promanage Construction
 
-**Status Proyek:** 🟢 Aktif (Production Ready - V4)
-**Terakhir Diperbarui:** [Tanggal Hari Ini]
-**Developer Utama:** [Nama Anda/Tim Anda]
+**Status Proyek:** 🟢 Production Ready (V5)
+**Developer Utama:** [Nama Anda]
 
 ---
 
-## 1. Ringkasan Proyek
-Aplikasi manajemen proyek konstruksi berbasis web (ERP) yang dirancang untuk memonitoring jadwal (S-Curve), RAB, Earned Value Management (EVM), serta manajemen Harga Satuan (AHSP/HSD) sesuai standar PUPR.
+## 1. Status Saat Ini (Current Status)
+Sistem telah mencapai tahap *Enterprise Grade* dengan stabilitas perhitungan matematis yang tinggi.
+- **Fixed:** Bug duplikasi WBS pada halaman Assignments dan bug perhitungan Rp 0 saat tombol Sync diklik.
+- **Added:** Auto-Rollup pada saat load halaman (Induk langsung menghitung total biaya anak).
+- **Added:** Database Trigger untuk *Global Price Invalidation* (Update harga HSD langsung memicu update harga AHSP).
+- **Added:** CPM Engine lengkap dengan dukungan Predecessor (FS, SS, FF, SF), Kalender Kerja, dan Critical Path (Warna Merah).
+- **Added:** EVM Forecasting (ETC, EAC, VAC, TCPI) pada halaman Dashboard.
 
-## 2. Tech Stack
-- **Frontend:** Next.js (App Router), React, Tailwind CSS, Recharts (Grafik)
-- **Backend & Database:** Supabase (PostgreSQL)
-- **Deployment:** Vercel & GitHub Actions (CI/CD)
+## 2. Yang Sedang Berjalan (Work in Progress)
+- Implementasi Web Worker untuk memindahkan proses kalkulasi CPM/Tree yang berat ke background thread agar UI tidak freeze saat data mencapai ribuan baris.
 
-## 3. Status Fitur Saat Ini
-- ✅ **Dashboard S-Curve:** Menampilkan grafik PV, EV, AC (memerlukan input biaya manual di Task untuk saat ini).
-- ✅ **Gantt Chart (MS Project Style):** Visualisasi timeline WBS dengan warna bar berdasarkan progres.
-- ✅ **Manajemen Tasks (WBS):** CRUD penuh (Tambah, Edit, Hapus), pengaturan tanggal, durasi, progres, dan biaya.
-- ✅ **Katalog AHSP (PUPR):** Tabel A, B, C, D, E, F sesuai standar, persentase Overhead yang bisa diedit, serta fitur Edit Nama/Satuan dan Hapus Katalog.
-- ✅ **Dual-Mode HSD & AHSP:** Input komponen AHSP bisa langsung mengetik data baru (otomatis masuk Master HSD) atau memilih dari daftar HSD yang sudah ada.
-- ✅ **Traceability (Pelacakan):** Halaman HSD menampilkan informasi material tersebut dipakai di AHSP mana dan Task mana.
+## 3. Known Issues (Masalah yang Diketahui)
+- Error 'GoTrueClient instances' di console browser (aman, efek dari React StrictMode).
+- Tampilan grafik S-Curve memerlukan data Actual Cost (AC) harian yang riil (saat ini AC diasumsikan sama dengan PV jika progress 100%).
 
-## 4. Isu Diketahui (Known Issues)
-- **Rumus Biaya Task:** Biaya (Cost) pada Task masih diinput manual. Belum otomatis mengambil dari (Volume Task x Harga Satuan AHSP).
-- **Halaman Resources:** Masih menampilkan agregasi dasar dari volume task.
-- **Keamanan Database:** RLS (Row Level Security) saat ini dinonaktifkan (`DISABLE ROW LEVEL SECURITY`) pada tabel utama untuk mempermudah *development* dan *testing*. **Wajib diaktifkan kembali** sebelum aplikasi digunakan oleh publik secara luas dengan aturan yang ketat.
-- Peringatan `GoTrueClient instances` di console browser (aman, hanya efek dari React StrictMode).
+## 4. Panduan Developer Selanjutnya (Next Steps)
+1. **Resource Leveling:** Terapkan algoritma 'applyResourceLeveling' untuk mendeteksi Overallocated (pekerja yang ditugaskan di 2 tempat pada tanggal yang sama) dan menggeser jadwal secara otomatis tanpa melanggar Jalur Kritis.
+2. **Daily Progress Input:** Buat halaman UI untuk memasukkan progres harian (Actual Cost & Actual Progress) agar garis EV dan AC pada S-Curve dapat berpotongan secara akurat sesuai kondisi lapangan.
+3. **Autentikasi:** Implementasikan Supabase Auth (Login/Register) sebelum aplikasi digunakan oleh banyak user.
 
-## 5. Panduan Developer Selanjutnya (Next Steps)
-1. **Integrasi AHSP ke Task:** Ubah halaman `Assignments` agar saat memilih AHSP dan memasukkan Volume, sistem otomatis menghitung `Total Biaya = Volume * Harga Satuan AHSP (Total F)` dan menyimpannya ke tabel `wbs_tasks`. Ini akan membuat Dashboard S-Curve otomatis tanpa perlu input manual biaya.
-2. **Algoritma CPM:** Tambahkan perhitungan Critical Path Method (Jalur Kritis) pada tombol "Recalculate CPM".
-3. **Autentikasi:** Tambahkan fitur Login/Sign-up menggunakan Supabase Auth.
-
-## 6. Akses & Kontak
+## 5. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
 - **Supabase Dashboard:** [Link Supabase]
 - **Repository GitHub:** [Link GitHub]
