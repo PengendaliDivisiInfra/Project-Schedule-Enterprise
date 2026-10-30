@@ -6,11 +6,34 @@ const formatDateForInput = (dateString) => {
   try { return new Date(dateString).toISOString().split('T')[0]; } catch (e) { return ''; }
 };
 
+// Helper: Kalkulasi Tanggal Selesai berdasarkan Hari Kerja (Senin-Jumat)
+const calculateEndDate = (startDateStr, duration) => {
+  if (!startDateStr || !duration || duration <= 0) return startDateStr;
+  
+  let date = new Date(startDateStr);
+  let addedDays = 1; // Hari pertama dihitung 1
+  
+  // Jika tanggal mulai jatuh di Sabtu/Minggu, majukan ke Senin
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
+  const realStartDate = date.toISOString().split('T')[0];
+
+  // Looping menambah hari kerja
+  while (addedDays < duration) {
+    date.setDate(date.getDate() + 1);
+    if (date.getDay() !== 0 && date.getDay() !== 6) {
+      addedDays++;
+    }
+  }
+  return date.toISOString().split('T')[0];
+};
+
 export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
   const [formData, setFormData] = useState({
     wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, 
     progress_percent: 0, cost: 0, summary: 'No',
-    predecessors: '', constraints: 'ASAP', task_mode: 'Auto Scheduled', indent_level: 0
+    predecessors: '', constraints: 'ASAP', task_mode: 'Auto Scheduled'
   });
 
   useEffect(() => {
@@ -22,12 +45,19 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
         predecessors: initialData.predecessors || '',
         constraints: initialData.constraints || 'ASAP',
         task_mode: initialData.task_mode || 'Auto Scheduled',
-        indent_level: initialData.indent_level || 0
       });
     } else {
-      setFormData({ wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No', predecessors: '', constraints: 'ASAP', task_mode: 'Auto Scheduled', indent_level: 0 });
+      setFormData({ wbs_code: '', name: '', start_date: '', end_date: '', duration: 1, progress_percent: 0, cost: 0, summary: 'No', predecessors: '', constraints: 'ASAP', task_mode: 'Auto Scheduled' });
     }
   }, [initialData, isOpen]);
+
+  // Efek untuk Auto-Calculate Finish Date
+  useEffect(() => {
+    if (formData.task_mode === 'Auto Scheduled' && formData.start_date && formData.duration) {
+      const calculatedEnd = calculateEndDate(formData.start_date, Number(formData.duration));
+      setFormData(prev => ({ ...prev, end_date: calculatedEnd }));
+    }
+  }, [formData.start_date, formData.duration, formData.task_mode]);
 
   if (!isOpen) return null;
 
@@ -60,11 +90,19 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Selesai</label>
-              <input type="date" required value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input 
+                type="date" 
+                required 
+                value={formData.end_date} 
+                onChange={e => setFormData({...formData, end_date: e.target.value})} 
+                // Kunci input tanggal selesai jika mode Auto
+                disabled={formData.task_mode === 'Auto Scheduled'}
+                className={`w-full border rounded-lg p-2 text-sm ${formData.task_mode === 'Auto Scheduled' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`} 
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Durasi (Hari)</label>
-              <input type="number" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <label className="block text-sm font-medium mb-1">Durasi (Hari Kerja)</label>
+              <input type="number" min="1" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Progres (%)</label>
@@ -96,7 +134,7 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 bg-gray-50 p-3 rounded-lg border">
+          <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border mt-4">
             <div>
               <label className="block text-sm font-medium mb-1">Tipe Baris</label>
               <select value={formData.summary} onChange={e => setFormData({...formData, summary: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
@@ -105,18 +143,15 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Indent (Hierarki)</label>
-              <input type="number" min="0" max="5" value={formData.indent_level} onChange={e => setFormData({...formData, indent_level: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-            </div>
-            <div>
               <label className="block text-sm font-medium mb-1">Biaya (Rp)</label>
-              <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className="w-full border rounded-lg p-2 text-sm" disabled={!!initialData?.ahsp_template_id} />
+              {initialData?.ahsp_template_id && <span className="text-[10px] text-blue-600 mt-1 block">Terkunci oleh AHSP</span>}
             </div>
           </div>
           
           <div className="flex justify-end gap-2 mt-6">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Batal</button>
-            <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Simpan</button>
+            <button type="submit" className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Simpan Task</button>
           </div>
         </form>
       </div>
