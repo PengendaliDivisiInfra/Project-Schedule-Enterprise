@@ -49,10 +49,10 @@ export default function AHSPPage() {
     }
   }, [selectedTemplate]);
 
-  const handleSaveTemplate = async (formData, isEdit) => {
+  const handleSaveTemplate = async (formData) => {
     let error;
-    if (isEdit && selectedTemplate) {
-      // Mode Edit: Update berdasarkan ID dari selectedTemplate
+    if (isEditMode && selectedTemplate) {
+      // Mode Edit: Hanya update data yang sedang dipilih
       const res = await supabase.from('ahsp_templates').update(formData).eq('id', selectedTemplate.id);
       error = res.error;
     } else {
@@ -66,6 +66,24 @@ export default function AHSPPage() {
       setIsTemplateModalOpen(false); 
       setIsEditMode(false); 
       fetchTemplates(); 
+    }
+  };
+
+  const handleDeleteTemplate = async () => {
+    if (!selectedTemplate) return;
+    if (!confirm('Apakah Anda yakin ingin menghapus Katalog AHSP ini beserta komponennya?')) return;
+    
+    try {
+      // Hapus detail (komponen) terlebih dahulu
+      await supabase.from('ahsp_details').delete().eq('ahsp_template_id', selectedTemplate.id);
+      // Hapus template AHSP
+      const { error } = await supabase.from('ahsp_templates').delete().eq('id', selectedTemplate.id);
+      if (error) throw error;
+      
+      setSelectedTemplate(null);
+      fetchTemplates();
+    } catch (err) {
+      alert('Gagal menghapus AHSP: ' + err.message);
     }
   };
 
@@ -118,7 +136,7 @@ export default function AHSPPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Katalog AHSP (Standar PUPR)</h1>
-        <button onClick={() => { setSelectedTemplate(null); setIsEditMode(false); setIsTemplateModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Buat AHSP Baru</button>
+        <button onClick={() => { setIsEditMode(false); setIsTemplateModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Buat AHSP Baru</button>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -141,13 +159,16 @@ export default function AHSPPage() {
             <div>
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
                     <h2 className="text-lg font-bold">{selectedTemplate.name}</h2>
                     <button onClick={() => { setIsEditMode(true); setIsTemplateModalOpen(true); }} className="text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 px-2 py-1 rounded border border-gray-300 transition">
-                      ✏️ Edit Nama/Satuan
+                      ✏️ Edit
+                    </button>
+                    <button onClick={handleDeleteTemplate} className="text-xs bg-red-100 text-red-600 hover:bg-red-200 px-2 py-1 rounded border border-red-300 transition">
+                      🗑️ Hapus AHSP
                     </button>
                   </div>
-                  <p className="text-sm text-gray-500">Satuan: {selectedTemplate.unit}</p>
+                  <p className="text-sm text-gray-500 mt-1">Satuan: {selectedTemplate.unit}</p>
                 </div>
                 <button onClick={() => setIsDetailModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Tambah Komponen</button>
               </div>
@@ -197,8 +218,9 @@ export default function AHSPPage() {
       <AhspTemplateModal 
         isOpen={isTemplateModalOpen} 
         onClose={() => { setIsTemplateModalOpen(false); setIsEditMode(false); }} 
-        onSave={(formData) => handleSaveTemplate(formData, isEditMode)} 
-        initialData={isEditMode ? selectedTemplate : null} 
+        onSave={handleSaveTemplate} 
+        initialData={selectedTemplate} 
+        isEdit={isEditMode}
       />
       <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTemplate?.id)} />
     </div>
