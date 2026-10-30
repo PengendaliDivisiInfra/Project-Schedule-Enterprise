@@ -6,12 +6,30 @@ const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.
 
 export default function HSDPage() {
   const [hsd, setHsd] = useState([]);
-  
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    // ⚠️ GANTI DENGAN ID PROJECT ANDA
-    const projectId = 'GANTI_DENGAN_ID_PROJECT_ANDA'; 
-    supabase.from('master_hsd').select('*').eq('project_id', projectId)
-      .then(({ data }) => setHsd(data || []));
+    async function loadData() {
+      try {
+        let { data: projects } = await supabase.from('projects').select('id').limit(1);
+        let projectId = projects?.[0]?.id;
+
+        if (!projectId) {
+          let { data: hsdData } = await supabase.from('master_hsd').select('project_id').limit(1);
+          projectId = hsdData?.[0]?.project_id;
+        }
+
+        if (projectId) {
+          const { data } = await supabase.from('master_hsd').select('*').eq('project_id', projectId);
+          setHsd(data || []);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
   }, []);
 
   return (
@@ -38,7 +56,8 @@ export default function HSDPage() {
             ))}
           </tbody>
         </table>
-        {hsd.length === 0 && <div className="p-6 text-center text-gray-500">Belum ada data HSD atau ID Project salah.</div>}
+        {hsd.length === 0 && !loading && <div className="p-6 text-center text-gray-500">Database HSD kosong. Silakan import data.</div>}
+        {loading && <div className="p-6 text-center text-gray-500">Memuat data...</div>}
       </div>
     </div>
   );
