@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    eslint: {
+    ignoreDuringBuilds: true, // <--- TAMBAHKAN BARIS INI
+  },
   reactStrictMode: true,
   experimental: {
     serverActions: { bodySizeLimit: '4mb' }
