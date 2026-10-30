@@ -1,9 +1,7 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase'; // <-- Gunakan Singleton
 import LoadingSpinner from '../../components/LoadingSpinner';
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
@@ -133,7 +131,7 @@ export default function AssignmentsPage() {
     if (!confirm('Sinkronisasi ulang semua harga task berdasarkan AHSP terbaru?')) return;
     setSyncing(true);
     try {
-      // ⚠️ PERBAIKAN: Ambil detail komponen untuk kalkulasi on-the-fly
+      // ⚠️ Ambil data relasi langsung untuk kalkulasi on-the-fly jika cache 0
       const { data: freshTemplates } = await supabase.from('ahsp_templates').select(`
         id, total_harga_ahsp, overhead_percent,
         ahsp_details ( koefisien, master_hsd ( base_price ) )
@@ -141,9 +139,9 @@ export default function AssignmentsPage() {
       
       const freshTplMap = {};
       freshTemplates?.forEach(t => {
-        let finalPrice = t.total_harga_ahsp || 0;
+        let finalPrice = Number(t.total_harga_ahsp) || 0;
         
-        // Jika cache 0, hitung manual dari komponennya
+        // Jika cache 0, hitung manual
         if (finalPrice === 0 && t.ahsp_details && t.ahsp_details.length > 0) {
           const murni = t.ahsp_details.reduce((sum, d) => sum + (d.koefisien * (d.master_hsd?.base_price || 0)), 0);
           const overhead = (t.overhead_percent || 15) / 100;
