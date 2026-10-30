@@ -13,6 +13,8 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
     predecessors: '', task_mode: 'Auto Scheduled'
   });
 
+  const isSummary = initialData?.summary === 'Yes';
+
   useEffect(() => {
     if (initialData) {
       setFormData({
@@ -38,7 +40,7 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
           <div className="grid grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">WBS Code</label>
-              <input type="text" required value={formData.wbs_code} onChange={e => setFormData({...formData, wbs_code: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input type="text" required value={formData.wbs_code} onChange={e => setFormData({...formData, wbs_code: e.target.value})} className="w-full border rounded-lg p-2 text-sm" disabled={isSummary} />
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium mb-1">Nama Task</label>
@@ -49,38 +51,30 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
           <div className="grid grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Mulai</label>
-              <input type="date" required value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input type="date" required value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} disabled={isSummary} className={`w-full border rounded-lg p-2 text-sm ${isSummary ? 'bg-gray-100' : ''}`} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Selesai</label>
-              <input 
-                type="date" 
-                required 
-                value={formData.end_date} 
-                onChange={e => setFormData({...formData, end_date: e.target.value})} 
-                disabled={formData.task_mode === 'Auto Scheduled'}
-                className={`w-full border rounded-lg p-2 text-sm ${formData.task_mode === 'Auto Scheduled' ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`} 
-              />
+              <input type="date" required value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} disabled={isSummary || formData.task_mode === 'Auto Scheduled'} className={`w-full border rounded-lg p-2 text-sm ${(isSummary || formData.task_mode === 'Auto Scheduled') ? 'bg-gray-100 text-gray-500' : ''}`} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Durasi (Hari Kerja)</label>
-              <input type="number" min="1" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <label className="block text-sm font-medium mb-1">Durasi (Hari)</label>
+              <input type="number" min="1" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} disabled={isSummary} className={`w-full border rounded-lg p-2 text-sm ${isSummary ? 'bg-gray-100' : ''}`} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Progres (%)</label>
-              <input type="number" min="0" max="100" value={formData.progress_percent} onChange={e => setFormData({...formData, progress_percent: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+              <input type="number" min="0" max="100" value={formData.progress_percent} onChange={e => setFormData({...formData, progress_percent: e.target.value})} disabled={isSummary} className={`w-full border rounded-lg p-2 text-sm ${isSummary ? 'bg-gray-100' : ''}`} />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
              <div>
-              <label className="block text-sm font-medium mb-1">Predecessors (Format MS Project)</label>
-              <input type="text" placeholder="Cth: 1.1FS+2d, 1.2SS" value={formData.predecessors} onChange={e => setFormData({...formData, predecessors: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-              <p className="text-[10px] text-gray-500 mt-1">Gunakan format: WBS + Tipe (FS/SS/FF/SF) + Lag (contoh: 1.1FS+2d)</p>
+              <label className="block text-sm font-medium mb-1">Predecessors (WBS)</label>
+              <input type="text" placeholder="Cth: 1.1FS+2d, 1.2SS" value={formData.predecessors} onChange={e => setFormData({...formData, predecessors: e.target.value})} disabled={isSummary} className={`w-full border rounded-lg p-2 text-sm ${isSummary ? 'bg-gray-100' : ''}`} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Task Mode</label>
-              <select value={formData.task_mode} onChange={e => setFormData({...formData, task_mode: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
+              <select value={formData.task_mode} onChange={e => setFormData({...formData, task_mode: e.target.value})} disabled={isSummary} className={`w-full border rounded-lg p-2 text-sm ${isSummary ? 'bg-gray-100' : ''}`}>
                 <option value="Auto Scheduled">Auto Scheduled</option>
                 <option value="Manually Scheduled">Manually Scheduled</option>
               </select>
@@ -90,14 +84,14 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
           <div className="grid grid-cols-2 gap-4 bg-gray-50 p-3 rounded-lg border mt-4">
             <div>
               <label className="block text-sm font-medium mb-1">Tipe Baris</label>
-              <select value={formData.summary} onChange={e => setFormData({...formData, summary: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
+              <select value={formData.summary} onChange={e => setFormData({...formData, summary: e.target.value})} disabled={!!initialData} className={`w-full border rounded-lg p-2 text-sm ${!!initialData ? 'bg-gray-200 text-gray-500' : ''}`}>
                 <option value="No">Pekerjaan (Leaf)</option>
                 <option value="Yes">Summary (Header)</option>
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Biaya (Rp)</label>
-              <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} className="w-full border rounded-lg p-2 text-sm" disabled={!!initialData?.ahsp_template_id} />
+              <input type="number" value={formData.cost} onChange={e => setFormData({...formData, cost: e.target.value})} disabled={isSummary || !!initialData?.ahsp_template_id} className={`w-full border rounded-lg p-2 text-sm ${(isSummary || !!initialData?.ahsp_template_id) ? 'bg-gray-100' : ''}`} />
             </div>
           </div>
           

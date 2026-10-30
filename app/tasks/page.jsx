@@ -20,11 +20,12 @@ export default function TasksPage() {
   const [projectId, setProjectId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [engineError, setEngineError] = useState(null);
 
   const fetchTasks = async () => {
     setLoading(true);
+    setEngineError(null);
     try {
-      // ⚠️ PERBAIKAN: Kembalikan logika fallback jika tabel projects kosong
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id;
       
@@ -40,8 +41,14 @@ export default function TasksPage() {
       
       if (data && data.length > 0) {
         const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-        const calculated = calculateCPM(data, projectStart);
-        setCpmTasks(calculated);
+        const result = calculateCPM(data, projectStart);
+        
+        if (result.error) {
+          setEngineError(result.error);
+          setCpmTasks(result.tasks); // Tampilkan data mentah jika error
+        } else {
+          setCpmTasks(result.tasks);
+        }
       } else {
         setCpmTasks([]);
       }
@@ -92,12 +99,18 @@ export default function TasksPage() {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold">Task Management (CPM Engine)</h1>
-          <p className="text-sm text-gray-500 mt-1">Warna <span className="text-red-600 font-bold">Merah</span> menandakan Jalur Kritis (Total Float = 0).</p>
+          <p className="text-sm text-gray-500 mt-1">Warna <span className="text-red-600 font-bold">Merah</span> menandakan Jalur Kritis.</p>
         </div>
         <button onClick={() => { setEditingTask(null); setIsModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition shadow-sm">
           + Tambah Task
         </button>
       </div>
+
+      {engineError && (
+        <div className="bg-red-100 text-red-700 p-4 rounded-lg mb-6 border border-red-300 font-bold">
+          ⚠️ {engineError}
+        </div>
+      )}
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Menghitung CPM..." /> : (
@@ -108,8 +121,8 @@ export default function TasksPage() {
                 <th className="p-3 border-r">WBS</th>
                 <th className="p-3 border-r">Nama Task</th>
                 <th className="p-3 border-r text-center">Durasi</th>
-                <th className="p-3 border-r">Start (ES)</th>
-                <th className="p-3 border-r">Finish (EF)</th>
+                <th className="p-3 border-r">Start</th>
+                <th className="p-3 border-r">Finish</th>
                 <th className="p-3 border-r">Predecessors</th>
                 <th className="p-3 border-r text-center">Float</th>
                 <th className="p-3 border-r text-center">Progres</th>
@@ -130,15 +143,15 @@ export default function TasksPage() {
                     {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
                   </td>
                   <td className="p-3 border-r text-center">{t.duration} d</td>
-                  <td className="p-3 border-r font-medium">{formatDate(t.ES_date || t.start_date)}</td>
-                  <td className="p-3 border-r font-medium">{formatDate(t.EF_date || t.end_date)}</td>
+                  <td className="p-3 border-r font-medium">{formatDate(t.start_date)}</td>
+                  <td className="p-3 border-r font-medium">{formatDate(t.end_date)}</td>
                   <td className="p-3 border-r text-gray-500 text-xs">{t.predecessors || '-'}</td>
                   <td className="p-3 border-r text-center font-bold">
                     {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
                   </td>
                   <td className="p-3 border-r text-center">
                     <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
-                      <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${t.progress_percent}%` }}></div>
+                      <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-600' : 'bg-blue-600'}`} style={{ width: `${t.progress_percent}%` }}></div>
                     </div>
                     {t.progress_percent}%
                   </td>
@@ -151,7 +164,7 @@ export default function TasksPage() {
             </tbody>
           </table>
         )}
-        {cpmTasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task. Silakan tambah task baru.</div>}
+        {cpmTasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task.</div>}
       </div>
 
       <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingTask} />
