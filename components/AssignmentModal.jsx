@@ -5,12 +5,11 @@ import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveSuccess }) {
-  const [mode, setMode] = useState('existing'); // 'existing' atau 'new'
+  const [mode, setMode] = useState('existing');
   const [masterHsd, setMasterHsd] = useState([]);
   const [selectedHsdId, setSelectedHsdId] = useState('');
   const [koefisien, setKoefisien] = useState('');
   
-  // State untuk input baru
   const [newHsd, setNewHsd] = useState({
     resource_type: 'Bahan',
     item_name: '',
@@ -22,13 +21,11 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
 
   useEffect(() => {
     if (isOpen) {
-      // Reset form
       setMode('existing');
       setSelectedHsdId('');
       setKoefisien('');
       setNewHsd({ resource_type: 'Bahan', item_name: '', unit: '', base_price: '' });
       
-      // Fetch daftar HSD yang sudah ada
       const fetchHsd = async () => {
         const { data } = await supabase.from('master_hsd').select('*').order('resource_type');
         setMasterHsd(data || []);
@@ -46,8 +43,8 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     try {
       let finalHsdId = selectedHsdId;
 
-      // Jika mode input baru, simpan dulu ke master_hsd
       if (mode === 'new') {
+        // Simpan ke master_hsd
         const { data: insertedHsd, error: insertError } = await supabase
           .from('master_hsd')
           .insert([{
@@ -66,9 +63,8 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
 
       if (!finalHsdId) throw new Error("Pilih komponen atau isi data baru.");
 
-      // Simpan ke detail AHSP
+      // ⚠️ PERBAIKAN: Hapus project_id dari insert ahsp_details
       const { error: detailError } = await supabase.from('ahsp_details').insert([{
-        project_id: ahspTemplate.project_id,
         ahsp_template_id: ahspTemplate.id,
         resource_id: finalHsdId,
         koefisien: Number(koefisien)
@@ -85,7 +81,6 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     }
   };
 
-  // Kelompokkan HSD berdasarkan tipe untuk dropdown
   const groupedHsd = masterHsd.reduce((acc, curr) => {
     if (!acc[curr.resource_type]) acc[curr.resource_type] = [];
     acc[curr.resource_type].push(curr);
@@ -98,7 +93,6 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
         <h2 className="text-xl font-bold mb-1">Tambah Komponen AHSP</h2>
         <p className="text-sm text-gray-500 mb-4">Untuk AHSP: <span className="font-semibold text-gray-800">{ahspTemplate.name}</span></p>
         
-        {/* Toggle Mode */}
         <div className="flex bg-gray-100 p-1 rounded-lg mb-6">
           <button type="button" onClick={() => setMode('existing')} className={`flex-1 py-2 text-sm font-medium rounded-md transition ${mode === 'existing' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
             Pilih dari Master HSD
@@ -109,7 +103,6 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
         </div>
 
         <form onSubmit={handleSave} className="space-y-4">
-          
           {mode === 'existing' ? (
             <div>
               <label className="block text-sm font-medium mb-1">Pilih Komponen (HSD)</label>
