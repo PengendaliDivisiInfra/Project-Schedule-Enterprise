@@ -1,20 +1,16 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase'; // <-- Singleton
 import GanttChart from '../components/GanttChart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { calculateCPM } from '../lib/cpmEngine';
 import { generateEVMData } from '../lib/evmEngine';
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export default function Dashboard() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [scurveData, setScurveData] = useState([]);
   const [kpi, setKpi] = useState({ bac: 0, spi: 1, cpi: 1, etc: 0, eac: 0, vac: 0, tcpi: 1 });
-  
-  // Status Date default hari ini
   const statusDate = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -32,11 +28,8 @@ export default function Dashboard() {
           if (data && data.length > 0) {
             const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
             const cpmResult = calculateCPM(data, projectStart);
-            
             if (!cpmResult.error) {
               setTasks(cpmResult.tasks);
-              
-              // Generate EVM
               const evm = generateEVMData(cpmResult.tasks, projectStart, statusDate);
               setScurveData(evm.chartData);
               setKpi(evm.summaryKPI);
@@ -60,12 +53,11 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-800">Proyek Jembatan Cisomang (Enterprise)</h1>
           <p className="text-sm text-gray-500 mt-1">Status Date: {statusDate} | User: engineering@gmail.com</p>
         </div>
-        <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm flex items-center gap-2">
+        <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm">
           Recalculate CPM & AHSP
         </button>
       </div>
 
-      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
           <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">BAC</div>
@@ -97,7 +89,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* S-Curve Chart */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 p-5">
         <h2 className="text-lg font-bold text-gray-800 mb-4">S-Curve (PV / EV / AC)</h2>
         <div className="h-[350px] w-full">
@@ -118,7 +109,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Gantt Chart */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
         <div className="p-5 border-b border-gray-200 bg-gray-50/50 rounded-t-xl">
           <h2 className="text-lg font-bold text-gray-800">Interactive Gantt Workspace (CPM Engine)</h2>
