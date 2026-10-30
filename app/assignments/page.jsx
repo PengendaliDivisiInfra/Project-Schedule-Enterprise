@@ -1,6 +1,6 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase'; // Gunakan Singleton
+import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function AssignmentsPage() {
@@ -36,10 +36,9 @@ export default function AssignmentsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Handler ini sekarang hanya mengirim data ke database
-  // Kalkulasi (Volume x Harga dan Rollup) dilakukan otomatis oleh Trigger PostgreSQL
   const handleAssign = async (taskId, templateId, volume) => {
     try {
+      // ⚠️ PERBAIKAN: JANGAN kirim 'cost' manual. Biarkan trigger database yang menghitung!
       const { error } = await supabase.from('wbs_tasks')
         .update({ 
           ahsp_template_id: templateId || null, 
@@ -49,7 +48,7 @@ export default function AssignmentsPage() {
       
       if (error) throw error;
       
-      // Tarik ulang data agar angka terbaru dari database langsung muncul
+      // Tarik ulang data agar hasil kalkulasi dari trigger langsung muncul di layar
       fetchData(); 
     } catch (err) {
       alert('Gagal update: ' + err.message);
