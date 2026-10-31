@@ -6,46 +6,46 @@ const ROW_HEIGHT = 40;
 
 export default function AdvancedGantt({ tasks, relations }) {
   const leftPanelRef = useRef(null);
-  const rightPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
 
-  // 1. Kalkulasi Batas Tanggal
+  // 1. Generate Working Days Array
   let minDate = new Date();
   let maxDate = new Date();
   tasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
   });
-  minDate.setDate(minDate.getDate() - 2);
-  maxDate.setDate(maxDate.getDate() + 5);
+  minDate.setDate(minDate.getDate() - 2); // Padding
+  maxDate.setDate(maxDate.getDate() + 5); // Padding
   
-  const totalDays = Math.max(1, (maxDate - minDate) / (1000 * 60 * 60 * 24));
-  const totalWidth = totalDays * DAY_WIDTH;
-
-  // 2. Generate Header Kalender
-  const dateHeaders = [];
+  const workingDays = [];
   let cur = new Date(minDate);
   while (cur <= maxDate) {
-    dateHeaders.push({ date: new Date(cur), isWeekend: cur.getDay() === 0 || cur.getDay() === 6 });
+    if (cur.getDay() !== 0 && cur.getDay() !== 6) { // 0=Minggu, 6=Sabtu
+      workingDays.push(new Date(cur));
+    }
     cur.setDate(cur.getDate() + 1);
   }
 
-  // 3. Hitung Koordinat & Path SVG (Pure Math, No DOM Read!)
+  const totalWidth = workingDays.length * DAY_WIDTH;
+
+  // Helper: Cari posisi X berdasarkan tanggal
+  const getX = (dateStr) => {
+    if (!dateStr) return 0;
+    const idx = workingDays.findIndex(d => d.toISOString().split('T')[0] === dateStr);
+    return idx !== -1 ? idx * DAY_WIDTH : 0;
+  };
+
+  // 2. Hitung Koordinat & SVG Path
   useEffect(() => {
     const paths = [];
     const taskRects = {};
 
     tasks.forEach((t, idx) => {
-      const tStart = new Date(t.start_date);
-      const tFinish = new Date(t.end_date);
-      const offsetDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
-      const durationDays = Math.max(1, (tFinish - tStart) / (1000 * 60 * 60 * 24));
-      
-      const x = offsetDays * DAY_WIDTH;
-      const width = durationDays * DAY_WIDTH;
+      const x = getX(t.start_date);
+      const width = t.duration * DAY_WIDTH;
       const y = idx * ROW_HEIGHT;
-
-      taskRects[t.wbs_code] = { x, y, width, height: 20 }; // Tinggi bar 20px
+      taskRects[t.wbs_code] = { x, y, width, height: 20 };
     });
 
     relations.forEach(rel => {
@@ -96,9 +96,9 @@ export default function AdvancedGantt({ tasks, relations }) {
     });
 
     setSvgPaths(paths);
-  }, [tasks, relations, minDate, maxDate]);
+  }, [tasks, relations]);
 
-  // 4. Sinkronisasi Scroll
+  // 3. Sinkronisasi Scroll
   const handleScroll = (e) => {
     if (leftPanelRef.current) {
       leftPanelRef.current.scrollTop = e.target.scrollTop;
@@ -119,13 +119,13 @@ export default function AdvancedGantt({ tasks, relations }) {
         </div>
         <div className="flex-1 overflow-hidden">
           <div className="flex" style={{ width: totalWidth }}>
-            {dateHeaders.map((dh, i) => (
+            {workingDays.map((wd, i) => (
               <div 
                 key={i} 
-                className={`text-center text-[10px] border-r border-gray-300 font-semibold py-2 ${dh.isWeekend ? 'bg-gray-300 text-gray-600' : 'bg-gray-200'}`}
+                className="text-center text-[10px] border-r border-gray-300 font-semibold py-2 bg-gray-200"
                 style={{ width: DAY_WIDTH }}
               >
-                {dh.date.getDate()}
+                {wd.getDate()}
               </div>
             ))}
           </div>
@@ -138,7 +138,7 @@ export default function AdvancedGantt({ tasks, relations }) {
         {/* Panel Kiri: Tabel Data */}
         <div ref={leftPanelRef} className="w-[450px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
-            {tasks.map((t, idx) => (
+            {tasks.map((t) => (
               <div key={t.id} className="flex text-xs items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[40px]">
                 <span className="w-12 font-mono text-gray-500">{t.wbs_code}</span>
                 <span className={`flex-1 truncate ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }}>
@@ -156,7 +156,6 @@ export default function AdvancedGantt({ tasks, relations }) {
 
         {/* Panel Kanan: Timeline & SVG Links */}
         <div 
-          ref={rightPanelRef} 
           className="flex-1 overflow-auto relative bg-gray-50/30 select-none"
           onScroll={handleScroll}
         >
@@ -164,10 +163,10 @@ export default function AdvancedGantt({ tasks, relations }) {
             
             {/* Layer 1: Grid Background */}
             <div className="absolute inset-0 flex pointer-events-none">
-              {dateHeaders.map((dh, i) => (
+              {workingDays.map((wd, i) => (
                 <div 
                   key={i} 
-                  className={`border-r border-gray-200/50 h-full ${dh.isWeekend ? 'bg-gray-200/40' : ''}`}
+                  className="border-r border-gray-200/50 h-full"
                   style={{ width: DAY_WIDTH }}
                 ></div>
               ))}
@@ -198,14 +197,9 @@ export default function AdvancedGantt({ tasks, relations }) {
             {/* Layer 3: Task Bars */}
             <div className="absolute inset-0 z-20 pointer-events-none">
               {tasks.map((t, idx) => {
-                const tStart = new Date(t.start_date);
-                const tFinish = new Date(t.end_date);
-                const offsetDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
-                const durationDays = Math.max(1, (tFinish - tStart) / (1000 * 60 * 60 * 24));
-                
-                const left = offsetDays * DAY_WIDTH;
-                const width = durationDays * DAY_WIDTH;
-                const top = idx * ROW_HEIGHT + 10; // Center vertically in 40px row
+                const left = getX(t.start_date);
+                const width = t.duration * DAY_WIDTH;
+                const top = idx * ROW_HEIGHT + 10;
 
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
@@ -215,11 +209,22 @@ export default function AdvancedGantt({ tasks, relations }) {
                 if (isSummary) barColor = 'bg-slate-800';
                 else if (isCritical) barColor = 'bg-red-500';
 
+                if (width === 0) {
+                  return (
+                    <div
+                      key={t.id}
+                      className="absolute w-3 h-3 bg-yellow-400 rotate-45 transform -translate-x-1/2 shadow-sm pointer-events-auto cursor-pointer z-30"
+                      style={{ left: left, top: top - 2 }}
+                      title={`Milestone: ${t.name}`}
+                    ></div>
+                  );
+                }
+
                 return (
                   <div
                     key={t.id}
                     className={`absolute h-5 rounded-sm shadow-sm flex items-center overflow-hidden ${barColor} pointer-events-auto cursor-pointer`}
-                    style={{ left, width: isSummary ? width : Math.max(20, width) }}
+                    style={{ left, width: Math.max(20, width) }}
                     title={`${t.name} (${progress}%)`}
                   >
                     {!isSummary && (
