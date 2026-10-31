@@ -137,7 +137,16 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   };
 
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
-  const formatDateForInput = (dateStr) => dateStr ? new Date(dateStr).toISOString().split('T')[0] : '';
+  
+  // Pastikan format tanggal untuk input type="date" selalu YYYY-MM-DD
+  const formatDateForInput = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().split('T')[0];
+    } catch (e) { return ''; }
+  };
 
   const calculateDailyTarget = (task) => {
     if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
@@ -160,7 +169,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       
       {/* HEADER (2 Baris: Bulan & Tanggal) */}
       <div className="flex border-b border-gray-400 bg-[#f3f3f3] shrink-0 z-20">
-        <div className="w-[1050px] border-r border-gray-400 flex flex-col shrink-0">
+        <div className="w-[1080px] border-r border-gray-400 flex flex-col shrink-0">
           {/* Header Atas (Tabel Kiri) */}
           <div className="flex justify-between items-center px-1 py-1 border-b border-gray-300 bg-[#e6e6e6]">
             <div className="flex text-[11px] font-semibold text-gray-700 items-center">
@@ -170,8 +179,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               <span className="w-48 pl-1 border-l border-gray-300">Task Name</span>
               <span className="w-20 text-center border-l border-gray-300 bg-slate-200 text-slate-800">Volume</span>
               <span className="w-10 text-center border-l border-gray-300">Dur</span>
-              <span className="w-16 text-center border-l border-gray-300">Start</span>
-              <span className="w-16 text-center border-l border-gray-300">Finish</span>
+              <span className="w-[85px] text-center border-l border-gray-300">Start</span>
+              <span className="w-[85px] text-center border-l border-gray-300">Finish</span>
               <span className="w-12 text-center border-l border-gray-300">Pred</span>
               <span className="w-16 text-center border-l border-gray-300">Resource</span>
               <span className="w-10 text-center border-l border-gray-300">%</span>
@@ -222,7 +231,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       <div className="flex flex-1 overflow-hidden">
         
         {/* KOLOM KIRI (Entry Table) */}
-        <div ref={leftPanelRef} className="w-[1050px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
+        <div ref={leftPanelRef} className="w-[1080px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {displayTasks.map((t, idx) => {
               const dailyTarget = calculateDailyTarget(t);
@@ -280,8 +289,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     )}
                   </div>
                   
-                  {/* Start (Inline Edit) */}
-                  <div className="w-16 text-center border-l border-gray-100">
+                  {/* Start (Inline Edit) - Lebar Diperbesar */}
+                  <div className="w-[85px] text-center border-l border-gray-100">
                     {isSummary ? (
                       <span className="text-gray-600">{fmtDate(t.start_date)}</span>
                     ) : (
@@ -289,13 +298,13 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                         type="date" 
                         defaultValue={formatDateForInput(t.start_date)} 
                         onBlur={(e) => onInlineUpdate(t.id, 'start_date', e.target.value)}
-                        className="w-[60px] border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]"
+                        className="w-[75px] border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]"
                       />
                     )}
                   </div>
 
-                  {/* Finish (Inline Edit) */}
-                  <div className="w-16 text-center border-l border-gray-100">
+                  {/* Finish (Inline Edit) - Lebar Diperbesar */}
+                  <div className="w-[85px] text-center border-l border-gray-100">
                     {isSummary ? (
                       <span className="text-gray-600">{fmtDate(t.end_date)}</span>
                     ) : (
@@ -303,7 +312,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                         type="date" 
                         defaultValue={formatDateForInput(t.end_date)} 
                         onBlur={(e) => onInlineUpdate(t.id, 'end_date', e.target.value)}
-                        className="w-[60px] border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]"
+                        className="w-[75px] border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]"
                       />
                     )}
                   </div>

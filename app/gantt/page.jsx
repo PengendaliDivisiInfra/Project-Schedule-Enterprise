@@ -36,12 +36,15 @@ export default function GanttPage() {
         setWorkingDays(activeWorkingDays);
         setExceptions(activeExceptions);
 
-        let { data, error } = await supabase.from('v_wbs_tasks_with_targets').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
-        
-        if (error) {
-            let fallbackRes = await supabase.from('wbs_tasks').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
-            data = fallbackRes.data;
-        }
+        // ⚠️ PERBAIKAN: Ambil data langsung dari wbs_tasks, JOIN dengan ahsp_templates untuk unit
+        const { data, error } = await supabase
+          .from('wbs_tasks')
+          .select(`
+            *,
+            ahsp_templates ( unit )
+          `)
+          .eq('project_id', projectId)
+          .order('wbs_code', { ascending: true });
         
         if (data && data.length > 0) {
           const mappedData = data.map(t => ({
@@ -49,8 +52,10 @@ export default function GanttPage() {
             satuan_hsd: t.ahsp_templates?.unit || 'unit',
             resource_names: t.resource_names || '',
             smart_target: Number(t.smart_target) || 0,
-            sisa_hari_efektif: Number(t.sisa_hari_efektif) || 0,
-            target_per_hari: Number(t.target_per_hari) || 0
+            volume: Number(t.volume) || 0, // Pastikan volume terambil sebagai angka
+            // Kalkulasi target per hari fallback (jika view DB belum siap)
+            target_per_hari: 0,
+            sisa_hari_efektif: 0
           }));
 
           const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
@@ -62,8 +67,7 @@ export default function GanttPage() {
               satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit',
               resource_names: mappedData.find(m => m.id === t.id)?.resource_names || '',
               smart_target: mappedData.find(m => m.id === t.id)?.smart_target || 0,
-              sisa_hari_efektif: mappedData.find(m => m.id === t.id)?.sisa_hari_efektif || 0,
-              target_per_hari: mappedData.find(m => m.id === t.id)?.target_per_hari || 0
+              volume: mappedData.find(m => m.id === t.id)?.volume || 0
             }));
             setTasks(finalTasks);
             setRelations(result.relations);
@@ -81,17 +85,17 @@ export default function GanttPage() {
 
   const handleInlineUpdate = async (taskId, field, value) => {
     try {
-      const { error } = await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+      // Pastikan format tanggal benar sebelum dikirim
+      let formattedValue = value;
+      if (field === 'start_date' || field === 'end_date') {
+        formattedValue = value; // Input type="date" sudah mengembalikan format YYYY-MM-DD
+      }
+
+      const { error } = await supabase.from('wbs_tasks').update({ [field]: formattedValue }).eq('id', taskId);
       if (error) throw error;
       
-      // Jika yang diubah adalah tanggal, durasi, atau volume, kita perlu fetch ulang 
-      // agar CPM Engine dan Trigger Database menghitung ulang semuanya.
-      if (['start_date', 'end_date', 'duration', 'volume'].includes(field)) {
-        fetchData(); 
-      } else {
-        // Untuk name atau resource, cukup update state lokal
-        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
-      }
+      // Fetch ulang data untuk sinkronisasi CPM Engine dan Trigger DB
+      fetchData(); 
     } catch (err) {
       alert("Gagal update: " + err.message);
     }
