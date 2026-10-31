@@ -106,7 +106,7 @@ export default function TasksPage() {
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Menghitung CPM..." /> : (
-          <table className="w-full text-left min-w-[1300px]">
+          <table className="w-full text-left min-w-[1400px]">
             <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
               <tr>
                 <th className="p-3 border-r text-center w-24">Hierarki</th>
@@ -117,40 +117,49 @@ export default function TasksPage() {
                 <th className="p-3 border-r">Finish (EF)</th>
                 <th className="p-3 border-r">Predecessors</th>
                 <th className="p-3 border-r text-center">Float</th>
+                <th className="p-3 border-r text-center text-indigo-700 bg-indigo-50">Target SMART</th>
                 <th className="p-3 border-r text-center">Progres</th>
                 <th className="p-3 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
-              {cpmTasks.map((t) => (
-                <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''} ${t.is_critical && t.summary !== 'Yes' ? 'text-red-700 bg-red-50' : ''}`}>
-                  <td className="p-2 border-r text-center flex justify-center gap-1">
-                    <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs disabled:opacity-50">⬅️</button>
-                    <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs">➡️</button>
-                  </td>
-                  <td className="p-3 border-r font-mono">{t.wbs_code}</td>
-                  <td className="p-3 border-r" style={{ paddingLeft: `${(t.indent_level || 0) * 20 + 12}px` }}>
-                    {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
-                  </td>
-                  <td className="p-3 border-r text-center">{t.duration} d</td>
-                  <td className="p-3 border-r font-medium">{formatDate(t.start_date)}</td>
-                  <td className="p-3 border-r font-medium">{formatDate(t.end_date)}</td>
-                  <td className="p-3 border-r text-gray-500 text-xs">{t.predecessors || '-'}</td>
-                  <td className="p-3 border-r text-center font-bold">
-                    {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
-                  </td>
-                  <td className="p-3 border-r text-center">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
-                      <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-600' : 'bg-blue-600'}`} style={{ width: `${t.progress_percent}%` }}></div>
-                    </div>
-                    {t.progress_percent}%
-                  </td>
-                  <td className="p-3 flex justify-center gap-2">
-                    <button onClick={() => { setEditingTask(t); setIsModalOpen(true); }} className="text-blue-600 hover:underline text-xs">Edit</button>
-                    <button onClick={() => handleDelete(t.id)} className="text-red-600 hover:underline text-xs">Hapus</button>
-                  </td>
-                </tr>
-              ))}
+              {cpmTasks.map((t) => {
+                const isMilestone = t.duration === 0;
+                return (
+                  <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''} ${t.is_critical && t.summary !== 'Yes' ? 'text-red-700 bg-red-50' : ''}`}>
+                    <td className="p-2 border-r text-center flex justify-center gap-1">
+                      <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs disabled:opacity-50">⬅️</button>
+                      <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs">➡️</button>
+                    </td>
+                    <td className="p-3 border-r font-mono">{t.wbs_code}</td>
+                    <td className="p-3 border-r" style={{ paddingLeft: `${(t.indent_level || 0) * 20 + 12}px` }}>
+                      {t.summary === 'Yes' ? '📁 ' : (isMilestone ? '💎 ' : '📄 ')} {t.name}
+                    </td>
+                    <td className="p-3 border-r text-center">
+                      {isMilestone ? <span className="text-yellow-600 font-bold">0 d (Milestone)</span> : `${t.duration} d`}
+                    </td>
+                    <td className="p-3 border-r font-medium">{formatDate(t.start_date)}</td>
+                    <td className="p-3 border-r font-medium">{formatDate(t.end_date)}</td>
+                    <td className="p-3 border-r text-gray-500 text-xs">{t.predecessors || '-'}</td>
+                    <td className="p-3 border-r text-center font-bold">
+                      {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
+                    </td>
+                    <td className="p-3 border-r text-center font-bold text-indigo-600 bg-indigo-50/50">
+                      {t.summary === 'Yes' ? '-' : (t.smart_target || 0)}
+                    </td>
+                    <td className="p-3 border-r text-center">
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
+                        <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-600' : 'bg-blue-600'}`} style={{ width: `${t.progress_percent}%` }}></div>
+                      </div>
+                      {t.progress_percent}%
+                    </td>
+                    <td className="p-3 flex justify-center gap-2">
+                      <button onClick={() => { setEditingTask(t); setIsModalOpen(true); }} className="text-blue-600 hover:underline text-xs">Edit</button>
+                      <button onClick={() => handleDelete(t.id)} className="text-red-600 hover:underline text-xs">Hapus</button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

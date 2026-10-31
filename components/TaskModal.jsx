@@ -57,8 +57,8 @@ export default function TaskModal({ isOpen, onClose, onSave, initialData }) {
               <input type="date" required value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} disabled={initialData?.summary === 'Yes' || formData.task_mode === 'Auto Scheduled'} className={`w-full border rounded-lg p-2 text-sm ${(initialData?.summary === 'Yes' || formData.task_mode === 'Auto Scheduled') ? 'bg-gray-100 text-gray-500' : ''}`} />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Durasi (Hari)</label>
-              <input type="number" min="1" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} disabled={initialData?.summary === 'Yes'} className={`w-full border rounded-lg p-2 text-sm ${initialData?.summary === 'Yes' ? 'bg-gray-100' : ''}`} />
+              <label className="block text-sm font-medium mb-1 text-blue-700 font-bold">Durasi (0 = Milestone)</label>
+              <input type="number" min="0" value={formData.duration} onChange={e => setFormData({...formData, duration: e.target.value})} disabled={initialData?.summary === 'Yes'} className={`w-full border-2 border-blue-300 rounded-lg p-2 text-sm font-bold ${initialData?.summary === 'Yes' ? 'bg-gray-100' : ''}`} />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Progres (%)</label>
