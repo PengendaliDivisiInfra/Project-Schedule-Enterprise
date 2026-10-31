@@ -1,11 +1,12 @@
 ﻿'use client';
 import { useRef, useEffect, useState } from 'react';
 
-const DAY_WIDTH = 40;
-const ROW_HEIGHT = 45;
+const DAY_WIDTH = 36;
+const ROW_HEIGHT = 38; // Baris lebih rapat dan padat seperti MS Project
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
   const leftPanelRef = useRef(null);
+  const rightPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
 
@@ -46,7 +47,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     if (m !== currentMonth || y !== currentYear) {
       if (currentMonth !== -1) {
         monthGroups.push({
-          name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
+          name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }),
           span: idx - monthStartIndex
         });
       }
@@ -57,7 +58,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   });
   if (currentMonth !== -1) {
     monthGroups.push({
-      name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
+      name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }),
       span: calendarDays.length - monthStartIndex
     });
   }
@@ -78,7 +79,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return xPos;
   };
 
-  // 3. Hitung SVG Path
+  // 3. Hitung SVG Path (Garis Panah)
   useEffect(() => {
     const paths = [];
     const taskRects = {};
@@ -87,7 +88,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       const x = getX(t.start_date);
       const width = t.duration * DAY_WIDTH;
       const y = idx * ROW_HEIGHT;
-      taskRects[t.wbs_code] = { x, y, width: Math.max(width, t.summary === 'Yes' ? width : 24), height: t.summary === 'Yes' ? 8 : 24 };
+      taskRects[t.wbs_code] = { x, y, width: Math.max(width, t.summary === 'Yes' ? width : 16), height: t.summary === 'Yes' ? 6 : 16 };
     });
 
     relations.forEach(rel => {
@@ -104,7 +105,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       else if (rel.type === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
 
       const points = [[sourceX, sourceY]];
-      const paddingX = 16;
+      const paddingX = 12;
 
       if (rel.type === 'FS') {
         if (targetX >= sourceX + paddingX) {
@@ -136,7 +137,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     }
   };
 
-  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-';
+  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
 
   const calculateDailyTarget = (task) => {
     if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
@@ -155,46 +156,46 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col h-[calc(100vh-160px)] overflow-hidden">
+    <div className="bg-white rounded-lg shadow-md border border-gray-400 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
       {/* HEADER (2 Baris: Bulan & Tanggal) */}
-      <div className="flex border-b border-gray-300 bg-gray-100 shrink-0 z-20">
-        <div className="w-[850px] border-r border-gray-300 flex flex-col bg-gray-200 shrink-0">
+      <div className="flex border-b border-gray-400 bg-[#f3f3f3] shrink-0 z-20">
+        <div className="w-[880px] border-r border-gray-400 flex flex-col shrink-0">
           {/* Header Atas (Tabel Kiri) */}
-          <div className="flex justify-between items-center p-2 border-b border-gray-300">
-            <div className="flex text-[10px] font-bold text-gray-700 items-center">
+          <div className="flex justify-between items-center px-1 py-1 border-b border-gray-300 bg-[#e6e6e6]">
+            <div className="flex text-[11px] font-semibold text-gray-700 items-center">
               <span className="w-6 text-center" title="Task Mode">📌</span>
               <span className="w-6 text-center" title="Complete">✓</span>
-              <span className="w-10 text-center" title="ID">#</span>
-              <span className="w-40 pl-1">Task Name</span>
-              <span className="w-10 text-center">Dur</span>
-              <span className="w-14 text-center">Start</span>
-              <span className="w-14 text-center">Finish</span>
-              <span className="w-12 text-center">Pred</span>
-              <span className="w-16 text-center">Resource</span>
-              <span className="w-10 text-center">%</span>
-              <span className="w-12 text-center">Target</span>
-              <span className="w-10 text-center">Sisa</span>
-              <span className="w-12 text-center">T/hr</span>
+              <span className="w-10 text-center" title="ID">ID</span>
+              <span className="w-44 pl-1 border-l border-gray-300">Task Name</span>
+              <span className="w-10 text-center border-l border-gray-300">Dur</span>
+              <span className="w-14 text-center border-l border-gray-300">Start</span>
+              <span className="w-14 text-center border-l border-gray-300">Finish</span>
+              <span className="w-12 text-center border-l border-gray-300">Pred</span>
+              <span className="w-16 text-center border-l border-gray-300">Resource</span>
+              <span className="w-10 text-center border-l border-gray-300">%</span>
+              <span className="w-12 text-center border-l border-gray-300">Target</span>
+              <span className="w-10 text-center border-l border-gray-300">Sisa</span>
+              <span className="w-12 text-center border-l border-gray-300">T/hr</span>
             </div>
             <button 
               onClick={() => setShowCriticalOnly(!showCriticalOnly)}
-              className={`text-[10px] px-2 py-1 rounded border transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
+              className={`text-[10px] px-2 py-0.5 rounded border ml-2 transition-colors ${showCriticalOnly ? 'bg-red-600 text-white border-red-700' : 'bg-white text-gray-600 border-gray-400 hover:bg-gray-50'}`}
             >
-              {showCriticalOnly ? 'Critical' : 'All Tasks'}
+              {showCriticalOnly ? 'Critical' : 'All'}
             </button>
           </div>
-          {/* Header Bawah (Tabel Kiri) - Kosong sebagai spacer */}
-          <div className="h-[30px]"></div>
+          {/* Header Bawah (Tabel Kiri) - Spacer */}
+          <div className="h-[24px] bg-[#f3f3f3]"></div>
         </div>
         
         <div className="flex-1 overflow-hidden flex flex-col">
           {/* Header Atas (Timeline) - Bulan */}
-          <div className="flex border-b border-gray-300" style={{ width: totalWidth }}>
+          <div className="flex border-b border-gray-300 bg-[#e6e6e6]" style={{ width: totalWidth }}>
             {monthGroups.map((mg, i) => (
               <div 
                 key={i} 
-                className="text-center text-[11px] font-bold text-gray-800 border-r border-gray-300 bg-gray-200 py-1"
+                className="text-center text-[10px] font-bold text-gray-700 border-r border-gray-300 py-0.5"
                 style={{ width: mg.span * DAY_WIDTH }}
               >
                 {mg.name}
@@ -202,11 +203,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             ))}
           </div>
           {/* Header Bawah (Timeline) - Tanggal */}
-          <div className="flex" style={{ width: totalWidth }}>
+          <div className="flex bg-[#f3f3f3]" style={{ width: totalWidth }}>
             {calendarDays.map((cd, i) => (
               <div 
                 key={i} 
-                className={`text-center text-[10px] border-r border-gray-300 font-semibold py-1.5 ${cd.isWeekend ? 'bg-gray-300 text-gray-500' : 'bg-gray-100 text-gray-600'}`}
+                className={`text-center text-[10px] border-r border-gray-300 font-medium py-1 ${cd.isWeekend ? 'bg-[#d9d9d9] text-gray-600' : 'text-gray-800'}`}
                 style={{ width: DAY_WIDTH }}
               >
                 {cd.date.getDate()}
@@ -220,30 +221,34 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       <div className="flex flex-1 overflow-hidden">
         
         {/* KOLOM KIRI (Entry Table) */}
-        <div ref={leftPanelRef} className="w-[850px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
+        <div ref={leftPanelRef} className="w-[880px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
-            {displayTasks.map((t) => {
+            {displayTasks.map((t, idx) => {
               const dailyTarget = calculateDailyTarget(t);
+              const isSummary = t.summary === 'Yes';
               return (
-                <div key={t.id} className={`flex text-[11px] items-center px-2 border-b border-gray-200 hover:bg-blue-50 h-[45px] group ${t.summary === 'Yes' ? 'bg-gray-50' : ''}`}>
-                  {/* Mode */}
+                <div key={t.id} className={`flex text-[11px] items-center px-1 border-b border-gray-200 h-[38px] group ${isSummary ? 'bg-[#f9f9f9] font-semibold' : 'hover:bg-blue-50'}`}>
+                  
+                  {/* Mode & Checkbox */}
                   <span className="w-6 text-center">
-                    {t.task_mode === 'Manually Scheduled' ? <span title="Manually Scheduled">📌</span> : <span title="Auto Scheduled">📅</span>}
+                    {t.task_mode === 'Manually Scheduled' ? <span title="Manually Scheduled">📌</span> : <span className="text-blue-500" title="Auto Scheduled">📅</span>}
                   </span>
-                  {/* Checkbox */}
                   <span className="w-6 text-center">
                     {t.progress_percent === 100 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">☐</span>}
                   </span>
-                  {/* Unique ID / WBS */}
-                  <span className="w-10 font-mono text-gray-500 text-center">{t.wbs_code}</span>
+                  
+                  {/* WBS Code */}
+                  <span className="w-10 font-mono text-gray-600 text-center">{t.wbs_code}</span>
+                  
                   {/* Task Name */}
-                  <span className={`w-40 truncate pl-1 ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
-                    {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
+                  <span className={`w-44 truncate pl-1 ${isSummary ? 'text-black' : 'text-gray-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
+                    {isSummary ? '📁 ' : '📄 '} {t.name}
                   </span>
+                  
                   {/* Duration (Inline Edit) */}
-                  <div className="w-10 text-center">
-                    {t.summary === 'Yes' ? (
-                      <span>{t.duration} d</span>
+                  <div className="w-10 text-center border-l border-gray-100">
+                    {isSummary ? (
+                      <span>{t.duration}d</span>
                     ) : (
                       <input 
                         type="number" 
@@ -253,33 +258,40 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                       />
                     )}
                   </div>
+                  
                   {/* Start & Finish */}
-                  <span className="w-14 text-center text-gray-600">{fmtDate(t.start_date)}</span>
-                  <span className="w-14 text-center text-gray-600">{fmtDate(t.end_date)}</span>
+                  <span className="w-14 text-center text-gray-600 border-l border-gray-100">{fmtDate(t.start_date)}</span>
+                  <span className="w-14 text-center text-gray-600 border-l border-gray-100">{fmtDate(t.end_date)}</span>
+                  
                   {/* Predecessors */}
-                  <span className="w-12 text-center text-gray-500 truncate" title={t.predecessors}>{t.predecessors || '-'}</span>
+                  <span className="w-12 text-center text-gray-500 border-l border-gray-100 truncate" title={t.predecessors}>{t.predecessors || '-'}</span>
+                  
                   {/* Resource (Inline Edit) */}
-                  <div className="w-16 px-1">
-                    {t.summary === 'No' && (
+                  <div className="w-16 px-1 border-l border-gray-100">
+                    {!isSummary && (
                       <input 
                         type="text" 
                         defaultValue={t.resource_names || ''} 
-                        placeholder="Assign..."
+                        placeholder="..."
                         onBlur={(e) => onInlineUpdate(t.id, 'resource_names', e.target.value)}
                         className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-gray-300"
                         title={t.resource_names}
                       />
                     )}
                   </div>
+                  
                   {/* % Complete */}
-                  <span className="w-10 text-center font-bold text-gray-700">{t.progress_percent}%</span>
+                  <span className="w-10 text-center font-bold text-gray-700 border-l border-gray-100">{t.progress_percent}%</span>
+                  
                   {/* SMART Target */}
-                  <span className="w-12 text-center font-bold text-slate-800">{t.summary === 'Yes' ? '-' : t.smart_target}</span>
+                  <span className="w-12 text-center font-bold text-slate-800 border-l border-gray-100">{isSummary ? '-' : t.smart_target}</span>
+                  
                   {/* Sisa Hari */}
-                  <span className="w-10 text-center text-slate-500">{t.summary === 'Yes' ? '-' : (t.sisa_hari_efektif || 0)}</span>
+                  <span className="w-10 text-center text-slate-500 border-l border-gray-100">{isSummary ? '-' : (t.sisa_hari_efektif || 0)}</span>
+                  
                   {/* Target Per Hari */}
-                  <span className="w-12 text-center text-indigo-600 font-bold">
-                    {t.summary === 'Yes' ? '-' : `${dailyTarget}`}
+                  <span className="w-12 text-center text-indigo-600 font-bold border-l border-gray-100">
+                    {isSummary ? '-' : `${dailyTarget}`}
                   </span>
                 </div>
               );
@@ -294,31 +306,31 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             {/* Layer 1: Grid & Weekend Shading & Horizontal Lines */}
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
               {displayTasks.map((_, i) => (
-                <div key={i} className="w-full border-b border-gray-200/60" style={{ height: ROW_HEIGHT }}></div>
+                <div key={i} className="w-full border-b border-gray-200" style={{ height: ROW_HEIGHT }}></div>
               ))}
             </div>
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => (
-                <div key={i} className={`border-r border-gray-200/50 h-full ${cd.isWeekend ? 'bg-gray-100/80' : ''}`} style={{ width: DAY_WIDTH }}></div>
+                <div key={i} className={`border-r border-gray-200 h-full ${cd.isWeekend ? 'bg-[#f0f0f0]' : ''}`} style={{ width: DAY_WIDTH }}></div>
               ))}
             </div>
 
             {/* Layer 2: Status Date & Current Date Lines */}
-            <div className="absolute top-0 bottom-0 border-l-2 border-dashed border-green-500 z-10 pointer-events-none" style={{ left: getX(statusDate) }} title="Status Date"></div>
+            <div className="absolute top-0 bottom-0 border-l border-green-500 border-dashed z-10 pointer-events-none" style={{ left: getX(statusDate) }} title="Status Date"></div>
             <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
 
             {/* Layer 3: SVG Dependency Lines */}
             <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={displayTasks.length * ROW_HEIGHT}>
               <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
                   <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#64748b" />
                 </marker>
-                <marker id="arrow-critical" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <marker id="arrow-critical" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
                   <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#ef4444" />
                 </marker>
               </defs>
               {svgPaths.map((p, i) => (
-                <path key={i} d={p.d} fill="none" stroke={p.is_critical ? "#ef4444" : "#64748b"} strokeWidth={p.is_critical ? 2 : 1.5} markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} />
+                <path key={i} d={p.d} fill="none" stroke={p.is_critical ? "#ef4444" : "#64748b"} strokeWidth={1.5} markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} />
               ))}
             </svg>
 
@@ -327,7 +339,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               {displayTasks.map((t, idx) => {
                 const left = getX(t.start_date);
                 const width = t.duration * DAY_WIDTH;
-                const top = idx * ROW_HEIGHT + 10;
+                const top = idx * ROW_HEIGHT + 8;
 
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
@@ -336,9 +348,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
                 if (t.duration === 0) {
                   return (
-                    <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 6, top: top - 2 }}>
-                      <div className="w-3.5 h-3.5 bg-slate-900 rotate-45 shadow-sm z-30"></div>
-                      <span className="ml-3 text-[10px] font-bold text-slate-700 whitespace-nowrap bg-white/80 px-1 rounded border border-slate-200">{t.name}</span>
+                    <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 5, top: top - 1 }}>
+                      <div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div>
+                      <span className="ml-2 text-[10px] text-gray-700 font-medium whitespace-nowrap bg-white/90 px-1">{t.name}</span>
                     </div>
                   );
                 }
@@ -346,38 +358,38 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 if (isSummary) {
                   return (
                     <div key={t.id} className="absolute pointer-events-auto group" style={{ left, width, top }}>
-                      <div className="absolute top-0 w-full h-[5px] bg-slate-800"></div>
-                      <div className="absolute top-0 left-0 w-[6px] h-3.5 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 40%)' }}></div>
-                      <div className="absolute top-0 right-0 w-[6px] h-3.5 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 40%, 0 100%)' }}></div>
-                      <span className="absolute -top-3 text-[10px] font-bold text-slate-700 whitespace-nowrap" style={{ left: width + 8 }}>{progress}% Complete</span>
+                      {/* Garis Horizontal Induk */}
+                      <div className="absolute top-0 w-full h-[4px] bg-black"></div>
+                      {/* Jangkar Kiri */}
+                      <div className="absolute top-0 left-0 w-[4px] h-[10px] bg-black" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div>
+                      {/* Jangkar Kanan */}
+                      <div className="absolute top-0 right-0 w-[4px] h-[10px] bg-black" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div>
+                      <span className="absolute -top-3.5 text-[10px] font-semibold text-gray-700 whitespace-nowrap" style={{ left: width + 4 }}>{progress}%</span>
                     </div>
                   );
                 }
 
                 return (
-                  <div key={t.id} className="absolute group" style={{ left, width: Math.max(24, width), top }}>
-                    <div className="absolute -top-3.5 w-full text-center text-[9px] font-bold text-indigo-600 bg-indigo-50/90 px-1 rounded border border-indigo-100 whitespace-nowrap shadow-sm z-10">
-                      🎯 {dailyTarget} {t.satuan_hsd || 'unit'}/hari
+                  <div key={t.id} className="absolute group" style={{ left, width: Math.max(16, width), top }}>
+                    {/* Label Atas: SMART Target Per Hari */}
+                    <div className="absolute -top-4 w-full text-center text-[9px] font-semibold text-indigo-600 bg-white/90 px-0.5 border border-indigo-200 rounded-sm whitespace-nowrap shadow-sm z-10">
+                      🎯 {dailyTarget} {t.satuan_hsd || 'unit'}
                     </div>
 
-                    <div className={`h-6 rounded relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'}`}>
-                      <div style={{ width: `${progress}%` }} className="bg-black/20 h-full text-[10px] text-white flex items-center justify-end pr-1 font-bold overflow-hidden">
-                        {progress > 15 && `${progress}%`}
+                    {/* Batang Utama (MS Project Style) */}
+                    <div className={`h-[18px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-[#ff0000] border-[#cc0000]' : 'bg-[#3b82f6] border-[#2563eb]'}`}>
+                      <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[9px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
+                        {progress > 20 && `${progress}%`}
                       </div>
                     </div>
 
-                    <span className="absolute top-[6px] text-[10px] font-semibold text-slate-400 text-right w-10 whitespace-nowrap" style={{ left: -45 }}>{fmtDate(t.start_date)}</span>
+                    {/* Label Tanggal Mulai (Kiri) */}
+                    <span className="absolute top-[4px] text-[9px] font-semibold text-gray-500 text-right w-10 whitespace-nowrap" style={{ left: -44 }}>{fmtDate(t.start_date)}</span>
 
-                    <div className="absolute top-[5px] flex items-center gap-1 text-[10px] font-medium whitespace-nowrap" style={{ left: Math.max(24, width) + 8 }}>
-                      <span className="text-slate-400 font-semibold">{fmtDate(t.end_date)}</span>
-                      <span className="text-slate-300">|</span>
-                      <span className="text-slate-800 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Vol: {Number(t.smart_target) || 0} {t.satuan_hsd}</span>
-                      {t.resource_names && (
-                        <>
-                          <span className="text-slate-300">|</span>
-                          <span className="text-slate-600 font-bold">👤 {t.resource_names}</span>
-                        </>
-                      )}
+                    {/* Label Kanan (Resource & Volume) */}
+                    <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(16, width) + 6 }}>
+                      {t.resource_names && <span className="text-gray-700 font-medium">{t.resource_names}</span>}
+                      <span className="text-gray-400 font-medium">[{Number(t.smart_target) || 0} {t.satuan_hsd}]</span>
                     </div>
                   </div>
                 );
