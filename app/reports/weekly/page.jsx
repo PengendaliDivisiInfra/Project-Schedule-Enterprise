@@ -114,13 +114,22 @@ export default function WeeklyReportPage() {
 
   return (
     <>
-      {/* CSS Khusus untuk Print A4 */}
+      {/* CSS Khusus untuk Print A4 & Auto-Pagination */}
       <style jsx global>{`
         @media print {
           @page { size: A4 portrait; margin: 10mm; }
           body { background-color: white !important; -webkit-print-color-adjust: exact; }
           .print-hidden { display: none !important; }
           .print-container { box-shadow: none !important; margin: 0 !important; padding: 0 !important; max-width: 100% !important; width: 100% !important; }
+          
+          /* Aturan Pagination Tabel */
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; } /* Memaksa header tabel berulang di setiap halaman baru */
+          tfoot { display: table-footer-group; }
+          
+          /* Mencegah Tanda Tangan Terpotong */
+          .signature-section { page-break-inside: avoid; }
         }
       `}</style>
 
@@ -150,9 +159,9 @@ export default function WeeklyReportPage() {
         </div>
 
         {/* --- KERTAS A4 --- */}
-        <div className="print-container bg-white max-w-[210mm] min-h-[297mm] mx-auto p-8 shadow-xl border border-gray-300 text-black font-sans">
+        <div className="print-container bg-white max-w-[210mm] mx-auto p-8 shadow-xl border border-gray-300 text-black font-sans">
           
-          {/* HEADER LAPORAN */}
+          {/* HEADER LAPORAN (Akan muncul di halaman 1 saja) */}
           <div className="text-center mb-6">
             <h1 className="text-xl font-bold uppercase underline decoration-2 underline-offset-4">Laporan Kemajuan Fisik Pekerjaan</h1>
             <h2 className="text-lg font-bold uppercase mt-1">Minggu Ini</h2>
@@ -261,61 +270,63 @@ export default function WeeklyReportPage() {
             </tbody>
           </table>
 
-          {/* FOOTER REKAPITULASI */}
-          <div className="flex justify-between items-start mt-4">
-            <div className="w-1/2 pt-2">
-              <div className="inline-flex items-center gap-2 border border-black p-2 bg-gray-50 font-bold text-[11px]">
-                <span>PROSENTASE KEMAJUAN FISIK :</span>
-                <span>Rp {reportData.totalRealisasiKumulatif.toLocaleString('id-ID')}</span>
-                <span>X 100% =</span>
-                <span className="text-blue-700 text-sm">{reportData.totalPctKumulatif.toFixed(2)}%</span>
-              </div>
-            </div>
-            
-            <div className="w-5/12 text-[11px] grid grid-cols-[1fr_auto] border border-black">
-              <div className="p-1 border-b border-r border-black font-semibold">TOTAL</div>
-              <div className="p-1 border-b border-black text-right">Rp {reportData.totalRealisasiKumulatif.toLocaleString('id-ID')}</div>
-              
-              <div className="p-1 border-b border-r border-black font-semibold">PPN 11%</div>
-              <div className="p-1 border-b border-black text-right">Rp {reportData.ppn.toLocaleString('id-ID')}</div>
-              
-              <div className="p-1 border-b border-r border-black font-semibold">JUMLAH</div>
-              <div className="p-1 border-b border-black text-right">Rp {reportData.grandTotal.toLocaleString('id-ID')}</div>
-              
-              <div className="p-1 border-r border-black font-bold bg-gray-100">DIBULATKAN</div>
-              <div className="p-1 text-right font-bold bg-gray-100">Rp {Math.round(reportData.grandTotal).toLocaleString('id-ID')}</div>
-            </div>
-          </div>
-
-          {/* --- 3 KOLOM TANDA TANGAN --- */}
-          <div className="mt-10 text-xs px-2">
-            <div contentEditable suppressContentEditableWarning className="text-right mb-6 outline-none focus:bg-yellow-50 hover:bg-gray-50 w-fit ml-auto">
-              {headerInfo.lokasi}, {new Date(headerInfo.tanggalTtd).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 text-center">
-              <div>
-                <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Kontraktor Pelaksana</p>
-                <div className="h-20"></div>
-                <div contentEditable suppressContentEditableWarning className="font-bold border-b border-black pb-1 outline-none focus:bg-yellow-50 hover:bg-gray-50 mx-2">
-                  {headerInfo.kontraktor}
+          {/* FOOTER REKAPITULASI & TANDA TANGAN (Dibungkus agar tidak terpotong) */}
+          <div className="signature-section">
+            <div className="flex justify-between items-start mt-4">
+              <div className="w-1/2 pt-2">
+                <div className="inline-flex items-center gap-2 border border-black p-2 bg-gray-50 font-bold text-[11px]">
+                  <span>PROSENTASE KEMAJUAN FISIK :</span>
+                  <span>Rp {reportData.totalRealisasiKumulatif.toLocaleString('id-ID')}</span>
+                  <span>X 100% =</span>
+                  <span className="text-blue-700 text-sm">{reportData.totalPctKumulatif.toFixed(2)}%</span>
                 </div>
               </div>
+              
+              <div className="w-5/12 text-[11px] grid grid-cols-[1fr_auto] border border-black">
+                <div className="p-1 border-b border-r border-black font-semibold">TOTAL</div>
+                <div className="p-1 border-b border-black text-right">Rp {reportData.totalRealisasiKumulatif.toLocaleString('id-ID')}</div>
+                
+                <div className="p-1 border-b border-r border-black font-semibold">PPN 11%</div>
+                <div className="p-1 border-b border-black text-right">Rp {reportData.ppn.toLocaleString('id-ID')}</div>
+                
+                <div className="p-1 border-b border-r border-black font-semibold">JUMLAH</div>
+                <div className="p-1 border-b border-black text-right">Rp {reportData.grandTotal.toLocaleString('id-ID')}</div>
+                
+                <div className="p-1 border-r border-black font-bold bg-gray-100">DIBULATKAN</div>
+                <div className="p-1 text-right font-bold bg-gray-100">Rp {Math.round(reportData.grandTotal).toLocaleString('id-ID')}</div>
+              </div>
+            </div>
 
-              <div>
-                <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Konsultan Pengawas</p>
-                <div className="h-20"></div>
-                <div contentEditable suppressContentEditableWarning className="font-bold border-b border-black pb-1 outline-none focus:bg-yellow-50 hover:bg-gray-50 mx-2">
-                  {headerInfo.konsultan}
-                </div>
+            {/* --- 3 KOLOM TANDA TANGAN --- */}
+            <div className="mt-10 text-xs px-2">
+              <div contentEditable suppressContentEditableWarning className="text-right mb-6 outline-none focus:bg-yellow-50 hover:bg-gray-50 w-fit ml-auto">
+                {headerInfo.lokasi}, {new Date(headerInfo.tanggalTtd).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}
               </div>
 
-              <div>
-                <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Disetujui Oleh,</p>
-                <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Pemilik Proyek (PPK)</p>
-                <div className="h-16"></div>
-                <div contentEditable suppressContentEditableWarning className="font-bold border-b border-black pb-1 outline-none focus:bg-yellow-50 hover:bg-gray-50 mx-2">
-                  {headerInfo.pemilik}
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Kontraktor Pelaksana</p>
+                  <div className="h-20"></div>
+                  <div contentEditable suppressContentEditableWarning className="font-bold border-b border-black pb-1 outline-none focus:bg-yellow-50 hover:bg-gray-50 mx-2">
+                    {headerInfo.kontraktor}
+                  </div>
+                </div>
+
+                <div>
+                  <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Konsultan Pengawas</p>
+                  <div className="h-20"></div>
+                  <div contentEditable suppressContentEditableWarning className="font-bold border-b border-black pb-1 outline-none focus:bg-yellow-50 hover:bg-gray-50 mx-2">
+                    {headerInfo.konsultan}
+                  </div>
+                </div>
+
+                <div>
+                  <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Disetujui Oleh,</p>
+                  <p contentEditable suppressContentEditableWarning className="outline-none focus:bg-yellow-50 hover:bg-gray-50">Pemilik Proyek (PPK)</p>
+                  <div className="h-16"></div>
+                  <div contentEditable suppressContentEditableWarning className="font-bold border-b border-black pb-1 outline-none focus:bg-yellow-50 hover:bg-gray-50 mx-2">
+                    {headerInfo.pemilik}
+                  </div>
                 </div>
               </div>
             </div>
