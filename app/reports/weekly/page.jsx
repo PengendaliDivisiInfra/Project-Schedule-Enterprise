@@ -21,7 +21,22 @@ export default function WeeklyReportPage() {
   const fetchData = async () => {
     setLoading(true);
     const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
-    if (pData) setProjectInfo(pData);
+    if (pData) {
+      setProjectInfo(pData);
+      // Set default date range ke tanggal mulai kontrak (jika ada)
+      if (pData.contract_start) {
+        setDateStart(pData.contract_start);
+        const end = new Date(pData.contract_start);
+        end.setDate(end.getDate() + 7);
+        setDateEnd(end.toISOString().split('T')[0]);
+        const prevEnd = new Date(pData.contract_start);
+        prevEnd.setDate(prevEnd.getDate() - 1);
+        const prevStart = new Date(prevEnd);
+        prevStart.setDate(prevStart.getDate() - 7);
+        setPrevDateStart(prevStart.toISOString().split('T')[0]);
+        setPrevDateEnd(prevEnd.toISOString().split('T')[0]);
+      }
+    }
 
     const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, mata_varian, ahsp_templates(unit)`).order('wbs_code');
     if (tData) {
@@ -41,14 +56,14 @@ export default function WeeklyReportPage() {
     const current = new Date(dateStart);
     const diffTime = Math.abs(current - start);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-    const week = Math.ceil(diffDays / 7);
-    const month = Math.ceil(diffDays / 30);
+    const week = Math.ceil(diffDays / 7) || 1;
+    const month = Math.ceil(diffDays / 30) || 1;
     return `Minggu Ke-${week} / Bulan Ke-${month}`;
   }, [projectInfo.contract_start, dateStart]);
 
   const reportData = useMemo(() => {
-    let totalRAB = 0;
-    tasks.filter(t => t.summary === 'No').forEach(t => { totalRAB += t.cost; });
+    // ⚠️ PERBAIKAN: Total RAB diambil dari Grand Total Cost WBS (Leaf Task)
+    const totalRAB = tasks.filter(t => t.summary === 'No').reduce((sum, t) => sum + Number(t.cost), 0);
 
     const rows = tasks.map(t => {
       const isSummary = t.summary === 'Yes';
@@ -60,6 +75,7 @@ export default function WeeklyReportPage() {
 
       const hargaSatuan = t.volume > 0 ? (t.cost / t.volume) : 0;
       
+      // ⚠️ PERBAIKAN: Bobot dihitung berdasarkan Total RAB yang valid
       const bobotKontrak = totalRAB > 0 ? (t.cost / totalRAB) * 100 : 0;
       const bobotLalu = totalRAB > 0 ? ((volLalu * hargaSatuan) / totalRAB) * 100 : 0;
       const bobotMingguIni = totalRAB > 0 ? ((volMingguIni * hargaSatuan) / totalRAB) * 100 : 0;
@@ -109,7 +125,7 @@ export default function WeeklyReportPage() {
             <div className="space-y-1 w-1/2">
               <div className="grid grid-cols-[120px_10px_1fr]"><span>Nama Paket Proyek</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{projectInfo.name || 'Nama Proyek'}</span></div>
               <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>PT. Kontraktor (Edit)</span></div>
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {(projectInfo.contract_value || 0).toLocaleString('id-ID')}</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {reportData.totalRAB.toLocaleString('id-ID')}</span></div>
             </div>
             <div className="space-y-1 w-1/2 text-right">
               <div className="grid grid-cols-[130px_10px_1fr]"><span>Periode Pelaksanaan</span><span>:</span><span className="px-1 font-bold">{weekNumber}</span></div>

@@ -48,7 +48,7 @@ export default function TasksPage() {
   const handleInlineUpdate = async (taskId, field, value) => {
     try {
       await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
-      if (field === 'cost' || field === 'mata_varian') fetchTasks(false); // Fetch tanpa loading screen
+      if (field === 'cost' || field === 'mata_varian' || field === 'volume') fetchTasks(false);
     } catch (err) {
       alert("Gagal update: " + err.message);
     }
@@ -65,7 +65,7 @@ export default function TasksPage() {
       }
       setIsModalOpen(false);
       setEditingTask(null);
-      fetchTasks(false); // Fetch ulang di background tanpa loading screen
+      fetchTasks(false);
     } catch (err) { alert('Gagal menyimpan: ' + err.message); }
   };
 
@@ -131,7 +131,7 @@ export default function TasksPage() {
                          <input 
                            type="text" 
                            defaultValue={t.mata_varian || ''} 
-                           placeholder="Cth: 7.1(7a)"
+                           placeholder="Cth: 1.2" // <-- PERBAIKAN: Placeholder tidak akan tersimpan
                            onBlur={(e) => handleInlineUpdate(t.id, 'mata_varian', e.target.value)}
                            className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-xs font-mono"
                          />
