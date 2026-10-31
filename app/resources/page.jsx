@@ -116,7 +116,7 @@ function ResourceSheet() {
             </div>
             
             <div>
-              <label className="block text-xs font-medium mb-1">Tarif Standar (Rp)</label>
+              <label className="block text-xs font-medium mb-1">Tarif Standar / Harga Dasar (Rp)</label>
               <input type="number" required value={formData.base_price} onChange={e => setFormData({...formData, base_price: e.target.value})} className="w-full border rounded p-2 text-sm" />
             </div>
             <div>
@@ -150,7 +150,7 @@ function ResourceSheet() {
                 <th className="p-4">Tipe</th>
                 <th className="p-4">Nama Resource</th>
                 <th className="p-4">Satuan</th>
-                <th className="p-4 text-right">Tarif Standar</th>
+                <th className="p-4 text-right">Harga Dasar (D)</th>
                 <th className="p-4 text-center">Max Units</th>
                 <th className="p-4 text-center">Cost Per Use</th>
                 <th className="p-4 text-center">Accrue At</th>
@@ -188,7 +188,7 @@ function ResourceSheet() {
 }
 
 // ==========================================
-// KOMPONEN 2: RESOURCE USAGE (BOQ AGREGATION) - ROBUST JS MAPPING
+// KOMPONEN 2: RESOURCE USAGE (BOQ AGREGATION)
 // ==========================================
 function ResourceUsage() {
   const [aggregated, setAggregated] = useState([]);
@@ -197,7 +197,6 @@ function ResourceUsage() {
   useEffect(() => {
     async function loadData() {
       try {
-        // 1. Ambil SEMUA data mentah secara terpisah (Menghindari error nested join Supabase)
         const { data: tasks } = await supabase.from('wbs_tasks').select('*').not('ahsp_template_id', 'is', null);
         if (!tasks || tasks.length === 0) { setLoading(false); return; }
 
@@ -205,14 +204,12 @@ function ResourceUsage() {
         const { data: hsdItems } = await supabase.from('master_hsd').select('*');
         const { data: templates } = await supabase.from('ahsp_templates').select('*');
 
-        // 2. Buat Peta (Map) untuk pencarian O(1)
         const hsdMap = {};
         hsdItems?.forEach(h => { hsdMap[h.id] = h; });
 
         const templateMap = {};
         templates?.forEach(t => { templateMap[t.id] = t; });
 
-        // Kelompokkan detail berdasarkan template_id
         const detailsByTemplate = {};
         details?.forEach(d => {
           if (!detailsByTemplate[d.ahsp_template_id]) {
@@ -221,37 +218,47 @@ function ResourceUsage() {
           detailsByTemplate[d.ahsp_template_id].push(d);
         });
 
-        // 3. Lakukan Kalkulasi Agregasi di JavaScript
         const grouped = {};
         tasks.forEach(task => {
           const taskDetails = detailsByTemplate[task.ahsp_template_id] || [];
           const volume = task.volume || 0;
           
-          // Ambil Overhead dari Template
           const template = templateMap[task.ahsp_template_id];
           const overheadPercent = template?.overhead_percent || 15;
-          const factor = 1 + (overheadPercent / 100);
-
+          
           taskDetails.forEach(detail => {
             const hsd = hsdMap[detail.hsd_id];
             if (!hsd) return;
 
             const totalVol = volume * detail.koefisien;
             
-            // Harga Satuan (F) = Harga Dasar * (1 + Overhead)
-            const adjustedUnitPrice = (hsd.base_price || 0) * factor;
-            const totalCost = totalVol * adjustedUnitPrice;
+            // Harga Dasar (D)
+            const hargaDasar = hsd.base_price || 0;
+            // Overhead (E)
+            const overheadAmount = hargaDasar * (overheadPercent / 100);
+            // Harga Satuan AHSP (F)
+            const hargaSatuanAHSP = hargaDasar + overheadAmount;
+
+            const totalD = totalVol * hargaDasar;
+            const totalE = totalVol * overheadAmount;
+            const totalF = totalVol * hargaSatuanAHSP;
 
             if (!grouped[hsd.id]) {
               grouped[hsd.id] = { 
                 ...hsd, 
                 total_volume: 0, 
-                total_cost: 0,
-                adjusted_price: adjustedUnitPrice
+                harga_dasar: hargaDasar,
+                overhead_amount: overheadAmount,
+                harga_ahsp: hargaSatuanAHSP,
+                total_dasar: 0,
+                total_overhead: 0,
+                total_ahsp: 0
               };
             }
             grouped[hsd.id].total_volume += totalVol;
-            grouped[hsd.id].total_cost += totalCost;
+            grouped[hsd.id].total_dasar += totalD;
+            grouped[hsd.id].total_overhead += totalE;
+            grouped[hsd.id].total_ahsp += totalF;
           });
         });
 
@@ -270,33 +277,45 @@ function ResourceUsage() {
     <div>
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Menghitung agregasi..." /> : (
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-gray-50 border-b font-semibold text-gray-600">
               <tr>
-                <th className="p-4">Tipe</th>
-                <th className="p-4">Nama Item</th>
-                <th className="p-4 text-right">Total Volume</th>
-                <th className="p-4">Satuan</th>
-                <th className="p-4 text-right">Harga Satuan (F)</th>
-                <th className="p-4 text-right">Total Biaya</th>
+                <th className="p-3 border-r">Tipe</th>
+                <th className="p-3 border-r">Nama Item</th>
+                <th className="p-3 border-r text-center">Vol</th>
+                <th className="p-3 border-r">Satuan</th>
+                <th className="p-3 border-r text-right">Harga Dasar (D)</th>
+                <th className="p-3 border-r text-right">Overhead (E)</th>
+                <th className="p-3 border-r text-right bg-blue-50 text-blue-800">Harga AHSP (F)</th>
+                <th className="p-3 border-r text-right">Total Biaya (AHSP)</th>
+                <th className="p-3 text-right text-orange-600 bg-orange-50" title="Akan diisi dari PO Vendor">Harga Actual (PO)</th>
               </tr>
             </thead>
-            <tbody className="text-sm divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100">
               {aggregated.map((r) => (
                 <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="p-4 capitalize font-medium text-xs">
-                    <span className={`px-2 py-1 rounded-full ${
+                  <td className="p-3 border-r capitalize font-medium">
+                    <span className={`px-2 py-0.5 rounded-full ${
                       r.resource_type?.toLowerCase() === 'upah' ? 'bg-green-100 text-green-700' : 
                       r.resource_type?.toLowerCase() === 'bahan' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'
                     }`}>
                       {r.resource_type}
                     </span>
                   </td>
-                  <td className="p-4">{r.item_name}</td>
-                  <td className="p-4 text-right font-bold">{r.total_volume.toFixed(2)}</td>
-                  <td className="p-4">{r.unit}</td>
-                  <td className="p-4 text-right">Rp {r.adjusted_price?.toLocaleString('id-ID')}</td>
-                  <td className="p-4 text-right font-bold text-gray-800">Rp {r.total_cost.toLocaleString('id-ID')}</td>
+                  <td className="p-3 border-r font-medium">{r.item_name}</td>
+                  <td className="p-3 border-r text-center font-bold">{r.total_volume.toFixed(2)}</td>
+                  <td className="p-3 border-r">{r.unit}</td>
+                  
+                  {/* Rincian Harga */}
+                  <td className="p-3 border-r text-right">Rp {r.harga_dasar?.toLocaleString('id-ID')}</td>
+                  <td className="p-3 border-r text-right text-gray-500">Rp {r.overhead_amount?.toLocaleString('id-ID')}</td>
+                  <td className="p-3 border-r text-right font-bold bg-blue-50 text-blue-700">Rp {r.harga_ahsp?.toLocaleString('id-ID')}</td>
+                  
+                  {/* Total Biaya Berdasarkan AHSP */}
+                  <td className="p-3 border-r text-right font-bold text-gray-800">Rp {r.total_ahsp.toLocaleString('id-ID')}</td>
+                  
+                  {/* Kolom Actual Placeholder */}
+                  <td className="p-3 text-right text-gray-400 italic bg-orange-50">Belum ada PO</td>
                 </tr>
               ))}
             </tbody>
