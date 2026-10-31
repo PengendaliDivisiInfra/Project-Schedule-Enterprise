@@ -1,4 +1,4 @@
-﻿import Sidebar from '../components/Sidebar';
+﻿import ClientLayout from '../components/ClientLayout';
 import './globals.css';
 
 export const metadata = {
@@ -9,11 +9,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="flex bg-gray-50 h-screen overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-8">
+      <body>
+        <ClientLayout>
           {children}
-        </main>
+        </ClientLayout>
       </body>
     </html>
   );

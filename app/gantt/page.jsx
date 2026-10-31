@@ -36,16 +36,10 @@ export default function GanttPage() {
         setWorkingDays(activeWorkingDays);
         setExceptions(activeExceptions);
 
-        // ⚠️ Mengambil data dari View (Jika View belum ada, fallback ke tabel utama)
-        let query = supabase.from('wbs_tasks').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
-        
-        // Kita coba ambil dari view v_wbs_tasks_with_targets jika tersedia (karena view lebih kaya data)
-        // Jika error, fallback ke tabel standar
         let { data, error } = await supabase.from('v_wbs_tasks_with_targets').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
         
         if (error) {
-            // Fallback
-            let fallbackRes = await query;
+            let fallbackRes = await supabase.from('wbs_tasks').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
             data = fallbackRes.data;
         }
         
@@ -90,8 +84,12 @@ export default function GanttPage() {
       const { error } = await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
       if (error) throw error;
       
-      if (field === 'duration') fetchData(); 
-      else {
+      // Jika yang diubah adalah tanggal, durasi, atau volume, kita perlu fetch ulang 
+      // agar CPM Engine dan Trigger Database menghitung ulang semuanya.
+      if (['start_date', 'end_date', 'duration', 'volume'].includes(field)) {
+        fetchData(); 
+      } else {
+        // Untuk name atau resource, cukup update state lokal
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
       }
     } catch (err) {

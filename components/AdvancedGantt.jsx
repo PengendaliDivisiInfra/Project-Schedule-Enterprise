@@ -137,6 +137,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   };
 
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
+  const formatDateForInput = (dateStr) => dateStr ? new Date(dateStr).toISOString().split('T')[0] : '';
 
   const calculateDailyTarget = (task) => {
     if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
@@ -155,26 +156,26 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md border border-gray-400 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
+    <div className="bg-white rounded-lg shadow-md border border-gray-400 flex flex-col h-[calc(100vh-120px)] overflow-hidden font-sans">
       
       {/* HEADER (2 Baris: Bulan & Tanggal) */}
       <div className="flex border-b border-gray-400 bg-[#f3f3f3] shrink-0 z-20">
-        <div className="w-[1020px] border-r border-gray-400 flex flex-col shrink-0">
+        <div className="w-[1050px] border-r border-gray-400 flex flex-col shrink-0">
           {/* Header Atas (Tabel Kiri) */}
           <div className="flex justify-between items-center px-1 py-1 border-b border-gray-300 bg-[#e6e6e6]">
             <div className="flex text-[11px] font-semibold text-gray-700 items-center">
               <span className="w-6 text-center" title="Task Mode">📌</span>
               <span className="w-6 text-center" title="Complete">✓</span>
               <span className="w-10 text-center" title="ID">ID</span>
-              <span className="w-44 pl-1 border-l border-gray-300">Task Name</span>
+              <span className="w-48 pl-1 border-l border-gray-300">Task Name</span>
+              <span className="w-20 text-center border-l border-gray-300 bg-slate-200 text-slate-800">Volume</span>
               <span className="w-10 text-center border-l border-gray-300">Dur</span>
-              <span className="w-14 text-center border-l border-gray-300">Start</span>
-              <span className="w-14 text-center border-l border-gray-300">Finish</span>
+              <span className="w-16 text-center border-l border-gray-300">Start</span>
+              <span className="w-16 text-center border-l border-gray-300">Finish</span>
               <span className="w-12 text-center border-l border-gray-300">Pred</span>
               <span className="w-16 text-center border-l border-gray-300">Resource</span>
               <span className="w-10 text-center border-l border-gray-300">%</span>
               <span className="w-12 text-center border-l border-gray-300">Target</span>
-              <span className="w-20 text-center border-l border-gray-300 bg-slate-200 text-slate-800" title="Volume dari Assignments">Volume</span>
               <span className="w-10 text-center border-l border-gray-300">Sisa</span>
               <span className="w-12 text-center border-l border-gray-300">T/hr</span>
             </div>
@@ -221,7 +222,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       <div className="flex flex-1 overflow-hidden">
         
         {/* KOLOM KIRI (Entry Table) */}
-        <div ref={leftPanelRef} className="w-[1020px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
+        <div ref={leftPanelRef} className="w-[1050px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {displayTasks.map((t, idx) => {
               const dailyTarget = calculateDailyTarget(t);
@@ -240,10 +241,30 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   {/* WBS Code */}
                   <span className="w-10 font-mono text-gray-600 text-center">{t.wbs_code}</span>
                   
-                  {/* Task Name */}
-                  <span className={`w-44 truncate pl-1 ${isSummary ? 'text-black' : 'text-gray-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
-                    {isSummary ? '📁 ' : '📄 '} {t.name}
-                  </span>
+                  {/* Task Name (Inline Edit) */}
+                  <div className="w-48 pl-1 border-r border-gray-100" style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
+                    <input 
+                      type="text" 
+                      defaultValue={t.name} 
+                      onBlur={(e) => onInlineUpdate(t.id, 'name', e.target.value)}
+                      className={`w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 text-[11px] bg-transparent ${isSummary ? 'font-bold' : ''}`}
+                    />
+                  </div>
+
+                  {/* VOLUME (Inline Edit) */}
+                  <div className="w-20 px-1 border-r border-gray-100 bg-slate-50">
+                    {!isSummary && (
+                      <div className="flex items-center gap-1">
+                        <input 
+                          type="number" 
+                          defaultValue={t.volume || 0} 
+                          onBlur={(e) => onInlineUpdate(t.id, 'volume', Number(e.target.value))}
+                          className="w-10 border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold"
+                        />
+                        <span className="text-[9px] text-gray-500 font-medium truncate">{t.satuan_hsd}</span>
+                      </div>
+                    )}
+                  </div>
                   
                   {/* Duration (Inline Edit) */}
                   <div className="w-10 text-center border-l border-gray-100">
@@ -259,9 +280,33 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     )}
                   </div>
                   
-                  {/* Start & Finish */}
-                  <span className="w-14 text-center text-gray-600 border-l border-gray-100">{fmtDate(t.start_date)}</span>
-                  <span className="w-14 text-center text-gray-600 border-l border-gray-100">{fmtDate(t.end_date)}</span>
+                  {/* Start (Inline Edit) */}
+                  <div className="w-16 text-center border-l border-gray-100">
+                    {isSummary ? (
+                      <span className="text-gray-600">{fmtDate(t.start_date)}</span>
+                    ) : (
+                      <input 
+                        type="date" 
+                        defaultValue={formatDateForInput(t.start_date)} 
+                        onBlur={(e) => onInlineUpdate(t.id, 'start_date', e.target.value)}
+                        className="w-[60px] border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]"
+                      />
+                    )}
+                  </div>
+
+                  {/* Finish (Inline Edit) */}
+                  <div className="w-16 text-center border-l border-gray-100">
+                    {isSummary ? (
+                      <span className="text-gray-600">{fmtDate(t.end_date)}</span>
+                    ) : (
+                      <input 
+                        type="date" 
+                        defaultValue={formatDateForInput(t.end_date)} 
+                        onBlur={(e) => onInlineUpdate(t.id, 'end_date', e.target.value)}
+                        className="w-[60px] border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]"
+                      />
+                    )}
+                  </div>
                   
                   {/* Predecessors */}
                   <span className="w-12 text-center text-gray-500 border-l border-gray-100 truncate" title={t.predecessors}>{t.predecessors || '-'}</span>
@@ -286,11 +331,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   {/* SMART Target */}
                   <span className="w-12 text-center font-bold text-indigo-700 border-l border-gray-100">{isSummary ? '-' : t.smart_target}</span>
                   
-                  {/* VOLUME + SATUAN (Baru) */}
-                  <span className="w-20 text-center font-bold text-slate-700 bg-slate-50 border-l border-gray-100 truncate" title={`${t.volume || 0} ${t.satuan_hsd || ''}`}>
-                    {isSummary ? '-' : `${t.volume || 0} ${t.satuan_hsd || ''}`}
-                  </span>
-
                   {/* Sisa Hari */}
                   <span className="w-10 text-center text-slate-500 border-l border-gray-100">{isSummary ? '-' : (t.sisa_hari_efektif || 0)}</span>
                   
@@ -391,7 +431,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     {/* Label Kanan (Resource & Volume) */}
                     <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(16, width) + 6 }}>
                       {t.resource_names && <span className="text-gray-700 font-medium">{t.resource_names}</span>}
-                      {/* Menampilkan Volume dari Assignments beserta Satuan */}
                       <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
                         Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}
                       </span>
