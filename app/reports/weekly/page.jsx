@@ -20,6 +20,8 @@ export default function WeeklyReportPage() {
 
   const fetchData = async () => {
     setLoading(true);
+    
+    // Ambil Data Proyek
     const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
     if (pData) {
       setProjectInfo(pData);
@@ -37,11 +39,25 @@ export default function WeeklyReportPage() {
       }
     }
 
+    // Ambil Data Tasks
     const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, mata_varian, ahsp_templates(unit)`).order('wbs_code');
     if (tData) {
       const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
-      setTasks(uniqueTasks.map(t => ({ ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0 })));
+      
+      // ⚠️ PERBAIKAN: Tandai isSummary dengan benar berdasarkan anak-anaknya
+      const processedTasks = uniqueTasks.map(task => {
+        const hasChildren = uniqueTasks.some(other => other.wbs_code !== task.wbs_code && other.wbs_code.startsWith(task.wbs_code + '.'));
+        return {
+          ...task,
+          isSummary: hasChildren || task.summary === 'Yes',
+          satuan_hsd: task.ahsp_templates?.unit || 'unit',
+          volume: Number(task.volume) || 0,
+          cost: Number(task.cost) || 0
+        };
+      });
+      setTasks(processedTasks);
     }
+    
     const { data: rData } = await supabase.from('daily_progress').select('*');
     setRecords(rData || []);
     setLoading(false);
@@ -61,12 +77,12 @@ export default function WeeklyReportPage() {
   }, [projectInfo.contract_start, dateStart]);
 
   const reportData = useMemo(() => {
-    // ⚡ Nilai Kontrak diambil dari Database Proyek, jika 0 fallback ke Total RAB WBS
-    const totalRABFromWBS = tasks.filter(t => t.summary === 'No').reduce((sum, t) => sum + Number(t.cost), 0);
+    // ⚠️ PERBAIKAN: Hitung Total RAB hanya dari Leaf Task (isSummary === false)
+    const totalRABFromWBS = tasks.filter(t => !t.isSummary).reduce((sum, t) => sum + Number(t.cost), 0);
     const contractValue = Number(projectInfo.contract_value) > 0 ? Number(projectInfo.contract_value) : totalRABFromWBS;
 
     const rows = tasks.map(t => {
-      const isSummary = t.summary === 'Yes';
+      const isSummary = t.isSummary;
       const taskRecords = records.filter(r => r.task_id === t.id);
 
       const volSdIni = taskRecords.filter(r => new Date(r.record_date) <= new Date(dateEnd)).reduce((sum, r) => sum + Number(r.completed_volume), 0);
@@ -75,10 +91,10 @@ export default function WeeklyReportPage() {
 
       const hargaSatuan = t.volume > 0 ? (t.cost / t.volume) : 0;
       
-      const bobotKontrak = contractValue > 0 ? (t.cost / contractValue) * 100 : 0;
-      const bobotLalu = contractValue > 0 ? ((volLalu * hargaSatuan) / contractValue) * 100 : 0;
-      const bobotMingguIni = contractValue > 0 ? ((volMingguIni * hargaSatuan) / contractValue) * 100 : 0;
-      const bobotSdIni = contractValue > 0 ? ((volSdIni * hargaSatuan) / contractValue) * 100 : 0;
+      const bobotKontrak = contractValue > 0 && !isSummary ? (t.cost / contractValue) * 100 : 0;
+      const bobotLalu = contractValue > 0 && !isSummary ? ((volLalu * hargaSatuan) / contractValue) * 100 : 0;
+      const bobotMingguIni = contractValue > 0 && !isSummary ? ((volMingguIni * hargaSatuan) / contractValue) * 100 : 0;
+      const bobotSdIni = contractValue > 0 && !isSummary ? ((volSdIni * hargaSatuan) / contractValue) * 100 : 0;
 
       return {
         ...t, isSummary, volSdIni, volLalu, volMingguIni, hargaSatuan,
