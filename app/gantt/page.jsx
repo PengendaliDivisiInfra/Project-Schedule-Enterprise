@@ -13,67 +13,79 @@ export default function GanttPage() {
   const [exceptions, setExceptions] = useState([]);
   const [statusDate, setStatusDate] = useState(new Date().toISOString().split('T')[0]);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        let { data: projects } = await supabase.from('projects').select('id').limit(1);
-        let projectId = projects?.[0]?.id;
-        if (!projectId) {
-          let { data: t } = await supabase.from('wbs_tasks').select('project_id').limit(1);
-          projectId = t?.[0]?.project_id;
-        }
-        
-        let activeWorkingDays = [1,2,3,4,5];
-        let activeExceptions = [];
-
-        if (projectId) {
-          let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).maybeSingle();
-          
-          if (cal && cal.id) {
-            activeWorkingDays = cal.working_days || [1,2,3,4,5];
-            let { data: exc } = await supabase.from('calendar_exceptions').select('*').eq('calendar_id', cal.id);
-            activeExceptions = exc || [];
-          }
-          
-          setWorkingDays(activeWorkingDays);
-          setExceptions(activeExceptions);
-
-          const { data } = await supabase.from('wbs_tasks').select(`
-            *, 
-            ahsp_templates ( unit )
-          `).eq('project_id', projectId).order('wbs_code', { ascending: true });
-          
-          if (data && data.length > 0) {
-            const mappedData = data.map(t => ({
-              ...t,
-              satuan_hsd: t.ahsp_templates?.unit || 'unit'
-            }));
-
-            const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-            const result = calculateCPM(mappedData, projectStart, activeWorkingDays, activeExceptions);
-            
-            if (!result.error) {
-              const finalTasks = result.tasks.map(t => ({
-                ...t,
-                satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit'
-              }));
-              
-              setTasks(finalTasks);
-              setRelations(result.relations);
-            } else {
-              console.error("CPM Error:", result.error);
-              setTasks(mappedData);
-            }
-          }
-        }
-      } catch (err) { 
-        console.error(err); 
-      } finally { 
-        setLoading(false); 
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      let { data: projects } = await supabase.from('projects').select('id').limit(1);
+      let projectId = projects?.[0]?.id;
+      if (!projectId) {
+        let { data: t } = await supabase.from('wbs_tasks').select('project_id').limit(1);
+        projectId = t?.[0]?.project_id;
       }
+      
+      let activeWorkingDays = [1,2,3,4,5];
+      let activeExceptions = [];
+
+      if (projectId) {
+        let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).maybeSingle();
+        if (cal && cal.id) {
+          activeWorkingDays = cal.working_days || [1,2,3,4,5];
+          let { data: exc } = await supabase.from('calendar_exceptions').select('*').eq('calendar_id', cal.id);
+          activeExceptions = exc || [];
+        }
+        setWorkingDays(activeWorkingDays);
+        setExceptions(activeExceptions);
+
+        const { data } = await supabase.from('wbs_tasks').select(`
+          *, 
+          ahsp_templates ( unit )
+        `).eq('project_id', projectId).order('wbs_code', { ascending: true });
+        
+        if (data && data.length > 0) {
+          const mappedData = data.map(t => ({
+            ...t,
+            satuan_hsd: t.ahsp_templates?.unit || 'unit'
+          }));
+
+          const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
+          const result = calculateCPM(mappedData, projectStart, activeWorkingDays, activeExceptions);
+          
+          if (!result.error) {
+            const finalTasks = result.tasks.map(t => ({
+              ...t,
+              satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit',
+              resource_names: mappedData.find(m => m.id === t.id)?.resource_names || ''
+            }));
+            setTasks(finalTasks);
+            setRelations(result.relations);
+          } else {
+            setTasks(mappedData);
+          }
+        } else {
+          setTasks([]);
+        }
+      }
+    } catch (err) { console.error(err); } finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  // ⚡ FUNGSI INLINE UPDATE DARI TABEL GANTT
+  const handleInlineUpdate = async (taskId, field, value) => {
+    try {
+      const { error } = await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+      if (error) throw error;
+      
+      // Jika durasi diubah, Trigger Database akan mengkalkulasi ulang, lalu kita fetch ulang
+      if (field === 'duration') fetchData(); 
+      else {
+        // Update state local agar UI langsung berubah tanpa fetch ulang (kecuali durasi)
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
+      }
+    } catch (err) {
+      alert("Gagal update: " + err.message);
     }
-    loadData();
-  }, []);
+  };
 
   return (
     <div className="p-2 bg-gray-50 h-screen flex flex-col">
@@ -88,7 +100,14 @@ export default function GanttPage() {
 
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner text="Membangun Gantt Chart..." /> : (
-          <AdvancedGantt tasks={tasks} relations={relations} workingDays={workingDays} statusDate={statusDate} exceptions={exceptions} />
+          <AdvancedGantt 
+            tasks={tasks} 
+            relations={relations} 
+            workingDays={workingDays} 
+            statusDate={statusDate} 
+            exceptions={exceptions} 
+            onInlineUpdate={handleInlineUpdate}
+          />
         )}
       </div>
     </div>

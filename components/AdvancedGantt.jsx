@@ -4,14 +4,20 @@ import { useRef, useEffect, useState } from 'react';
 const DAY_WIDTH = 40;
 const ROW_HEIGHT = 50;
 
-export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [] }) {
+export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
   const leftPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
+  const [showCriticalOnly, setShowCriticalOnly] = useState(false);
+
+  // Filter Critical Only
+  const displayTasks = showCriticalOnly 
+    ? tasks.filter(t => t.is_critical || t.summary === 'Yes') 
+    : tasks;
 
   // 1. Generate Calendar Days
   let minDate = new Date();
   let maxDate = new Date();
-  tasks.forEach(t => {
+  displayTasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
   });
@@ -50,7 +56,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     const paths = [];
     const taskRects = {};
 
-    tasks.forEach((t, idx) => {
+    displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
       const width = t.duration * DAY_WIDTH;
       const y = idx * ROW_HEIGHT;
@@ -95,7 +101,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     });
 
     setSvgPaths(paths);
-  }, [tasks, relations]);
+  }, [displayTasks, relations]);
 
   const handleScroll = (e) => {
     if (leftPanelRef.current) {
@@ -105,58 +111,50 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '';
 
-  // ==========================================
-  // FUNGSI FALLBACK (Jika target_per_hari dari DB tidak ada)
-  // ==========================================
   const calculateDailyTarget = (task) => {
-    // ⚡ PRIORITAS 1: Gunakan hasil kalkulasi dari Database View
-    if (task.target_per_hari !== undefined && task.target_per_hari !== null) {
-      return Number(task.target_per_hari).toFixed(2);
-    }
-
-    // ⚡ FALLBACK: Kalkulasi Manual di Frontend
+    if (task.target_per_hari !== undefined && task.target_per_hari !== null) return Number(task.target_per_hari).toFixed(2);
     const totalTarget = Number(task.smart_target) || 0;
     const progress = Number(task.progress_percent) || 0;
-    
     if (progress >= 100) return 0;
     if (totalTarget === 0) return 0;
-
-    const today = new Date();
-    const finish = new Date(task.end_date);
-    
-    let remainingDays = 0;
-    let cur = new Date(today);
+    const today = new Date(); const finish = new Date(task.end_date);
+    let remainingDays = 0; let cur = new Date(today);
     while (cur <= finish) {
-      const day = cur.getDay();
-      const dateStr = cur.toISOString().split('T')[0];
-      const isException = exceptions.some(e => e.exception_date === dateStr);
-      
-      if (workingDays.includes(day) && !isException) {
-        remainingDays++;
-      }
+      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) remainingDays++;
       cur.setDate(cur.getDate() + 1);
     }
-
     if (remainingDays <= 0) return totalTarget.toFixed(2);
-    
     return (totalTarget / remainingDays).toFixed(2);
   };
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col h-[calc(100vh-160px)] overflow-hidden">
       
-      {/* HEADER */}
+      {/* Header & Filter */}
       <div className="flex border-b border-gray-300 bg-gray-100 shrink-0 z-20">
-        <div className="w-[500px] border-r border-gray-300 flex text-[10px] font-bold text-gray-700 p-2 bg-gray-200 shrink-0 items-center">
-          <span className="w-6 text-center" title="Task Mode">📌</span>
-          <span className="w-6 text-center" title="Complete">✓</span>
-          <span className="w-12">WBS</span>
-          <span className="flex-1">Task Name</span>
-          <span className="w-10 text-center">Dur</span>
-          <span className="w-16 text-center">Target Harian</span>
-          <span className="w-10 text-center">Float</span>
+        <div className="w-[600px] border-r border-gray-300 flex flex-col p-2 bg-gray-200 shrink-0">
+          <div className="flex justify-between items-center mb-1">
+            <div className="flex text-[10px] font-bold text-gray-700 gap-4">
+              <span className="w-6 text-center" title="Task Mode">📌</span>
+              <span className="w-6 text-center" title="Complete">✓</span>
+              <span className="w-10">WBS</span>
+              <span className="w-40">Task Name</span>
+              <span className="w-12 text-center">Dur</span>
+              <span className="w-16 text-center">Target/hr</span>
+              <span className="w-20">Resource</span>
+            </div>
+          </div>
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden relative flex flex-col justify-end">
+          {/* Filter Toggle */}
+          <div className="absolute top-1 right-2 z-30">
+            <button 
+              onClick={() => setShowCriticalOnly(!showCriticalOnly)}
+              className={`text-[10px] px-2 py-1 rounded border ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-gray-600 border-gray-300'}`}
+            >
+              {showCriticalOnly ? 'Showing Critical Path' : 'Filter: All Tasks'}
+            </button>
+          </div>
           <div className="flex" style={{ width: totalWidth }}>
             {calendarDays.map((cd, i) => (
               <div 
@@ -175,29 +173,54 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       <div className="flex flex-1 overflow-hidden">
         
         {/* KOLOM KIRI (Entry Table) */}
-        <div ref={leftPanelRef} className="w-[500px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
+        <div ref={leftPanelRef} className="w-[600px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
-            {tasks.map((t) => {
+            {displayTasks.map((t) => {
               const dailyTarget = calculateDailyTarget(t);
               return (
-                <div key={t.id} className="flex text-[11px] items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[50px]">
+                <div key={t.id} className="flex text-[11px] items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[50px] group">
                   <span className="w-6 text-center">
                     {t.task_mode === 'Manually Scheduled' ? <span title="Manually Scheduled">📌</span> : <span title="Auto Scheduled">📅</span>}
                   </span>
                   <span className="w-6 text-center">
                     {t.progress_percent === 100 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-gray-300">☐</span>}
                   </span>
-                  <span className="w-12 font-mono text-gray-500">{t.wbs_code}</span>
-                  <span className={`flex-1 truncate ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }}>
+                  <span className="w-10 font-mono text-gray-500">{t.wbs_code}</span>
+                  <span className={`w-40 truncate ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }}>
                     {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
                   </span>
-                  <span className="w-10 text-center">{t.duration} d</span>
+                  
+                  {/* Inline Edit Durasi */}
+                  <div className="w-12 text-center">
+                    {t.summary === 'Yes' ? (
+                      <span>{t.duration} d</span>
+                    ) : (
+                      <input 
+                        type="number" 
+                        defaultValue={t.duration} 
+                        onBlur={(e) => onInlineUpdate(t.id, 'duration', Number(e.target.value))}
+                        className="w-10 border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px]"
+                      />
+                    )}
+                  </div>
+
                   <span className="w-16 text-center text-indigo-600 font-bold">
                     {t.summary === 'Yes' ? '-' : `${dailyTarget} /hr`}
                   </span>
-                  <span className={`w-10 text-center font-bold ${t.summary === 'Yes' ? 'text-gray-400' : (t.is_critical ? 'text-red-600' : 'text-blue-600')}`}>
-                    {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
-                  </span>
+
+                  {/* Inline Edit Resource */}
+                  <div className="w-20 px-1">
+                    {t.summary === 'No' && (
+                      <input 
+                        type="text" 
+                        defaultValue={t.resource_names || ''} 
+                        placeholder="Assign..."
+                        onBlur={(e) => onInlineUpdate(t.id, 'resource_names', e.target.value)}
+                        className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate"
+                        title={t.resource_names}
+                      />
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -206,7 +229,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
         {/* KOLOM KANAN (Timeline) */}
         <div className="flex-1 overflow-auto relative bg-gray-50/30 select-none" onScroll={handleScroll}>
-          <div className="relative" style={{ width: totalWidth, height: tasks.length * ROW_HEIGHT }}>
+          <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
             
             {/* Layer 1: Grid & Weekend Shading */}
             <div className="absolute inset-0 flex pointer-events-none z-0">
@@ -220,7 +243,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
 
             {/* Layer 3: SVG Dependency Lines */}
-            <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={tasks.length * ROW_HEIGHT}>
+            <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={displayTasks.length * ROW_HEIGHT}>
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#94a3b8" />
@@ -236,7 +259,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
             {/* Layer 4: Task Bars & Labels */}
             <div className="absolute inset-0 z-20 pointer-events-none">
-              {tasks.map((t, idx) => {
+              {displayTasks.map((t, idx) => {
                 const left = getX(t.start_date);
                 const width = t.duration * DAY_WIDTH;
                 const top = idx * ROW_HEIGHT + 13;
@@ -268,7 +291,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
                 return (
                   <div key={t.id} className="absolute group" style={{ left, width: Math.max(24, width), top }}>
-                    {/* Label Atas: SMART Target Per Hari */}
                     <div className="absolute -top-4 w-full text-center text-[9px] font-bold text-indigo-600 bg-indigo-50/90 px-1 rounded border border-indigo-100 whitespace-nowrap shadow-2xs z-10">
                       🎯 {dailyTarget} {t.satuan_hsd || 'unit'}/hari
                     </div>
@@ -285,6 +307,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                       <span className="text-slate-400 font-semibold">{fmtDate(t.end_date)}</span>
                       <span className="text-slate-300">|</span>
                       <span className="text-slate-800 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">Vol: {Number(t.smart_target) || 0} {t.satuan_hsd}</span>
+                      {t.resource_names && (
+                        <>
+                          <span className="text-slate-300">|</span>
+                          <span className="text-slate-600 font-bold">👤 {t.resource_names}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
