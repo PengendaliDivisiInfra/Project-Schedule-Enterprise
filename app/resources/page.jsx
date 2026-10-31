@@ -1,9 +1,7 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 export default function ResourcesPage() {
   const [activeTab, setActiveTab] = useState('sheet'); // 'sheet' atau 'usage'
@@ -71,7 +69,6 @@ function ResourceSheet() {
     const payload = {
       ...formData,
       project_id: projectId,
-      // Standarisasi label tipe resource
       resource_type: formData.resource_type === 'WORK' ? 'Upah' : formData.resource_type === 'MATERIAL' ? 'Bahan' : 'Alat'
     };
 
@@ -99,7 +96,7 @@ function ResourceSheet() {
       </div>
 
       {isAdding && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border mb-6 animate-fade-in-down">
+        <div className="bg-white p-6 rounded-xl shadow-sm border mb-6">
           <h3 className="font-bold mb-4">Tambah Master Resource</h3>
           <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
             <div>
@@ -205,8 +202,15 @@ function ResourceUsage() {
         if (!tasks || tasks.length === 0) { setLoading(false); return; }
 
         const templateIds = [...new Set(tasks.map(t => t.ahsp_template_id))];
+        
+        // ⚠️ PERBAIKAN: Tarik overhead_percent dari ahsp_templates
         const { data: details } = await supabase.from('ahsp_details')
-          .select(`koefisien, ahsp_template_id, master_hsd ( id, item_name, resource_type, unit, base_price )`)
+          .select(`
+            koefisien, 
+            ahsp_template_id, 
+            master_hsd ( id, item_name, resource_type, unit, base_price ),
+            ahsp_templates ( overhead_percent )
+          `)
           .in('ahsp_template_id', templateIds);
 
         const grouped = {};
@@ -218,11 +222,23 @@ function ResourceUsage() {
             const hsd = detail.master_hsd;
             if (!hsd) return;
 
+            // Ambil persentase overhead (default 15%)
+            const overheadPercent = detail.ahsp_templates?.overhead_percent || 15;
+            const factor = 1 + (overheadPercent / 100);
+
             const totalVol = volume * detail.koefisien;
-            const totalCost = totalVol * (hsd.base_price || 0);
+            
+            // ⚠️ PERBAIKAN: Kalikan harga dasar dengan Overhead (F = D + E)
+            const adjustedUnitPrice = (hsd.base_price || 0) * factor;
+            const totalCost = totalVol * adjustedUnitPrice;
 
             if (!grouped[hsd.id]) {
-              grouped[hsd.id] = { ...hsd, total_volume: 0, total_cost: 0 };
+              grouped[hsd.id] = { 
+                ...hsd, 
+                total_volume: 0, 
+                total_cost: 0,
+                adjusted_price: adjustedUnitPrice // Simpan harga yang sudah include overhead
+              };
             }
             grouped[hsd.id].total_volume += totalVol;
             grouped[hsd.id].total_cost += totalCost;
@@ -247,7 +263,7 @@ function ResourceUsage() {
                 <th className="p-4">Nama Item</th>
                 <th className="p-4 text-right">Total Volume</th>
                 <th className="p-4">Satuan</th>
-                <th className="p-4 text-right">Harga Satuan</th>
+                <th className="p-4 text-right">Harga Satuan (F)</th>
                 <th className="p-4 text-right">Total Biaya</th>
               </tr>
             </thead>
@@ -265,7 +281,8 @@ function ResourceUsage() {
                   <td className="p-4">{r.item_name}</td>
                   <td className="p-4 text-right font-bold">{r.total_volume.toFixed(2)}</td>
                   <td className="p-4">{r.unit}</td>
-                  <td className="p-4 text-right">Rp {r.base_price?.toLocaleString('id-ID')}</td>
+                  {/* Menampilkan Harga F (D + Overhead) */}
+                  <td className="p-4 text-right">Rp {r.adjusted_price?.toLocaleString('id-ID')}</td>
                   <td className="p-4 text-right font-bold text-gray-800">Rp {r.total_cost.toLocaleString('id-ID')}</td>
                 </tr>
               ))}
