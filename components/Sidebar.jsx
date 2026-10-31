@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 export default function Sidebar() {
   const pathname = usePathname();
   const menus = [
+    { name: 'Database Proyek', path: '/projects', icon: '🏢' },
     { name: 'Dashboard S-Curve', path: '/', icon: '📊' },
     { name: 'Gantt Workspace', path: '/gantt', icon: '📅' },
     { name: 'Tasks (WBS)', path: '/tasks', icon: '📝' },

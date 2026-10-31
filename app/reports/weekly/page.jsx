@@ -23,7 +23,7 @@ export default function WeeklyReportPage() {
     const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
     if (pData) setProjectInfo(pData);
 
-    const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, ahsp_templates(unit)`).order('wbs_code');
+    const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, mata_varian, ahsp_templates(unit)`).order('wbs_code');
     if (tData) {
       const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks.map(t => ({ ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0 })));
@@ -35,7 +35,6 @@ export default function WeeklyReportPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Kalkulasi Minggu Ke- berapa berdasarkan Tanggal Mulai Kontrak
   const weekNumber = useMemo(() => {
     if (!projectInfo.contract_start) return 'Minggu Ke-1';
     const start = new Date(projectInfo.contract_start);
@@ -66,12 +65,9 @@ export default function WeeklyReportPage() {
       const bobotMingguIni = totalRAB > 0 ? ((volMingguIni * hargaSatuan) / totalRAB) * 100 : 0;
       const bobotSdIni = totalRAB > 0 ? ((volSdIni * hargaSatuan) / totalRAB) * 100 : 0;
 
-      // Target Kurva S sederhana: asumsi linear 100% dibagi durasi (bisa diubah nanti)
-      const targetScurve = Number(t.target_s_curve) || 0; 
-
       return {
         ...t, isSummary, volSdIni, volLalu, volMingguIni, hargaSatuan,
-        bobotKontrak, bobotLalu, bobotMingguIni, bobotSdIni, targetScurve
+        bobotKontrak, bobotLalu, bobotMingguIni, bobotSdIni
       };
     });
 
@@ -150,7 +146,7 @@ export default function WeeklyReportPage() {
                 return (
                   <tr key={row.id} className={`${isSummary ? 'bg-gray-200 font-bold' : ''}`}>
                     <td className="border border-black p-0.5 text-center">{row.wbs_code}</td>
-                    <td className="border border-black p-0.5 text-center">Divisi - {row.wbs_code.split('.')[0]}</td>
+                    <td className="border border-black p-0.5 text-center">{isSummary ? '' : (row.mata_varian || '-')}</td>
                     <td className="border border-black p-0.5">{row.name}</td>
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.satuan_hsd}</td>
                     <td className="border border-black p-0.5 text-right">{isSummary ? '' : `Rp ${row.hargaSatuan.toLocaleString('id-ID')}`}</td>
@@ -170,9 +166,9 @@ export default function WeeklyReportPage() {
                     <td className="border border-black p-0.5 text-right">{isSummary ? '' : `Rp ${(row.volSdIni * row.hargaSatuan).toLocaleString('id-ID')}`}</td>
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.bobotSdIni.toFixed(2)}%</td>
 
-                    <td className="border border-black p-0.5 text-center">{isSummary ? '' : `${row.targetScurve}%`}</td>
-                    <td className={`border border-black p-0.5 text-center font-bold ${ (row.bobotSdIni - row.targetScurve) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {isSummary ? '' : `${(row.bobotSdIni - row.targetScurve).toFixed(2)}%`}
+                    <td className="border border-black p-0.5 text-center">{isSummary ? '' : `0%`}</td>
+                    <td className={`border border-black p-0.5 text-center font-bold`}>
+                      {isSummary ? '' : `0%`}
                     </td>
                   </tr>
                 );

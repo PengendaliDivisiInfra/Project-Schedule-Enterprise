@@ -19,8 +19,8 @@ export default function TasksPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
 
-  const fetchTasks = async () => {
-    setLoading(true);
+  const fetchTasks = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id;
@@ -40,7 +40,7 @@ export default function TasksPage() {
       } else {
         setCpmTasks([]);
       }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { console.error(err); } finally { if (showLoading) setLoading(false); }
   };
 
   useEffect(() => { fetchTasks(); }, []);
@@ -48,11 +48,7 @@ export default function TasksPage() {
   const handleInlineUpdate = async (taskId, field, value) => {
     try {
       await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
-      
-      // Jika update cost atau mata_varian, tarik ulang data agar rollup berjalan
-      if (field === 'cost' || field === 'mata_varian') {
-        fetchTasks(); 
-      }
+      if (field === 'cost' || field === 'mata_varian') fetchTasks(false); // Fetch tanpa loading screen
     } catch (err) {
       alert("Gagal update: " + err.message);
     }
@@ -69,7 +65,7 @@ export default function TasksPage() {
       }
       setIsModalOpen(false);
       setEditingTask(null);
-      fetchTasks();
+      fetchTasks(false); // Fetch ulang di background tanpa loading screen
     } catch (err) { alert('Gagal menyimpan: ' + err.message); }
   };
 
@@ -78,7 +74,7 @@ export default function TasksPage() {
     try {
       const { error } = await supabase.from('wbs_tasks').delete().eq('id', id);
       if (error) throw error;
-      fetchTasks();
+      fetchTasks(false);
     } catch (err) { alert('Gagal menghapus: ' + err.message); }
   };
 
@@ -87,7 +83,7 @@ export default function TasksPage() {
     if (type === 'in' && newLevel < 5) newLevel++;
     if (type === 'out' && newLevel > 0) newLevel--;
     await supabase.from('wbs_tasks').update({ indent_level: newLevel }).eq('id', taskId);
-    fetchTasks();
+    fetchTasks(false);
   };
 
   return (
@@ -154,18 +150,15 @@ export default function TasksPage() {
                     <td className="p-3 border-r text-center font-bold">
                       {isSummary ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
                     </td>
-                    
-                    {/* Inline Edit Total Biaya */}
                     <td className="p-1 border-r text-right bg-indigo-50/30">
                       <input 
                         type="number" 
                         defaultValue={Number(t.cost) || 0} 
                         onBlur={(e) => handleInlineUpdate(t.id, 'cost', Number(e.target.value))}
-                        disabled={isSummary || !!t.ahsp_template_id} // Kunci jika summary atau dari AHSP
+                        disabled={isSummary || !!t.ahsp_template_id}
                         className={`w-full text-right border border-transparent hover:border-gray-300 focus:border-indigo-500 rounded px-1 py-0.5 bg-transparent text-xs font-bold text-indigo-800 ${(isSummary || !!t.ahsp_template_id) ? 'cursor-not-allowed' : ''}`}
                       />
                     </td>
-
                     <td className="p-3 border-r text-center">
                       <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
                         <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-600' : 'bg-blue-600'}`} style={{ width: `${t.progress_percent}%` }}></div>
