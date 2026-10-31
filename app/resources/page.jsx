@@ -198,20 +198,24 @@ function ResourceUsage() {
   useEffect(() => {
     async function loadData() {
       try {
+        // 1. Ambil Task yang sudah di-assign
         const { data: tasks } = await supabase.from('wbs_tasks').select('*').not('ahsp_template_id', 'is', null);
         if (!tasks || tasks.length === 0) { setLoading(false); return; }
 
         const templateIds = [...new Set(tasks.map(t => t.ahsp_template_id))];
         
-        // ⚠️ PERBAIKAN: Tarik overhead_percent dari ahsp_templates
-        const { data: details } = await supabase.from('ahsp_details')
+        // 2. Ambil Detail AHSP dengan Relasi Eksplisit (!hsd_id)
+        const { data: details, error } = await supabase.from('ahsp_details')
           .select(`
             koefisien, 
             ahsp_template_id, 
-            master_hsd ( id, item_name, resource_type, unit, base_price ),
+            master_hsd!hsd_id ( id, item_name, resource_type, unit, base_price ),
             ahsp_templates ( overhead_percent )
           `)
           .in('ahsp_template_id', templateIds);
+
+        if (error) throw error;
+        if (!details || details.length === 0) { setLoading(false); return; }
 
         const grouped = {};
         tasks.forEach(task => {
@@ -228,7 +232,7 @@ function ResourceUsage() {
 
             const totalVol = volume * detail.koefisien;
             
-            // ⚠️ PERBAIKAN: Kalikan harga dasar dengan Overhead (F = D + E)
+            // Kalikan harga dasar dengan Overhead (F = D + E)
             const adjustedUnitPrice = (hsd.base_price || 0) * factor;
             const totalCost = totalVol * adjustedUnitPrice;
 
@@ -247,7 +251,11 @@ function ResourceUsage() {
 
         const sorted = Object.values(grouped).sort((a, b) => a.resource_type.localeCompare(b.resource_type));
         setAggregated(sorted);
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+      } catch (err) { 
+        console.error("Gagal load BoQ:", err.message); 
+      } finally { 
+        setLoading(false); 
+      }
     }
     loadData();
   }, []);
