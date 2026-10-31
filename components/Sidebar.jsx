@@ -9,11 +9,12 @@ export default function Sidebar() {
     { name: 'Gantt Workspace', path: '/gantt', icon: '📅' },
     { name: 'Tasks (WBS)', path: '/tasks', icon: '📝' },
     { name: 'Progress Harian', path: '/progress', icon: '📈' },
-    { name: 'Laporan Mingguan', path: '/reports/weekly', icon: '📄' }, // Menu Baru
-    { name: 'AHSP', path: '/ahsp', icon: '📋' },
-    { name: 'Resources', path: '/resources', icon: '📦' },
+    { name: 'Laporan Harian', path: '/reports/daily', icon: '📋' },
+    { name: 'Laporan Mingguan', path: '/reports/weekly', icon: '📄' },
+    { name: 'AHSP', path: '/ahsp', icon: '📦' },
+    { name: 'Resources', path: '/resources', icon: '🔗' },
     { name: 'HSD (Harga Satuan)', path: '/hsd', icon: '💰' },
-    { name: 'Assignments', path: '/assignments', icon: '🔗' },
+    { name: 'Assignments', path: '/assignments', icon: '📌' },
     { name: 'Kalender Kerja', path: '/settings/calendar', icon: '⚙️' },
   ];
 
