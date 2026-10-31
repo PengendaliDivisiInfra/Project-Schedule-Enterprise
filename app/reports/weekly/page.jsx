@@ -6,6 +6,7 @@ import LoadingSpinner from '../../../components/LoadingSpinner';
 export default function WeeklyReportPage() {
   const [tasks, setTasks] = useState([]);
   const [records, setRecords] = useState([]);
+  const [projectInfo, setProjectInfo] = useState({});
   const [loading, setLoading] = useState(true);
 
   const today = new Date();
@@ -17,26 +18,34 @@ export default function WeeklyReportPage() {
   const [prevDateStart, setPrevDateStart] = useState(twoWeeksAgo.toISOString().split('T')[0]);
   const [prevDateEnd, setPrevDateEnd] = useState(lastWeek.toISOString().split('T')[0]);
 
-  const [headerInfo, setHeaderInfo] = useState({
-    namaPekerjaan: 'Proyek Konstruksi Enterprise',
-    kontraktor: 'PT. SAKA GRAHA INDONESIA',
-    nilaiKontrak: 500000000, // Sesuaikan dengan Total RAB
-    targetScurve: 30 // Contoh target minggu ini 30%
-  });
-
   const fetchData = async () => {
     setLoading(true);
+    const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
+    if (pData) setProjectInfo(pData);
+
     const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, ahsp_templates(unit)`).order('wbs_code');
     if (tData) {
       const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks.map(t => ({ ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0 })));
     }
-    const { data: pData } = await supabase.from('daily_progress').select('*');
-    setRecords(pData || []);
+    const { data: rData } = await supabase.from('daily_progress').select('*');
+    setRecords(rData || []);
     setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Kalkulasi Minggu Ke- berapa berdasarkan Tanggal Mulai Kontrak
+  const weekNumber = useMemo(() => {
+    if (!projectInfo.contract_start) return 'Minggu Ke-1';
+    const start = new Date(projectInfo.contract_start);
+    const current = new Date(dateStart);
+    const diffTime = Math.abs(current - start);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    const week = Math.ceil(diffDays / 7);
+    const month = Math.ceil(diffDays / 30);
+    return `Minggu Ke-${week} / Bulan Ke-${month}`;
+  }, [projectInfo.contract_start, dateStart]);
 
   const reportData = useMemo(() => {
     let totalRAB = 0;
@@ -50,7 +59,6 @@ export default function WeeklyReportPage() {
       const volLalu = taskRecords.filter(r => new Date(r.record_date) <= new Date(prevDateEnd)).reduce((sum, r) => sum + Number(r.completed_volume), 0);
       const volMingguIni = taskRecords.filter(r => new Date(r.record_date) >= new Date(dateStart) && new Date(r.record_date) <= new Date(dateEnd)).reduce((sum, r) => sum + Number(r.completed_volume), 0);
 
-      const pctKumulatif = t.volume > 0 ? Math.min((volSdIni / t.volume) * 100, 100) : 0;
       const hargaSatuan = t.volume > 0 ? (t.cost / t.volume) : 0;
       
       const bobotKontrak = totalRAB > 0 ? (t.cost / totalRAB) * 100 : 0;
@@ -58,9 +66,12 @@ export default function WeeklyReportPage() {
       const bobotMingguIni = totalRAB > 0 ? ((volMingguIni * hargaSatuan) / totalRAB) * 100 : 0;
       const bobotSdIni = totalRAB > 0 ? ((volSdIni * hargaSatuan) / totalRAB) * 100 : 0;
 
+      // Target Kurva S sederhana: asumsi linear 100% dibagi durasi (bisa diubah nanti)
+      const targetScurve = Number(t.target_s_curve) || 0; 
+
       return {
-        ...t, isSummary, volSdIni, volLalu, volMingguIni, pctKumulatif, hargaSatuan,
-        bobotKontrak, bobotLalu, bobotMingguIni, bobotSdIni
+        ...t, isSummary, volSdIni, volLalu, volMingguIni, hargaSatuan,
+        bobotKontrak, bobotLalu, bobotMingguIni, bobotSdIni, targetScurve
       };
     });
 
@@ -85,7 +96,6 @@ export default function WeeklyReportPage() {
       `}</style>
 
       <div className="p-4 bg-gray-100 min-h-screen overflow-x-auto print:p-0 print:bg-white">
-        
         <div className="print-hidden mb-4 flex justify-between items-end max-w-[297mm] mx-auto bg-white p-3 rounded shadow">
           <div className="flex gap-4">
              <div><label className="block text-xs font-bold">Mulai Minggu Ini</label><input type="date" value={dateStart} onChange={e => setDateStart(e.target.value)} className="border p-1 text-sm rounded" /></div>
@@ -101,12 +111,12 @@ export default function WeeklyReportPage() {
           
           <div className="flex justify-between mb-2 border-b-2 border-black pb-2">
             <div className="space-y-1 w-1/2">
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Nama Paket Proyek</span><span>:</span><span contentEditable suppressContentEditableWarning className="border-b border-dashed border-gray-400 px-1">{headerInfo.namaPekerjaan}</span></div>
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span contentEditable suppressContentEditableWarning className="border-b border-dashed border-gray-400 px-1">{headerInfo.kontraktor}</span></div>
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {headerInfo.nilaiKontrak.toLocaleString('id-ID')}</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Nama Paket Proyek</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{projectInfo.name || 'Nama Proyek'}</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>PT. Kontraktor (Edit)</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {(projectInfo.contract_value || 0).toLocaleString('id-ID')}</span></div>
             </div>
             <div className="space-y-1 w-1/2 text-right">
-              <div className="grid grid-cols-[130px_10px_1fr]"><span>Periode Pelaksanaan</span><span>:</span><span>Minggu Ke-4 / Bulan Ke-1</span></div>
+              <div className="grid grid-cols-[130px_10px_1fr]"><span>Periode Pelaksanaan</span><span>:</span><span className="px-1 font-bold">{weekNumber}</span></div>
               <div className="grid grid-cols-[130px_10px_1fr]"><span>Rentang Tanggal</span><span>:</span><span>{new Date(dateStart).toLocaleDateString('id-ID')} s.d {new Date(dateEnd).toLocaleDateString('id-ID')}</span></div>
             </div>
           </div>
@@ -148,25 +158,21 @@ export default function WeeklyReportPage() {
                     <td className="border border-black p-0.5 text-right">{isSummary ? '' : `Rp ${row.cost.toLocaleString('id-ID')}`}</td>
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.bobotKontrak.toFixed(2)}%</td>
                     
-                    {/* Minggu Lalu */}
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.volLalu.toFixed(2)}</td>
                     <td className="border border-black p-0.5 text-right">{isSummary ? '' : `Rp ${(row.volLalu * row.hargaSatuan).toLocaleString('id-ID')}`}</td>
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.bobotLalu.toFixed(2)}%</td>
 
-                    {/* Minggu Ini */}
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.volMingguIni.toFixed(2)}</td>
                     <td className="border border-black p-0.5 text-right">{isSummary ? '' : `Rp ${(row.volMingguIni * row.hargaSatuan).toLocaleString('id-ID')}`}</td>
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.bobotMingguIni.toFixed(2)}%</td>
 
-                    {/* s.d Minggu Ini */}
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.volSdIni.toFixed(2)}</td>
                     <td className="border border-black p-0.5 text-right">{isSummary ? '' : `Rp ${(row.volSdIni * row.hargaSatuan).toLocaleString('id-ID')}`}</td>
                     <td className="border border-black p-0.5 text-center">{isSummary ? '' : row.bobotSdIni.toFixed(2)}%</td>
 
-                    {/* Target & Deviasi */}
-                    <td className="border border-black p-0.5 text-center">{isSummary ? '' : `${headerInfo.targetScurve}%`}</td>
-                    <td className={`border border-black p-0.5 text-center font-bold ${ (row.bobotSdIni - headerInfo.targetScurve) < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {isSummary ? '' : `${(row.bobotSdIni - headerInfo.targetScurve).toFixed(2)}%`}
+                    <td className="border border-black p-0.5 text-center">{isSummary ? '' : `${row.targetScurve}%`}</td>
+                    <td className={`border border-black p-0.5 text-center font-bold ${ (row.bobotSdIni - row.targetScurve) < 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {isSummary ? '' : `${(row.bobotSdIni - row.targetScurve).toFixed(2)}%`}
                     </td>
                   </tr>
                 );
@@ -180,16 +186,16 @@ export default function WeeklyReportPage() {
                 <td className="border border-black p-1 text-center">{reportData.rows.reduce((sum, r) => sum + (r.isSummary ? 0 : r.bobotMingguIni), 0).toFixed(2)}%</td>
                 <td className="border border-black p-1 text-center" colSpan={2}></td>
                 <td className="border border-black p-1 text-center text-blue-700 text-xs">{reportData.totalPctKumulatif.toFixed(2)}%</td>
-                <td className="border border-black p-1 text-center">{headerInfo.targetScurve}%</td>
-                <td className="border border-black p-1 text-center">{(reportData.totalPctKumulatif - headerInfo.targetScurve).toFixed(2)}%</td>
+                <td className="border border-black p-1 text-center">-</td>
+                <td className="border border-black p-1 text-center">-</td>
               </tr>
             </tbody>
           </table>
 
           <div className="mt-8 grid grid-cols-3 gap-4 text-center text-xs">
-            <div><p>Kontraktor Pelaksana</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8">{headerInfo.kontraktor}</p></div>
-            <div><p>Konsultan Pengawas</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8">PT. ELEMEN TIGA TIGA</p></div>
-            <div><p>Disetujui Oleh, Pemilik Proyek (PPK)</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8">( __________________ )</p></div>
+            <div><p contentEditable suppressContentEditableWarning>Kontraktor Pelaksana</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>PT. SAKA GRAHA INDONESIA</p></div>
+            <div><p contentEditable suppressContentEditableWarning>Konsultan Pengawas</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>PT. ELEMEN TIGA TIGA</p></div>
+            <div><p contentEditable suppressContentEditableWarning>Disetujui Oleh, Pemilik Proyek (PPK)</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>( __________________ )</p></div>
           </div>
         </div>
       </div>

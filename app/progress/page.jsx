@@ -8,29 +8,27 @@ export default function ProgressGridPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // State untuk rentang tanggal (7 hari ke depan dari hari ini)
+  // State untuk rentang tanggal
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [dateRange, setDateRange] = useState([]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    
-    // 1. Tentukan 7 hari ke depan
-    const today = new Date();
+  // Efek untuk generate 7 hari dari startDate
+  useEffect(() => {
     const dates = [];
+    const start = new Date(startDate);
     for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
+      const d = new Date(start);
       d.setDate(d.getDate() + i);
       dates.push(d.toISOString().split('T')[0]);
     }
     setDateRange(dates);
+  }, [startDate]);
 
-    // 2. Ambil data task beserta volume, cost, dan satuan
+  const fetchData = async () => {
+    setLoading(true);
     const { data: tData } = await supabase
       .from('wbs_tasks')
-      .select(`
-        id, name, wbs_code, summary, volume, cost,
-        ahsp_templates ( unit, total_harga_ahsp )
-      `)
+      .select(`id, name, wbs_code, summary, volume, cost, ahsp_templates ( unit, total_harga_ahsp )`)
       .order('wbs_code');
     
     if (tData) {
@@ -46,161 +44,111 @@ export default function ProgressGridPage() {
           satuan_hsd: task.ahsp_templates?.unit || 'unit',
           volume: Number(task.volume) || 0,
           cost: Number(task.cost) || 0,
-          // Harga Satuan = Total Cost / Volume (Jika ada)
           harga_satuan: (Number(task.volume) > 0) ? (Number(task.cost) / Number(task.volume)) : 0
         };
       });
       setTasks(processedTasks);
     }
     
-    // 3. Ambil Riwayat Progres
     const { data: pData } = await supabase.from('daily_progress').select('*');
     setRecords(pData || []);
-    
     setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- LOGIKA INLINE EDIT PADA GRID ---
+  // Optimasi: Gunakan useMemo agar tidak re-kalkulasi berlebihan
+  const tableData = useMemo(() => {
+    return tasks.map(task => {
+      const taskRecords = records.filter(r => r.task_id === task.id);
+      const totalKumulatif = taskRecords.reduce((sum, r) => sum + Number(r.completed_volume), 0);
+      const progressPercent = task.volume > 0 ? Math.min((totalKumulatif / task.volume) * 100, 100) : 0;
+      const totalRealisasi = totalKumulatif * task.harga_satuan;
+      const dailyMap = {};
+      taskRecords.forEach(r => { dailyMap[r.record_date] = r.completed_volume; });
+
+      return { ...task, totalKumulatif, progressPercent, totalRealisasi, dailyMap };
+    });
+  }, [tasks, records]);
+
   const handleCellUpdate = async (taskId, dateStr, volume) => {
     const numVolume = Number(volume);
     if (isNaN(numVolume) || numVolume < 0) return;
 
     try {
-      // Cari apakah record untuk task & tanggal ini sudah ada
       const existingRecord = records.find(r => r.task_id === taskId && r.record_date === dateStr);
-
       if (existingRecord) {
-        // Update
         await supabase.from('daily_progress').update({ completed_volume: numVolume }).eq('id', existingRecord.id);
       } else {
-        // Insert baru
         await supabase.from('daily_progress').insert([{
-          task_id: taskId,
-          record_date: dateStr,
-          completed_volume: numVolume,
-          actual_cost: 0, // Biaya aktual bisa diisi di kolom terpisah nanti
-          progress_percent: 0 // Akan dikalkulasi di UI
+          task_id: taskId, record_date: dateStr, completed_volume: numVolume, actual_cost: 0, progress_percent: 0
         }]);
       }
       
-      // Update state lokal agar instan
-      const updatedRecords = existingRecord 
-        ? records.map(r => r.id === existingRecord.id ? { ...r, completed_volume: numVolume } : r)
-        : [...records, { task_id: taskId, record_date: dateStr, completed_volume: numVolume }];
-      setRecords(updatedRecords);
-
+      // Update state lokal secara optimis
+      if (existingRecord) {
+        setRecords(prev => prev.map(r => r.id === existingRecord.id ? { ...r, completed_volume: numVolume } : r));
+      } else {
+        setRecords(prev => [...prev, { task_id: taskId, record_date: dateStr, completed_volume: numVolume }]);
+      }
     } catch (err) {
       alert('Gagal simpan sel: ' + err.message);
     }
   };
 
-  // --- KALKULASI DATA UNTUK DI-RENDER ---
-  const tableData = useMemo(() => {
-    return tasks.map(task => {
-      // Ambil semua record untuk task ini
-      const taskRecords = records.filter(r => r.task_id === task.id);
-      
-      // Hitung Volume Kumulatif
-      const totalKumulatif = taskRecords.reduce((sum, r) => sum + Number(r.completed_volume), 0);
-      
-      // Hitung Progress %
-      const progressPercent = task.volume > 0 ? Math.min((totalKumulatif / task.volume) * 100, 100) : 0;
-
-      // Total Harga Realisasi = Kumulatif * Harga Satuan
-      const totalRealisasi = totalKumulatif * task.harga_satuan;
-
-      // Buat map tanggal -> volume untuk akses cepat di tabel
-      const dailyMap = {};
-      taskRecords.forEach(r => { dailyMap[r.record_date] = r.completed_volume; });
-
-      return {
-        ...task,
-        totalKumulatif,
-        progressPercent,
-        totalRealisasi,
-        dailyMap
-      };
-    });
-  }, [tasks, records]);
-
   return (
     <div className="p-4 bg-gray-50 h-screen flex flex-col">
-      
-      {/* HEADER HALAMAN */}
       <div className="mb-4 flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Rekapitulasi Progres Harian</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Input volume secara horizontal (seperti Excel). Data kumulatif dan persentase akan terhitung otomatis.
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Input volume horizontal. Kalkulasi otomatis.</p>
         </div>
-        <div className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-semibold border border-blue-300">
-          Periode: {new Date(dateRange[0]).toLocaleDateString('id-ID', {day:'2-digit', month:'short'})} - {new Date(dateRange[6]).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})}
+        <div className="flex gap-2 items-center">
+          <label className="text-xs font-bold text-gray-600">Mulai Tanggal:</label>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 p-1.5 rounded text-sm" />
         </div>
       </div>
 
-      {/* TABEL GRID HORIZONTAL */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden flex-1 flex flex-col">
         {loading ? <LoadingSpinner text="Memuat data grid..." /> : (
           <div className="flex-1 overflow-auto relative">
             <table className="w-full text-left text-xs whitespace-nowrap">
-              
-              {/* HEADER TABEL (STICKY) */}
               <thead className="bg-gray-100 border-b border-gray-300 sticky top-0 z-20 shadow-sm text-gray-700">
                 <tr>
-                  {/* Master Data (Sticky Left) */}
                   <th className="p-2 border-r border-gray-300 w-12 text-center bg-gray-200 sticky left-0 z-30">No</th>
                   <th className="p-2 border-r border-gray-300 w-64 bg-gray-200 sticky left-[48px] z-30">Uraian Pekerjaan</th>
                   <th className="p-2 border-r border-gray-300 w-20 text-center bg-gray-200">Vol Kontrak</th>
                   <th className="p-2 border-r border-gray-300 w-16 text-center bg-gray-200">Satuan</th>
-                  
-                  {/* Periode Harian (Scrollable) */}
                   {dateRange.map(date => (
                     <th key={date} className="p-2 border-r border-gray-300 w-20 text-center bg-blue-50 text-blue-800 font-bold">
                       {new Date(date).toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}
                     </th>
                   ))}
-
-                  {/* Rekapitulasi (Sticky Right - Opsional, kita letakkan di akhir) */}
                   <th className="p-2 border-r border-gray-300 w-24 text-center bg-gray-200 font-bold">Vol Kumulatif</th>
                   <th className="p-2 border-r border-gray-300 w-20 text-center bg-gray-200 font-bold">Prog (%)</th>
                   <th className="p-2 border-r border-gray-300 w-28 text-right bg-gray-200 font-bold">Harga Satuan</th>
                   <th className="p-2 border-r border-gray-300 w-32 text-right bg-gray-200 font-bold">Total Realisasi</th>
                 </tr>
               </thead>
-
-              {/* BODY TABEL */}
               <tbody className="divide-y divide-gray-200">
-                {tableData.map((t, idx) => (
+                {tableData.map((t) => (
                   <tr key={t.id} className={`hover:bg-blue-50 ${t.is_parent ? 'bg-gray-100 font-bold' : ''}`}>
-                    
-                    {/* Master Data (Sticky Left) */}
                     <td className={`p-2 border-r border-gray-200 text-center bg-white sticky left-0 z-10 ${t.is_parent ? 'bg-gray-100' : ''}`}>{t.wbs_code}</td>
                     <td className={`p-2 border-r border-gray-200 bg-white sticky left-[48px] z-10 truncate max-w-[250px] ${t.is_parent ? 'bg-gray-100' : ''}`} title={t.name}>
                       {t.is_parent ? '📁 ' : '📄 '} {t.name}
                     </td>
                     <td className="p-2 border-r border-gray-200 text-center">{t.volume}</td>
                     <td className="p-2 border-r border-gray-200 text-center">{t.satuan_hsd}</td>
-                    
-                    {/* Input Harian */}
                     {dateRange.map(date => (
                       <td key={date} className="p-1 border-r border-gray-200 bg-blue-50/20">
                         {!t.is_parent && (
                           <input 
-                            type="number"
-                            step="0.01"
-                            defaultValue={t.dailyMap[date] || ''}
-                            onBlur={(e) => handleCellUpdate(t.id, date, e.target.value)}
-                            className="w-full h-8 text-center border border-transparent hover:border-blue-300 focus:border-blue-500 focus:bg-white rounded bg-transparent text-xs font-semibold"
-                            placeholder="-"
+                            type="number" step="0.01" defaultValue={t.dailyMap[date] || ''} onBlur={(e) => handleCellUpdate(t.id, date, e.target.value)}
+                            className="w-full h-8 text-center border border-transparent hover:border-blue-300 focus:border-blue-500 focus:bg-white rounded bg-transparent text-xs font-semibold" placeholder="-"
                           />
                         )}
                       </td>
                     ))}
-
-                    {/* Rekapitulasi */}
                     <td className="p-2 border-r border-gray-200 text-right font-bold text-slate-700">{t.totalKumulatif.toFixed(2)}</td>
                     <td className="p-2 border-r border-gray-200 text-center">
                       <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${t.progressPercent >= 100 ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
