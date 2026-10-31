@@ -22,33 +22,42 @@ export default function GanttPage() {
           projectId = t?.[0]?.project_id;
         }
         
+        let activeWorkingDays = [1,2,3,4,5];
+        let activeExceptions = [];
+
         if (projectId) {
-          // 1. Ambil Kalender
-          let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).single();
-          let activeWorkingDays = cal ? cal.working_days : [1,2,3,4,5];
+          // Gunakan maybeSingle agar tidak error 406 jika data kosong
+          let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).maybeSingle();
           
-          let { data: exc } = await supabase.from('calendar_exceptions').select('*').eq('calendar_id', cal.id);
-          let activeExceptions = exc || [];
+          if (cal && cal.id) {
+            activeWorkingDays = cal.working_days || [1,2,3,4,5];
+            let { data: exc } = await supabase.from('calendar_exceptions').select('*').eq('calendar_id', cal.id);
+            activeExceptions = exc || [];
+          }
           
           setWorkingDays(activeWorkingDays);
           setExceptions(activeExceptions);
 
-          // 2. Ambil Tasks dan jalankan CPM
           const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs_code', { ascending: true });
+          
           if (data && data.length > 0) {
             const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-            
             const result = calculateCPM(data, projectStart, activeWorkingDays, activeExceptions);
             
             if (!result.error) {
               setTasks(result.tasks);
               setRelations(result.relations);
             } else {
+              console.error("CPM Error:", result.error);
               setTasks(data);
             }
           }
         }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+      } catch (err) { 
+        console.error(err); 
+      } finally { 
+        setLoading(false); 
+      }
     }
     loadData();
   }, []);
