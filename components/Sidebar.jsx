@@ -6,12 +6,13 @@ export default function Sidebar() {
   const pathname = usePathname();
   const menus = [
     { name: 'Dashboard S-Curve', path: '/', icon: '📊' },
-    { name: 'Gantt Workspace', path: '/gantt', icon: '📅' }, // <-- Menu Baru
+    { name: 'Gantt Workspace', path: '/gantt', icon: '📅' },
     { name: 'Tasks (WBS)', path: '/tasks', icon: '📝' },
     { name: 'AHSP', path: '/ahsp', icon: '📋' },
     { name: 'Resources', path: '/resources', icon: '📦' },
     { name: 'HSD (Harga Satuan)', path: '/hsd', icon: '💰' },
     { name: 'Assignments', path: '/assignments', icon: '🔗' },
+    { name: 'Kalender Kerja', path: '/settings/calendar', icon: '⚙️' }, // Menu Baru
   ];
 
   return (

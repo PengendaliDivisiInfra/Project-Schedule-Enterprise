@@ -9,6 +9,8 @@ export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
   const [relations, setRelations] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
+  const [exceptions, setExceptions] = useState([]);
 
   useEffect(() => {
     async function loadData() {
@@ -21,10 +23,22 @@ export default function GanttPage() {
         }
         
         if (projectId) {
+          // 1. Ambil Kalender
+          let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).single();
+          let activeWorkingDays = cal ? cal.working_days : [1,2,3,4,5];
+          
+          let { data: exc } = await supabase.from('calendar_exceptions').select('*').eq('calendar_id', cal.id);
+          let activeExceptions = exc || [];
+          
+          setWorkingDays(activeWorkingDays);
+          setExceptions(activeExceptions);
+
+          // 2. Ambil Tasks dan jalankan CPM
           const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs_code', { ascending: true });
           if (data && data.length > 0) {
             const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-            const result = calculateCPM(data, projectStart);
+            
+            const result = calculateCPM(data, projectStart, activeWorkingDays, activeExceptions);
             
             if (!result.error) {
               setTasks(result.tasks);
@@ -45,14 +59,14 @@ export default function GanttPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Interactive Gantt Workspace</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Garis panah merepresentasikan Predecessor (FS/SS). Warna <span className="text-red-600 font-bold">Merah</span> menandakan Jalur Kritis.
+            Kalender Kerja Aktif: <b>{workingDays.length} Hari/Minggu</b> | {exceptions.length} Hari Libur.
           </p>
         </div>
       </div>
 
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner text="Membangun Gantt Chart..." /> : (
-          <AdvancedGantt tasks={tasks} relations={relations} />
+          <AdvancedGantt tasks={tasks} relations={relations} workingDays={workingDays} />
         )}
       </div>
     </div>
