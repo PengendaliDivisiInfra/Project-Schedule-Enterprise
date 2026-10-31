@@ -1,7 +1,7 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import AdvancedGantt from '../../components/AdvancedGantt';
+import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { calculateCPM } from '../../lib/cpmEngine';
 
@@ -129,7 +129,7 @@ export default function GanttPage() {
 
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner text="Membangun Gantt Chart..." /> : (
-          <AdvancedGantt 
+          <ClientGanttWrapper 
             tasks={tasks} 
             relations={relations} 
             workingDays={workingDays} 
@@ -142,3 +142,4 @@ export default function GanttPage() {
     </div>
   );
 }
+
