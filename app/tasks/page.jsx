@@ -31,18 +31,23 @@ export default function TasksPage() {
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
       setProjectId(pid);
       
-      // ⚠️ PERBAIKAN: Join dengan ahsp_templates untuk ambil harga satuan
       const { data } = await supabase.from('wbs_tasks').select(`
         *,
         ahsp_templates ( unit, total_harga_ahsp )
       `).eq('project_id', pid).order('wbs_code', { ascending: true });
       
       if (data && data.length > 0) {
-        const mappedData = data.map(t => ({
-          ...t,
-          satuan_hsd: t.ahsp_templates?.unit || 'unit',
-          harga_satuan: Number(t.ahsp_templates?.total_harga_ahsp) || (Number(t.volume) > 0 ? (Number(t.cost) / Number(t.volume)) : 0)
-        }));
+        const mappedData = data.map(t => {
+          // Harga Satuan: Prioritaskan dari AHSP, jika kosong hitung dari Cost/Volume
+          const hargaSatuan = Number(t.ahsp_templates?.total_harga_ahsp) || (Number(t.volume) > 0 ? (Number(t.cost) / Number(t.volume)) : 0);
+          return {
+            ...t,
+            satuan_hsd: t.ahsp_templates?.unit || 'unit',
+            harga_satuan: hargaSatuan,
+            // Pastikan cost selalu Volume * Harga Satuan
+            cost: Number(t.volume) * hargaSatuan
+          };
+        });
 
         const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
         const result = calculateCPM(mappedData, projectStart);
@@ -55,7 +60,7 @@ export default function TasksPage() {
 
   useEffect(() => { fetchTasks(); }, []);
 
-  // ⚡ PERBAIKAN: Hitung Total Otomatis saat Volume Berubah
+  // Hitung Total Otomatis saat Volume Berubah
   const handleUpdateVolume = async (task, newVolume) => {
     const vol = Number(newVolume);
     if (isNaN(vol) || vol < 0) return;
@@ -165,7 +170,6 @@ export default function TasksPage() {
                       {isSummary ? '📁 ' : '📄 '} {t.name}
                     </td>
                     
-                    {/* Volume (Inline Edit) */}
                     <td className="p-1 border-r text-center font-bold bg-slate-50">
                       {!isSummary && (
                         <div className="flex items-center gap-1 justify-center">
@@ -180,12 +184,10 @@ export default function TasksPage() {
                       )}
                     </td>
 
-                    {/* Harga Satuan (Read-only dari AHSP) */}
                     <td className="p-3 border-r text-right font-semibold text-blue-700 bg-blue-50/50">
                       {isSummary ? '-' : `Rp ${(t.harga_satuan || 0).toLocaleString('id-ID')}`}
                     </td>
 
-                    {/* Total Biaya (Otomatis Terhitung, Read-only) */}
                     <td className="p-3 border-r text-right font-bold text-indigo-800 bg-indigo-50/50">
                       {isSummary ? `Rp ${(t.cost || 0).toLocaleString('id-ID')}` : `Rp ${(Number(t.cost) || 0).toLocaleString('id-ID')}`}
                     </td>

@@ -23,7 +23,6 @@ export default function WeeklyReportPage() {
     const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
     if (pData) {
       setProjectInfo(pData);
-      // Set default date range ke tanggal mulai kontrak (jika ada)
       if (pData.contract_start) {
         setDateStart(pData.contract_start);
         const end = new Date(pData.contract_start);
@@ -62,8 +61,9 @@ export default function WeeklyReportPage() {
   }, [projectInfo.contract_start, dateStart]);
 
   const reportData = useMemo(() => {
-    // ⚠️ PERBAIKAN: Total RAB diambil dari Grand Total Cost WBS (Leaf Task)
-    const totalRAB = tasks.filter(t => t.summary === 'No').reduce((sum, t) => sum + Number(t.cost), 0);
+    // ⚡ Nilai Kontrak diambil dari Database Proyek, jika 0 fallback ke Total RAB WBS
+    const totalRABFromWBS = tasks.filter(t => t.summary === 'No').reduce((sum, t) => sum + Number(t.cost), 0);
+    const contractValue = Number(projectInfo.contract_value) > 0 ? Number(projectInfo.contract_value) : totalRABFromWBS;
 
     const rows = tasks.map(t => {
       const isSummary = t.summary === 'Yes';
@@ -75,11 +75,10 @@ export default function WeeklyReportPage() {
 
       const hargaSatuan = t.volume > 0 ? (t.cost / t.volume) : 0;
       
-      // ⚠️ PERBAIKAN: Bobot dihitung berdasarkan Total RAB yang valid
-      const bobotKontrak = totalRAB > 0 ? (t.cost / totalRAB) * 100 : 0;
-      const bobotLalu = totalRAB > 0 ? ((volLalu * hargaSatuan) / totalRAB) * 100 : 0;
-      const bobotMingguIni = totalRAB > 0 ? ((volMingguIni * hargaSatuan) / totalRAB) * 100 : 0;
-      const bobotSdIni = totalRAB > 0 ? ((volSdIni * hargaSatuan) / totalRAB) * 100 : 0;
+      const bobotKontrak = contractValue > 0 ? (t.cost / contractValue) * 100 : 0;
+      const bobotLalu = contractValue > 0 ? ((volLalu * hargaSatuan) / contractValue) * 100 : 0;
+      const bobotMingguIni = contractValue > 0 ? ((volMingguIni * hargaSatuan) / contractValue) * 100 : 0;
+      const bobotSdIni = contractValue > 0 ? ((volSdIni * hargaSatuan) / contractValue) * 100 : 0;
 
       return {
         ...t, isSummary, volSdIni, volLalu, volMingguIni, hargaSatuan,
@@ -87,9 +86,9 @@ export default function WeeklyReportPage() {
       };
     });
 
-    const totalPctKumulatif = totalRAB > 0 ? (rows.reduce((sum, r) => sum + (r.isSummary ? 0 : r.bobotSdIni), 0)) : 0;
-    return { rows, totalRAB, totalPctKumulatif };
-  }, [tasks, records, dateStart, dateEnd, prevDateStart, prevDateEnd]);
+    const totalPctKumulatif = contractValue > 0 ? (rows.reduce((sum, r) => sum + (r.isSummary ? 0 : r.bobotSdIni), 0)) : 0;
+    return { rows, contractValue, totalPctKumulatif };
+  }, [tasks, records, dateStart, dateEnd, prevDateStart, prevDateEnd, projectInfo.contract_value]);
 
   if (loading) return <LoadingSpinner text="Menyusun laporan..." />;
 
@@ -124,8 +123,8 @@ export default function WeeklyReportPage() {
           <div className="flex justify-between mb-2 border-b-2 border-black pb-2">
             <div className="space-y-1 w-1/2">
               <div className="grid grid-cols-[120px_10px_1fr]"><span>Nama Paket Proyek</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{projectInfo.name || 'Nama Proyek'}</span></div>
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>PT. Kontraktor (Edit)</span></div>
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {reportData.totalRAB.toLocaleString('id-ID')}</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{projectInfo.contractor_name || 'PT. Kontraktor'}</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {reportData.contractValue.toLocaleString('id-ID')}</span></div>
             </div>
             <div className="space-y-1 w-1/2 text-right">
               <div className="grid grid-cols-[130px_10px_1fr]"><span>Periode Pelaksanaan</span><span>:</span><span className="px-1 font-bold">{weekNumber}</span></div>
@@ -205,9 +204,9 @@ export default function WeeklyReportPage() {
           </table>
 
           <div className="mt-8 grid grid-cols-3 gap-4 text-center text-xs">
-            <div><p contentEditable suppressContentEditableWarning>Kontraktor Pelaksana</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>PT. SAKA GRAHA INDONESIA</p></div>
-            <div><p contentEditable suppressContentEditableWarning>Konsultan Pengawas</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>PT. ELEMEN TIGA TIGA</p></div>
-            <div><p contentEditable suppressContentEditableWarning>Disetujui Oleh, Pemilik Proyek (PPK)</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>( __________________ )</p></div>
+            <div><p contentEditable suppressContentEditableWarning>Kontraktor Pelaksana</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>{projectInfo.contractor_name || 'PT. SAKA GRAHA INDONESIA'}</p></div>
+            <div><p contentEditable suppressContentEditableWarning>Konsultan Pengawas</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>{projectInfo.consultant_name || 'PT. ELEMEN TIGA TIGA'}</p></div>
+            <div><p contentEditable suppressContentEditableWarning>Disetujui Oleh, Pemilik Proyek (PPK)</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>{projectInfo.ppk_name || '( __________________ )'}</p></div>
           </div>
         </div>
       </div>

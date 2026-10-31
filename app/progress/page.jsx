@@ -44,7 +44,6 @@ export default function ProgressGridPage() {
       }));
     }
     
-    // ⚡ Ambil SEMUA data history, bukan cuma minggu ini
     const { data: pData } = await supabase.from('daily_progress').select('*');
     setRecords(pData || []);
     setLoading(false);
@@ -56,6 +55,7 @@ export default function ProgressGridPage() {
     return tasks.map(task => {
       const taskRecords = records.filter(r => r.task_id === task.id);
       const totalKumulatif = taskRecords.reduce((sum, r) => sum + Number(r.completed_volume), 0);
+      // Cegah progress lebih dari 100% (kecuali over-achievement yang disengaja)
       const progressPercent = task.volume > 0 ? Math.min((totalKumulatif / task.volume) * 100, 100) : 0;
       const totalRealisasi = totalKumulatif * task.harga_satuan;
       
@@ -66,24 +66,30 @@ export default function ProgressGridPage() {
     });
   }, [tasks, records]);
 
-  const handleCellUpdate = async (taskId, dateStr, volume) => {
+  const handleCellUpdate = async (task, dateStr, volume) => {
     const numVolume = Number(volume);
     if (isNaN(numVolume) || numVolume < 0) return;
 
+    // Validasi: Cegah input melebihi sisa volume kontrak
+    const otherRecordsTotal = records
+      .filter(r => r.task_id === task.id && r.record_date !== dateStr)
+      .reduce((sum, r) => sum + Number(r.completed_volume), 0);
+    
+    if (otherRecordsTotal + numVolume > task.volume) {
+      alert(`Volume melebihi kontrak! Sisa volume yang bisa diinput: ${task.volume - otherRecordsTotal} ${task.satuan_hsd}`);
+      return;
+    }
+
     try {
-      const existingRecord = records.find(r => r.task_id === taskId && r.record_date === dateStr);
+      const existingRecord = records.find(r => r.task_id === task.id && r.record_date === dateStr);
       if (existingRecord) {
         await supabase.from('daily_progress').update({ completed_volume: numVolume }).eq('id', existingRecord.id);
-      } else {
-        await supabase.from('daily_progress').insert([{
-          task_id: taskId, record_date: dateStr, completed_volume: numVolume, actual_cost: 0, progress_percent: 0
-        }]);
-      }
-      
-      if (existingRecord) {
         setRecords(prev => prev.map(r => r.id === existingRecord.id ? { ...r, completed_volume: numVolume } : r));
       } else {
-        setRecords(prev => [...prev, { task_id: taskId, record_date: dateStr, completed_volume: numVolume }]);
+        const { data } = await supabase.from('daily_progress').insert([{
+          task_id: task.id, record_date: dateStr, completed_volume: numVolume, actual_cost: 0, progress_percent: 0
+        }]).select().single();
+        setRecords(prev => [...prev, data]);
       }
     } catch (err) {
       alert('Gagal simpan sel: ' + err.message);
@@ -95,7 +101,7 @@ export default function ProgressGridPage() {
       <div className="mb-4 flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Rekapitulasi Progres Harian</h1>
-          <p className="text-sm text-gray-500 mt-1">Input horizontal. Data lama tetap tersimpan aman di database meski tanggal diubah.</p>
+          <p className="text-sm text-gray-500 mt-1">Input horizontal. Data lama tetap tersimpan aman.</p>
         </div>
         <div className="flex gap-2 items-center bg-white p-2 rounded-lg shadow-sm border">
           <label className="text-xs font-bold text-gray-600">Mulai Tanggal Tampilan:</label>
@@ -136,7 +142,7 @@ export default function ProgressGridPage() {
                       <td key={date} className="p-1 border-r border-gray-200 bg-blue-50/20">
                         {!t.is_parent && (
                           <input 
-                            type="number" step="0.01" defaultValue={t.dailyMap[date] || ''} onBlur={(e) => handleCellUpdate(t.id, date, e.target.value)}
+                            type="number" step="0.01" defaultValue={t.dailyMap[date] || ''} onBlur={(e) => handleCellUpdate(t, date, e.target.value)}
                             className="w-full h-8 text-center border border-transparent hover:border-blue-300 focus:border-blue-500 focus:bg-white rounded bg-transparent text-xs font-semibold" placeholder="-"
                           />
                         )}
