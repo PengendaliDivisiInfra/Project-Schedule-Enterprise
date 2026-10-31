@@ -2,11 +2,10 @@
 import { useRef, useEffect, useState } from 'react';
 
 const DAY_WIDTH = 36;
-const ROW_HEIGHT = 38; // Baris lebih rapat dan padat seperti MS Project
+const ROW_HEIGHT = 38;
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
   const leftPanelRef = useRef(null);
-  const rightPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
 
@@ -160,7 +159,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       
       {/* HEADER (2 Baris: Bulan & Tanggal) */}
       <div className="flex border-b border-gray-400 bg-[#f3f3f3] shrink-0 z-20">
-        <div className="w-[880px] border-r border-gray-400 flex flex-col shrink-0">
+        <div className="w-[980px] border-r border-gray-400 flex flex-col shrink-0">
           {/* Header Atas (Tabel Kiri) */}
           <div className="flex justify-between items-center px-1 py-1 border-b border-gray-300 bg-[#e6e6e6]">
             <div className="flex text-[11px] font-semibold text-gray-700 items-center">
@@ -175,6 +174,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               <span className="w-16 text-center border-l border-gray-300">Resource</span>
               <span className="w-10 text-center border-l border-gray-300">%</span>
               <span className="w-12 text-center border-l border-gray-300">Target</span>
+              <span className="w-14 text-center border-l border-gray-300 bg-slate-200 text-slate-800" title="Volume dari Assignments">Volume</span>
               <span className="w-10 text-center border-l border-gray-300">Sisa</span>
               <span className="w-12 text-center border-l border-gray-300">T/hr</span>
             </div>
@@ -221,7 +221,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       <div className="flex flex-1 overflow-hidden">
         
         {/* KOLOM KIRI (Entry Table) */}
-        <div ref={leftPanelRef} className="w-[880px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
+        <div ref={leftPanelRef} className="w-[980px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {displayTasks.map((t, idx) => {
               const dailyTarget = calculateDailyTarget(t);
@@ -284,8 +284,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   <span className="w-10 text-center font-bold text-gray-700 border-l border-gray-100">{t.progress_percent}%</span>
                   
                   {/* SMART Target */}
-                  <span className="w-12 text-center font-bold text-slate-800 border-l border-gray-100">{isSummary ? '-' : t.smart_target}</span>
+                  <span className="w-12 text-center font-bold text-indigo-700 border-l border-gray-100">{isSummary ? '-' : t.smart_target}</span>
                   
+                  {/* VOLUME (Baru) */}
+                  <span className="w-14 text-center font-bold text-slate-700 bg-slate-50 border-l border-gray-100">{isSummary ? '-' : (t.volume || 0)}</span>
+
                   {/* Sisa Hari */}
                   <span className="w-10 text-center text-slate-500 border-l border-gray-100">{isSummary ? '-' : (t.sisa_hari_efektif || 0)}</span>
                   
@@ -358,11 +361,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 if (isSummary) {
                   return (
                     <div key={t.id} className="absolute pointer-events-auto group" style={{ left, width, top }}>
-                      {/* Garis Horizontal Induk */}
                       <div className="absolute top-0 w-full h-[4px] bg-black"></div>
-                      {/* Jangkar Kiri */}
                       <div className="absolute top-0 left-0 w-[4px] h-[10px] bg-black" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div>
-                      {/* Jangkar Kanan */}
                       <div className="absolute top-0 right-0 w-[4px] h-[10px] bg-black" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div>
                       <span className="absolute -top-3.5 text-[10px] font-semibold text-gray-700 whitespace-nowrap" style={{ left: width + 4 }}>{progress}%</span>
                     </div>
@@ -389,7 +389,10 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     {/* Label Kanan (Resource & Volume) */}
                     <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(16, width) + 6 }}>
                       {t.resource_names && <span className="text-gray-700 font-medium">{t.resource_names}</span>}
-                      <span className="text-gray-400 font-medium">[{Number(t.smart_target) || 0} {t.satuan_hsd}]</span>
+                      {/* Menampilkan Volume dari Assignments */}
+                      <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
+                        Vol: {Number(t.volume) || 0} {t.satuan_hsd}
+                      </span>
                     </div>
                   </div>
                 );
