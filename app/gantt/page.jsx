@@ -36,15 +36,27 @@ export default function GanttPage() {
         setWorkingDays(activeWorkingDays);
         setExceptions(activeExceptions);
 
-        const { data } = await supabase.from('wbs_tasks').select(`
-          *, 
-          ahsp_templates ( unit )
-        `).eq('project_id', projectId).order('wbs_code', { ascending: true });
+        // ⚠️ Mengambil data dari View (Jika View belum ada, fallback ke tabel utama)
+        let query = supabase.from('wbs_tasks').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
+        
+        // Kita coba ambil dari view v_wbs_tasks_with_targets jika tersedia (karena view lebih kaya data)
+        // Jika error, fallback ke tabel standar
+        let { data, error } = await supabase.from('v_wbs_tasks_with_targets').select(`*, ahsp_templates ( unit )`).eq('project_id', projectId).order('wbs_code', { ascending: true });
+        
+        if (error) {
+            // Fallback
+            let fallbackRes = await query;
+            data = fallbackRes.data;
+        }
         
         if (data && data.length > 0) {
           const mappedData = data.map(t => ({
             ...t,
-            satuan_hsd: t.ahsp_templates?.unit || 'unit'
+            satuan_hsd: t.ahsp_templates?.unit || 'unit',
+            resource_names: t.resource_names || '',
+            smart_target: Number(t.smart_target) || 0,
+            sisa_hari_efektif: Number(t.sisa_hari_efektif) || 0,
+            target_per_hari: Number(t.target_per_hari) || 0
           }));
 
           const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
@@ -54,7 +66,10 @@ export default function GanttPage() {
             const finalTasks = result.tasks.map(t => ({
               ...t,
               satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit',
-              resource_names: mappedData.find(m => m.id === t.id)?.resource_names || ''
+              resource_names: mappedData.find(m => m.id === t.id)?.resource_names || '',
+              smart_target: mappedData.find(m => m.id === t.id)?.smart_target || 0,
+              sisa_hari_efektif: mappedData.find(m => m.id === t.id)?.sisa_hari_efektif || 0,
+              target_per_hari: mappedData.find(m => m.id === t.id)?.target_per_hari || 0
             }));
             setTasks(finalTasks);
             setRelations(result.relations);
@@ -70,16 +85,13 @@ export default function GanttPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ⚡ FUNGSI INLINE UPDATE DARI TABEL GANTT
   const handleInlineUpdate = async (taskId, field, value) => {
     try {
       const { error } = await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
       if (error) throw error;
       
-      // Jika durasi diubah, Trigger Database akan mengkalkulasi ulang, lalu kita fetch ulang
       if (field === 'duration') fetchData(); 
       else {
-        // Update state local agar UI langsung berubah tanpa fetch ulang (kecuali durasi)
         setTasks(prev => prev.map(t => t.id === taskId ? { ...t, [field]: value } : t));
       }
     } catch (err) {
