@@ -106,17 +106,21 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '';
 
   // ==========================================
-  // FUNGSI LOGIKA SMART TARGET (MS PROJECT)
+  // FUNGSI FALLBACK (Jika target_per_hari dari DB tidak ada)
   // ==========================================
   const calculateDailyTarget = (task) => {
+    // ⚡ PRIORITAS 1: Gunakan hasil kalkulasi dari Database View
+    if (task.target_per_hari !== undefined && task.target_per_hari !== null) {
+      return Number(task.target_per_hari).toFixed(2);
+    }
+
+    // ⚡ FALLBACK: Kalkulasi Manual di Frontend
     const totalTarget = Number(task.smart_target) || 0;
     const progress = Number(task.progress_percent) || 0;
     
-    // IIf([% Complete]=100, 0, ...)
     if (progress >= 100) return 0;
     if (totalTarget === 0) return 0;
 
-    // Hitung sisa hari efektif
     const today = new Date();
     const finish = new Date(task.end_date);
     
@@ -133,7 +137,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       cur.setDate(cur.getDate() + 1);
     }
 
-    // IIf([Sisa Hari Efektif]<=0, [Target Akhir SMART], [Target Akhir SMART] / [Sisa Hari Efektif])
     if (remainingDays <= 0) return totalTarget.toFixed(2);
     
     return (totalTarget / remainingDays).toFixed(2);
