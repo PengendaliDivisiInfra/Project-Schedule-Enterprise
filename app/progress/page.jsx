@@ -10,8 +10,15 @@ export default function ProgressPage() {
 
   const fetchData = async () => {
     setLoading(true);
+    // ⚠️ PERBAIKAN: Ambil data task dan hilangkan duplikat berdasarkan wbs_code
     const { data: tData } = await supabase.from('wbs_tasks').select('id, name, wbs_code').eq('summary', 'No').order('wbs_code');
-    setTasks(tData || []);
+    
+    if (tData) {
+      const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
+      setTasks(uniqueTasks);
+    } else {
+      setTasks([]);
+    }
     
     const { data: pData } = await supabase.from('daily_progress').select('*, wbs_tasks(name)').order('record_date', { ascending: false }).limit(50);
     setRecords(pData || []);
@@ -84,6 +91,7 @@ export default function ProgressPage() {
             ))}
           </tbody>
         </table>
+        {records.length === 0 && !loading && <div className="p-8 text-center text-gray-500">Belum ada data progres harian.</div>}
       </div>
     </div>
   );
