@@ -10,16 +10,35 @@ export default function ProgressPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    // ⚠️ PERBAIKAN: Ambil data task dan hilangkan duplikat berdasarkan wbs_code
-    const { data: tData } = await supabase.from('wbs_tasks').select('id, name, wbs_code').eq('summary', 'No').order('wbs_code');
+    
+    // 1. Ambil SEMUA task untuk memetakan struktur pohon (Tree)
+    const { data: tData } = await supabase.from('wbs_tasks').select('id, name, wbs_code, summary').order('wbs_code');
     
     if (tData) {
+      // 2. Hilangkan duplikat WBS
       const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
-      setTasks(uniqueTasks);
+
+      // 3. FILTER KETAT: Hanya ambil "Leaf Node" (Task yang tidak punya anak)
+      const leafTasks = uniqueTasks.filter(task => {
+        // Abaikan jika secara eksplisit ditandai sebagai Summary Task
+        if (task.summary === 'Yes') return false;
+        
+        // Cek apakah ada task lain yang WBS-nya merupakan anak dari task ini
+        // Contoh: task.wbs_code = '1', jika ada '1.1' maka '1' adalah Induk, jangan tampilkan.
+        const hasChildren = uniqueTasks.some(other => 
+          other.wbs_code !== task.wbs_code && 
+          other.wbs_code.startsWith(task.wbs_code + '.')
+        );
+        
+        return !hasChildren; 
+      });
+
+      setTasks(leafTasks);
     } else {
       setTasks([]);
     }
     
+    // 4. Ambil Riwayat Progres
     const { data: pData } = await supabase.from('daily_progress').select('*, wbs_tasks(name)').order('record_date', { ascending: false }).limit(50);
     setRecords(pData || []);
     setLoading(false);
@@ -46,11 +65,12 @@ export default function ProgressPage() {
       <div className="bg-white p-6 rounded-xl shadow-sm border mb-8">
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
           <div className="md:col-span-2">
-            <label className="block text-xs font-medium mb-1">Pilih Task (Pekerjaan)</label>
+            <label className="block text-xs font-medium mb-1">Pilih Task (Pekerjaan Anak)</label>
             <select required value={formData.task_id} onChange={e => setFormData({...formData, task_id: e.target.value})} className="w-full border rounded p-2 text-sm">
               <option value="">-- Pilih Task --</option>
               {tasks.map(t => <option key={t.id} value={t.id}>[{t.wbs_code}] {t.name}</option>)}
             </select>
+            <p className="text-[10px] text-gray-500 mt-1">Hanya Pekerjaan Daun (Subtask) yang dapat diinput.</p>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">Tanggal</label>
