@@ -33,17 +33,41 @@ export default function TasksPage() {
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
       setProjectId(pid);
       
-      const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
-      
+      // Ambil dari view jika ada, fallback ke tabel utama
+      let { data, error } = await supabase.from('v_wbs_tasks_with_targets').select(`*, ahsp_templates ( unit )`).eq('project_id', pid).order('wbs_code', { ascending: true });
+      if (error) {
+          let fallbackRes = await supabase.from('wbs_tasks').select(`*, ahsp_templates ( unit )`).eq('project_id', pid).order('wbs_code', { ascending: true });
+          data = fallbackRes.data;
+      }
+
       if (data && data.length > 0) {
+        const mappedData = data.map(t => ({
+            ...t,
+            satuan_hsd: t.ahsp_templates?.unit || 'unit',
+            resource_names: t.resource_names || '',
+            smart_target: Number(t.smart_target) || 0,
+            volume: Number(t.volume) || 0,
+            sisa_hari_efektif: Number(t.sisa_hari_efektif) || 0,
+            target_per_hari: Number(t.target_per_hari) || 0
+        }));
+
         const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-        const result = calculateCPM(data, projectStart);
+        const result = calculateCPM(mappedData, projectStart);
         
         if (result.error) {
           setEngineError(result.error);
           setCpmTasks(result.tasks);
         } else {
-          setCpmTasks(result.tasks);
+          const finalTasks = result.tasks.map(t => ({
+            ...t,
+            satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit',
+            resource_names: mappedData.find(m => m.id === t.id)?.resource_names || '',
+            smart_target: mappedData.find(m => m.id === t.id)?.smart_target || 0,
+            volume: mappedData.find(m => m.id === t.id)?.volume || 0,
+            sisa_hari_efektif: mappedData.find(m => m.id === t.id)?.sisa_hari_efektif || 0,
+            target_per_hari: mappedData.find(m => m.id === t.id)?.target_per_hari || 0
+          }));
+          setCpmTasks(finalTasks);
         }
       } else {
         setCpmTasks([]);
@@ -106,18 +130,21 @@ export default function TasksPage() {
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Menghitung CPM..." /> : (
-          <table className="w-full text-left min-w-[1400px]">
+          <table className="w-full text-left min-w-[1500px]">
             <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
               <tr>
                 <th className="p-3 border-r text-center w-24">Hierarki</th>
                 <th className="p-3 border-r">WBS</th>
                 <th className="p-3 border-r">Nama Task</th>
+                <th className="p-3 border-r text-center text-slate-700 bg-slate-100">Volume</th>
                 <th className="p-3 border-r text-center">Durasi</th>
                 <th className="p-3 border-r">Start (ES)</th>
                 <th className="p-3 border-r">Finish (EF)</th>
                 <th className="p-3 border-r">Predecessors</th>
                 <th className="p-3 border-r text-center">Float</th>
                 <th className="p-3 border-r text-center text-indigo-700 bg-indigo-50">Target SMART</th>
+                <th className="p-3 border-r text-center text-slate-500">Sisa Hari</th>
+                <th className="p-3 border-r text-center text-indigo-600 bg-indigo-50/50">Target/hr</th>
                 <th className="p-3 border-r text-center">Progres</th>
                 <th className="p-3 text-center">Aksi</th>
               </tr>
@@ -135,6 +162,9 @@ export default function TasksPage() {
                     <td className="p-3 border-r" style={{ paddingLeft: `${(t.indent_level || 0) * 20 + 12}px` }}>
                       {t.summary === 'Yes' ? '📁 ' : (isMilestone ? '💎 ' : '📄 ')} {t.name}
                     </td>
+                    <td className="p-3 border-r text-center font-bold bg-slate-50">
+                      {t.summary === 'Yes' ? '-' : `${t.volume || 0} ${t.satuan_hsd || ''}`}
+                    </td>
                     <td className="p-3 border-r text-center">
                       {isMilestone ? <span className="text-yellow-600 font-bold">0 d (Milestone)</span> : `${t.duration} d`}
                     </td>
@@ -144,8 +174,14 @@ export default function TasksPage() {
                     <td className="p-3 border-r text-center font-bold">
                       {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
                     </td>
-                    <td className="p-3 border-r text-center font-bold text-indigo-600 bg-indigo-50/50">
+                    <td className="p-3 border-r text-center font-bold text-indigo-600 bg-indigo-50/30">
                       {t.summary === 'Yes' ? '-' : (t.smart_target || 0)}
+                    </td>
+                    <td className="p-3 border-r text-center text-slate-500">
+                      {t.summary === 'Yes' ? '-' : (t.sisa_hari_efektif || 0)}
+                    </td>
+                    <td className="p-3 border-r text-center font-bold text-indigo-700 bg-indigo-50/30">
+                      {t.summary === 'Yes' ? '-' : (t.target_per_hari || 0)}
                     </td>
                     <td className="p-3 border-r text-center">
                       <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">

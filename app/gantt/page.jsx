@@ -36,13 +36,9 @@ export default function GanttPage() {
         setWorkingDays(activeWorkingDays);
         setExceptions(activeExceptions);
 
-        // ⚠️ PERBAIKAN: Ambil data langsung dari wbs_tasks, JOIN dengan ahsp_templates untuk unit
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('wbs_tasks')
-          .select(`
-            *,
-            ahsp_templates ( unit )
-          `)
+          .select(`*, ahsp_templates ( unit )`)
           .eq('project_id', projectId)
           .order('wbs_code', { ascending: true });
         
@@ -52,8 +48,7 @@ export default function GanttPage() {
             satuan_hsd: t.ahsp_templates?.unit || 'unit',
             resource_names: t.resource_names || '',
             smart_target: Number(t.smart_target) || 0,
-            volume: Number(t.volume) || 0, // Pastikan volume terambil sebagai angka
-            // Kalkulasi target per hari fallback (jika view DB belum siap)
+            volume: Number(t.volume) || 0,
             target_per_hari: 0,
             sisa_hari_efektif: 0
           }));
@@ -83,21 +78,41 @@ export default function GanttPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // ⚡ PERBAIKAN: INSTANT INLINE UPDATE
   const handleInlineUpdate = async (taskId, field, value) => {
-    try {
-      // Pastikan format tanggal benar sebelum dikirim
-      let formattedValue = value;
-      if (field === 'start_date' || field === 'end_date') {
-        formattedValue = value; // Input type="date" sudah mengembalikan format YYYY-MM-DD
+    // 1. Update state lokal secara instan (Optimistic UI)
+    const updatedTasks = tasks.map(t => {
+      if (t.id === taskId) {
+        return { ...t, [field]: value };
       }
+      return t;
+    });
 
-      const { error } = await supabase.from('wbs_tasks').update({ [field]: formattedValue }).eq('id', taskId);
-      if (error) throw error;
-      
-      // Fetch ulang data untuk sinkronisasi CPM Engine dan Trigger DB
-      fetchData(); 
+    // 2. Jalankan CPM Engine ulang di frontend (sangat cepat)
+    const projectStart = updatedTasks[0]?.start_date || new Date().toISOString().split('T')[0];
+    const result = calculateCPM(updatedTasks, projectStart, workingDays, exceptions);
+    
+    if (!result.error) {
+      const finalTasks = result.tasks.map(t => ({
+        ...t,
+        satuan_hsd: updatedTasks.find(m => m.id === t.id)?.satuan_hsd || 'unit',
+        resource_names: updatedTasks.find(m => m.id === t.id)?.resource_names || '',
+        smart_target: updatedTasks.find(m => m.id === t.id)?.smart_target || 0,
+        volume: updatedTasks.find(m => m.id === t.id)?.volume || 0
+      }));
+      setTasks(finalTasks);
+      setRelations(result.relations);
+    } else {
+      setTasks(updatedTasks);
+    }
+
+    // 3. Kirim ke Database di background (tanpa await/fetch ulang)
+    try {
+      await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+      // Trigger DB akan berjalan di background
     } catch (err) {
-      alert("Gagal update: " + err.message);
+      console.error("Gagal simpan ke DB:", err);
+      alert("Gagal menyimpan ke database.");
     }
   };
 
