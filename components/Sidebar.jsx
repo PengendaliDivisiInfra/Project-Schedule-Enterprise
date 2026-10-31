@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 export default function Sidebar() {
   const pathname = usePathname();
   const menus = [
-    { name: 'Database Proyek', path: '/projects', icon: '🏢' },
     { name: 'Dashboard S-Curve', path: '/', icon: '📊' },
     { name: 'Gantt Workspace', path: '/gantt', icon: '📅' },
     { name: 'Tasks (WBS)', path: '/tasks', icon: '📝' },
@@ -16,6 +15,7 @@ export default function Sidebar() {
     { name: 'Resources', path: '/resources', icon: '🔗' },
     { name: 'HSD (Harga Satuan)', path: '/hsd', icon: '💰' },
     { name: 'Assignments', path: '/assignments', icon: '📌' },
+    { name: 'Database Proyek', path: '/projects', icon: '🏢' }, // <-- Dipindah ke bawah
     { name: 'Kalender Kerja', path: '/settings/calendar', icon: '⚙️' },
   ];
 

@@ -31,12 +31,22 @@ export default function TasksPage() {
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
       setProjectId(pid);
       
-      const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
+      // ⚠️ PERBAIKAN: Join dengan ahsp_templates untuk ambil harga satuan
+      const { data } = await supabase.from('wbs_tasks').select(`
+        *,
+        ahsp_templates ( unit, total_harga_ahsp )
+      `).eq('project_id', pid).order('wbs_code', { ascending: true });
       
       if (data && data.length > 0) {
+        const mappedData = data.map(t => ({
+          ...t,
+          satuan_hsd: t.ahsp_templates?.unit || 'unit',
+          harga_satuan: Number(t.ahsp_templates?.total_harga_ahsp) || (Number(t.volume) > 0 ? (Number(t.cost) / Number(t.volume)) : 0)
+        }));
+
         const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-        const result = calculateCPM(data, projectStart);
-        setCpmTasks(result.tasks || data);
+        const result = calculateCPM(mappedData, projectStart);
+        setCpmTasks(result.tasks || mappedData);
       } else {
         setCpmTasks([]);
       }
@@ -45,12 +55,24 @@ export default function TasksPage() {
 
   useEffect(() => { fetchTasks(); }, []);
 
-  const handleInlineUpdate = async (taskId, field, value) => {
+  // ⚡ PERBAIKAN: Hitung Total Otomatis saat Volume Berubah
+  const handleUpdateVolume = async (task, newVolume) => {
+    const vol = Number(newVolume);
+    if (isNaN(vol) || vol < 0) return;
+
+    const hargaSatuan = task.harga_satuan || 0;
+    const newTotalCost = vol * hargaSatuan;
+
     try {
-      await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
-      if (field === 'cost' || field === 'mata_varian' || field === 'volume') fetchTasks(false);
+      const { error } = await supabase.from('wbs_tasks').update({ 
+        volume: vol,
+        cost: newTotalCost 
+      }).eq('id', task.id);
+      
+      if (error) throw error;
+      fetchTasks(false);
     } catch (err) {
-      alert("Gagal update: " + err.message);
+      alert("Gagal update volume: " + err.message);
     }
   };
 
@@ -100,19 +122,20 @@ export default function TasksPage() {
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Menghitung CPM..." /> : (
-          <table className="w-full text-left min-w-[1500px]">
+          <table className="w-full text-left min-w-[1600px]">
             <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
               <tr>
                 <th className="p-3 border-r text-center w-20">Hierarki</th>
                 <th className="p-3 border-r text-center w-24">Mata Varian</th>
-                <th className="p-3 border-r w-20">WBS</th>
+                <th className="p-3 border-r w-16">WBS</th>
                 <th className="p-3 border-r w-48">Nama Task</th>
-                <th className="p-3 border-r text-center w-20 text-slate-700 bg-slate-100">Volume</th>
-                <th className="p-3 border-r text-center w-20">Durasi</th>
+                <th className="p-3 border-r text-center w-24 text-slate-700 bg-slate-100">Volume</th>
+                <th className="p-3 border-r text-right w-28 text-blue-700 bg-blue-50">Harga Satuan</th>
+                <th className="p-3 border-r text-right w-32 text-indigo-700 bg-indigo-50">Total Biaya</th>
+                <th className="p-3 border-r text-center w-16">Durasi</th>
                 <th className="p-3 border-r w-28">Start (ES)</th>
                 <th className="p-3 border-r w-28">Finish (EF)</th>
                 <th className="p-3 border-r text-center w-16">Float</th>
-                <th className="p-3 border-r text-right w-32 text-indigo-700 bg-indigo-50">Total Biaya</th>
                 <th className="p-3 border-r text-center w-20">Progres</th>
                 <th className="p-3 text-center w-24">Aksi</th>
               </tr>
@@ -131,8 +154,8 @@ export default function TasksPage() {
                          <input 
                            type="text" 
                            defaultValue={t.mata_varian || ''} 
-                           placeholder="Cth: 1.2" // <-- PERBAIKAN: Placeholder tidak akan tersimpan
-                           onBlur={(e) => handleInlineUpdate(t.id, 'mata_varian', e.target.value)}
+                           placeholder="Cth: 1.2"
+                           onBlur={(e) => supabase.from('wbs_tasks').update({mata_varian: e.target.value}).eq('id', t.id).then(() => fetchTasks(false))}
                            className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-xs font-mono"
                          />
                        )}
@@ -141,23 +164,37 @@ export default function TasksPage() {
                     <td className="p-3 border-r" style={{ paddingLeft: `${(t.indent_level || 0) * 20 + 12}px` }}>
                       {isSummary ? '📁 ' : '📄 '} {t.name}
                     </td>
-                    <td className="p-3 border-r text-center font-bold bg-slate-50">
-                      {isSummary ? '-' : `${Number(t.volume) || 0} ${t.ahsp_templates?.unit || ''}`}
+                    
+                    {/* Volume (Inline Edit) */}
+                    <td className="p-1 border-r text-center font-bold bg-slate-50">
+                      {!isSummary && (
+                        <div className="flex items-center gap-1 justify-center">
+                          <input 
+                            type="number" 
+                            defaultValue={t.volume || 0} 
+                            onBlur={(e) => handleUpdateVolume(t, e.target.value)}
+                            className="w-16 text-center border border-transparent hover:border-gray-300 focus:border-blue-500 rounded bg-transparent text-xs font-bold"
+                          />
+                          <span className="text-[10px] text-gray-500">{t.satuan_hsd}</span>
+                        </div>
+                      )}
                     </td>
+
+                    {/* Harga Satuan (Read-only dari AHSP) */}
+                    <td className="p-3 border-r text-right font-semibold text-blue-700 bg-blue-50/50">
+                      {isSummary ? '-' : `Rp ${(t.harga_satuan || 0).toLocaleString('id-ID')}`}
+                    </td>
+
+                    {/* Total Biaya (Otomatis Terhitung, Read-only) */}
+                    <td className="p-3 border-r text-right font-bold text-indigo-800 bg-indigo-50/50">
+                      {isSummary ? `Rp ${(t.cost || 0).toLocaleString('id-ID')}` : `Rp ${(Number(t.cost) || 0).toLocaleString('id-ID')}`}
+                    </td>
+
                     <td className="p-3 border-r text-center">{t.duration} d</td>
                     <td className="p-3 border-r font-medium">{formatDate(t.start_date)}</td>
                     <td className="p-3 border-r font-medium">{formatDate(t.end_date)}</td>
                     <td className="p-3 border-r text-center font-bold">
                       {isSummary ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
-                    </td>
-                    <td className="p-1 border-r text-right bg-indigo-50/30">
-                      <input 
-                        type="number" 
-                        defaultValue={Number(t.cost) || 0} 
-                        onBlur={(e) => handleInlineUpdate(t.id, 'cost', Number(e.target.value))}
-                        disabled={isSummary || !!t.ahsp_template_id}
-                        className={`w-full text-right border border-transparent hover:border-gray-300 focus:border-indigo-500 rounded px-1 py-0.5 bg-transparent text-xs font-bold text-indigo-800 ${(isSummary || !!t.ahsp_template_id) ? 'cursor-not-allowed' : ''}`}
-                      />
                     </td>
                     <td className="p-3 border-r text-center">
                       <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
