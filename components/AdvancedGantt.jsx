@@ -137,7 +137,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     }
   };
 
-  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
+  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';  
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return '';
+    try {
+      const d = new Date(dateString);
+      return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
+    } catch (e) { return ''; }
+  };
+
 
   const calculateDailyTarget = (task) => {
     if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
@@ -378,3 +386,4 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
