@@ -18,11 +18,9 @@ export default function TasksPage() {
   const [projectId, setProjectId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
-  const [engineError, setEngineError] = useState(null);
 
   const fetchTasks = async () => {
     setLoading(true);
-    setEngineError(null);
     try {
       let { data: projects } = await supabase.from('projects').select('id').limit(1);
       let pid = projects?.[0]?.id;
@@ -33,42 +31,12 @@ export default function TasksPage() {
       if (!pid) pid = '00000000-0000-0000-0000-000000000000';
       setProjectId(pid);
       
-      // Ambil dari view jika ada, fallback ke tabel utama
-      let { data, error } = await supabase.from('v_wbs_tasks_with_targets').select(`*, ahsp_templates ( unit )`).eq('project_id', pid).order('wbs_code', { ascending: true });
-      if (error) {
-          let fallbackRes = await supabase.from('wbs_tasks').select(`*, ahsp_templates ( unit )`).eq('project_id', pid).order('wbs_code', { ascending: true });
-          data = fallbackRes.data;
-      }
-
+      const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', pid).order('wbs_code', { ascending: true });
+      
       if (data && data.length > 0) {
-        const mappedData = data.map(t => ({
-            ...t,
-            satuan_hsd: t.ahsp_templates?.unit || 'unit',
-            resource_names: t.resource_names || '',
-            smart_target: Number(t.smart_target) || 0,
-            volume: Number(t.volume) || 0,
-            sisa_hari_efektif: Number(t.sisa_hari_efektif) || 0,
-            target_per_hari: Number(t.target_per_hari) || 0
-        }));
-
         const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-        const result = calculateCPM(mappedData, projectStart);
-        
-        if (result.error) {
-          setEngineError(result.error);
-          setCpmTasks(result.tasks);
-        } else {
-          const finalTasks = result.tasks.map(t => ({
-            ...t,
-            satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit',
-            resource_names: mappedData.find(m => m.id === t.id)?.resource_names || '',
-            smart_target: mappedData.find(m => m.id === t.id)?.smart_target || 0,
-            volume: mappedData.find(m => m.id === t.id)?.volume || 0,
-            sisa_hari_efektif: mappedData.find(m => m.id === t.id)?.sisa_hari_efektif || 0,
-            target_per_hari: mappedData.find(m => m.id === t.id)?.target_per_hari || 0
-          }));
-          setCpmTasks(finalTasks);
-        }
+        const result = calculateCPM(data, projectStart);
+        setCpmTasks(result.tasks || data);
       } else {
         setCpmTasks([]);
       }
@@ -77,11 +45,23 @@ export default function TasksPage() {
 
   useEffect(() => { fetchTasks(); }, []);
 
+  const handleInlineUpdate = async (taskId, field, value) => {
+    try {
+      await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+      
+      // Jika update cost atau mata_varian, tarik ulang data agar rollup berjalan
+      if (field === 'cost' || field === 'mata_varian') {
+        fetchTasks(); 
+      }
+    } catch (err) {
+      alert("Gagal update: " + err.message);
+    }
+  };
+
   const handleSave = async (formData) => {
     try {
       if (editingTask) {
-        const payload = editingTask.ahsp_template_id ? { ...formData, cost: editingTask.cost } : formData;
-        const { error } = await supabase.from('wbs_tasks').update(payload).eq('id', editingTask.id);
+        const { error } = await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('wbs_tasks').insert([{ ...formData, project_id: projectId }]);
@@ -121,68 +101,71 @@ export default function TasksPage() {
           + Tambah Task
         </button>
       </div>
-
-      {engineError && (
-        <div className="bg-red-100 text-red-700 p-4 rounded-lg mb-6 border border-red-300 font-bold">
-          ⚠️ {engineError}
-        </div>
-      )}
       
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         {loading ? <LoadingSpinner text="Menghitung CPM..." /> : (
           <table className="w-full text-left min-w-[1500px]">
             <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
               <tr>
-                <th className="p-3 border-r text-center w-24">Hierarki</th>
-                <th className="p-3 border-r">WBS</th>
-                <th className="p-3 border-r">Nama Task</th>
-                <th className="p-3 border-r text-center text-slate-700 bg-slate-100">Volume</th>
-                <th className="p-3 border-r text-center">Durasi</th>
-                <th className="p-3 border-r">Start (ES)</th>
-                <th className="p-3 border-r">Finish (EF)</th>
-                <th className="p-3 border-r">Predecessors</th>
-                <th className="p-3 border-r text-center">Float</th>
-                <th className="p-3 border-r text-center text-indigo-700 bg-indigo-50">Target SMART</th>
-                <th className="p-3 border-r text-center text-slate-500">Sisa Hari</th>
-                <th className="p-3 border-r text-center text-indigo-600 bg-indigo-50/50">Target/hr</th>
-                <th className="p-3 border-r text-center">Progres</th>
-                <th className="p-3 text-center">Aksi</th>
+                <th className="p-3 border-r text-center w-20">Hierarki</th>
+                <th className="p-3 border-r text-center w-24">Mata Varian</th>
+                <th className="p-3 border-r w-20">WBS</th>
+                <th className="p-3 border-r w-48">Nama Task</th>
+                <th className="p-3 border-r text-center w-20 text-slate-700 bg-slate-100">Volume</th>
+                <th className="p-3 border-r text-center w-20">Durasi</th>
+                <th className="p-3 border-r w-28">Start (ES)</th>
+                <th className="p-3 border-r w-28">Finish (EF)</th>
+                <th className="p-3 border-r text-center w-16">Float</th>
+                <th className="p-3 border-r text-right w-32 text-indigo-700 bg-indigo-50">Total Biaya</th>
+                <th className="p-3 border-r text-center w-20">Progres</th>
+                <th className="p-3 text-center w-24">Aksi</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
               {cpmTasks.map((t) => {
-                const isMilestone = t.duration === 0;
+                const isSummary = t.summary === 'Yes';
                 return (
-                  <tr key={t.id} className={`hover:bg-gray-50 ${t.summary === 'Yes' ? 'bg-gray-100 font-bold' : ''} ${t.is_critical && t.summary !== 'Yes' ? 'text-red-700 bg-red-50' : ''}`}>
+                  <tr key={t.id} className={`hover:bg-gray-50 ${isSummary ? 'bg-gray-100 font-bold' : ''} ${t.is_critical && !isSummary ? 'text-red-700 bg-red-50' : ''}`}>
                     <td className="p-2 border-r text-center flex justify-center gap-1">
-                      <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs disabled:opacity-50">⬅️</button>
-                      <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-xs">➡️</button>
+                      <button onClick={() => handleIndent(t.id, t.indent_level, 'out')} disabled={!t.indent_level} className="bg-gray-200 hover:bg-gray-300 px-1 rounded text-xs disabled:opacity-50">⬅️</button>
+                      <button onClick={() => handleIndent(t.id, t.indent_level, 'in')} className="bg-gray-200 hover:bg-gray-300 px-1 rounded text-xs">➡️</button>
+                    </td>
+                    <td className="p-1 border-r text-center">
+                       {!isSummary && (
+                         <input 
+                           type="text" 
+                           defaultValue={t.mata_varian || ''} 
+                           placeholder="Cth: 7.1(7a)"
+                           onBlur={(e) => handleInlineUpdate(t.id, 'mata_varian', e.target.value)}
+                           className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded text-center bg-transparent text-xs font-mono"
+                         />
+                       )}
                     </td>
                     <td className="p-3 border-r font-mono">{t.wbs_code}</td>
                     <td className="p-3 border-r" style={{ paddingLeft: `${(t.indent_level || 0) * 20 + 12}px` }}>
-                      {t.summary === 'Yes' ? '📁 ' : (isMilestone ? '💎 ' : '📄 ')} {t.name}
+                      {isSummary ? '📁 ' : '📄 '} {t.name}
                     </td>
                     <td className="p-3 border-r text-center font-bold bg-slate-50">
-                      {t.summary === 'Yes' ? '-' : `${t.volume || 0} ${t.satuan_hsd || ''}`}
+                      {isSummary ? '-' : `${Number(t.volume) || 0} ${t.ahsp_templates?.unit || ''}`}
                     </td>
-                    <td className="p-3 border-r text-center">
-                      {isMilestone ? <span className="text-yellow-600 font-bold">0 d (Milestone)</span> : `${t.duration} d`}
-                    </td>
+                    <td className="p-3 border-r text-center">{t.duration} d</td>
                     <td className="p-3 border-r font-medium">{formatDate(t.start_date)}</td>
                     <td className="p-3 border-r font-medium">{formatDate(t.end_date)}</td>
-                    <td className="p-3 border-r text-gray-500 text-xs">{t.predecessors || '-'}</td>
                     <td className="p-3 border-r text-center font-bold">
-                      {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
+                      {isSummary ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
                     </td>
-                    <td className="p-3 border-r text-center font-bold text-indigo-600 bg-indigo-50/30">
-                      {t.summary === 'Yes' ? '-' : (t.smart_target || 0)}
+                    
+                    {/* Inline Edit Total Biaya */}
+                    <td className="p-1 border-r text-right bg-indigo-50/30">
+                      <input 
+                        type="number" 
+                        defaultValue={Number(t.cost) || 0} 
+                        onBlur={(e) => handleInlineUpdate(t.id, 'cost', Number(e.target.value))}
+                        disabled={isSummary || !!t.ahsp_template_id} // Kunci jika summary atau dari AHSP
+                        className={`w-full text-right border border-transparent hover:border-gray-300 focus:border-indigo-500 rounded px-1 py-0.5 bg-transparent text-xs font-bold text-indigo-800 ${(isSummary || !!t.ahsp_template_id) ? 'cursor-not-allowed' : ''}`}
+                      />
                     </td>
-                    <td className="p-3 border-r text-center text-slate-500">
-                      {t.summary === 'Yes' ? '-' : (t.sisa_hari_efektif || 0)}
-                    </td>
-                    <td className="p-3 border-r text-center font-bold text-indigo-700 bg-indigo-50/30">
-                      {t.summary === 'Yes' ? '-' : (t.target_per_hari || 0)}
-                    </td>
+
                     <td className="p-3 border-r text-center">
                       <div className="w-full bg-gray-200 rounded-full h-2.5 mb-1">
                         <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-600' : 'bg-blue-600'}`} style={{ width: `${t.progress_percent}%` }}></div>
@@ -199,7 +182,6 @@ export default function TasksPage() {
             </tbody>
           </table>
         )}
-        {cpmTasks.length === 0 && !loading && <div className="p-10 text-center text-gray-500">Belum ada data task.</div>}
       </div>
 
       <TaskModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={handleSave} initialData={editingTask} />

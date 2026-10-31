@@ -1,43 +1,51 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
-import LoadingSpinner from '../../../components/LoadingSpinner';
+import { Plus, Trash2 } from 'lucide-react';
 
 export default function DailyReportPage() {
-  const [loading, setLoading] = useState(true);
   const [projectInfo, setProjectInfo] = useState({});
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // State Dinamis
+  const [manpower, setManpower] = useState([{ name: '', count: 1 }]);
+  const [equipment, setEquipment] = useState([{ name: '', capacity: '', status: 'Operasi', count: 1 }]);
+  const [materials, setMaterials] = useState([{ name: '', unit: '', inVol: 0, outVol: 0 }]);
   const [progressData, setProgressData] = useState([]);
 
-  const fetchData = async () => {
-    setLoading(true);
-    
-    // 1. Ambil Info Project
-    const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
-    if (pData) setProjectInfo(pData);
+  useEffect(() => {
+    async function fetchData() {
+      const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
+      if (pData) setProjectInfo(pData);
 
-    // 2. Ambil Progress Harian pada tanggal tersebut
-    const { data: progData } = await supabase
-      .from('daily_progress')
-      .select(`completed_volume, wbs_tasks(name, wbs_code, ahsp_templates(unit))`)
-      .eq('record_date', reportDate);
+      const { data: progData } = await supabase
+        .from('daily_progress')
+        .select(`completed_volume, wbs_tasks(name, wbs_code, ahsp_templates(unit))`)
+        .eq('record_date', reportDate);
 
-    if (progData) {
-      setProgressData(progData.map(p => ({
-        desc: `[${p.wbs_tasks?.wbs_code}] ${p.wbs_tasks?.name}`,
-        unit: p.wbs_tasks?.ahsp_templates?.unit || '',
-        vol: p.completed_volume
-      })));
-    } else {
-      setProgressData([]);
+      if (progData && progData.length > 0) {
+        setProgressData(progData.map(p => ({
+          desc: `[${p.wbs_tasks?.wbs_code}] ${p.wbs_tasks?.name}`,
+          unit: p.wbs_tasks?.ahsp_templates?.unit || '',
+          vol: p.completed_volume
+        })));
+      } else {
+        setProgressData([{ desc: '', unit: '', vol: 0 }]); // Beri 1 baris kosong
+      }
     }
+    fetchData();
+  }, [reportDate]);
 
-    setLoading(false);
+  // Handlers untuk Tambah/Hapus Baris
+  const addRow = (setter, template) => setter(prev => [...prev, template]);
+  const removeRow = (setter, index) => setter(prev => prev.filter((_, i) => i !== index));
+  const updateRow = (setter, index, field, value) => {
+    setter(prev => {
+      const newRows = [...prev];
+      newRows[index] = { ...newRows[index], [field]: value };
+      return newRows;
+    });
   };
-
-  useEffect(() => { fetchData(); }, [reportDate]);
-
-  if (loading) return <LoadingSpinner text="Memuat Laporan Harian..." />;
 
   return (
     <>
@@ -54,7 +62,7 @@ export default function DailyReportPage() {
       <div className="p-8 bg-gray-100 min-h-screen overflow-x-auto print:p-0 print:bg-white">
         <div className="print-hidden mb-6 flex justify-between items-center max-w-[297mm] mx-auto bg-white p-3 rounded shadow">
           <div className="flex items-center gap-4">
-            <label className="text-sm font-bold text-gray-700">Pilih Tanggal Laporan:</label>
+            <label className="text-sm font-bold text-gray-700">Tanggal:</label>
             <input type="date" value={reportDate} onChange={e => setReportDate(e.target.value)} className="border p-2 rounded text-sm" />
           </div>
           <button onClick={() => window.print()} className="bg-blue-600 text-white px-4 py-2 rounded font-bold shadow hover:bg-blue-700">🖨️ Cetak PDF</button>
@@ -80,77 +88,86 @@ export default function DailyReportPage() {
             </div>
           </div>
 
-          <div className="font-bold mb-1 mt-4">A. TENAGA KERJA & PERALATAN (Isi Manual)</div>
-          <div className="flex gap-4 mb-4">
-            <div className="w-1/2">
-              <table className="w-full border-collapse border border-black">
-                <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Jenis Tenaga Kerja</th><th className="border border-black p-1 w-16">Jumlah</th></tr></thead>
-                <tbody>
-                  {[1,2,3].map(i => (
-                    <tr key={i}>
-                      <td className="border border-black p-1 text-center">{i}</td>
-                      <td className="border border-black p-1" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="w-1/2">
-              <table className="w-full border-collapse border border-black">
-                <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Jenis Alat</th><th className="border border-black p-1 w-16">Kapasitas</th><th className="border border-black p-1 w-16">Status</th><th className="border border-black p-1 w-12">Unit</th></tr></thead>
-                <tbody>
-                  {[1,2,3].map(i => (
-                    <tr key={i}>
-                      <td className="border border-black p-1 text-center">{i}</td>
-                      <td className="border border-black p-1" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {/* TENAGA KERJA */}
+          <div className="font-bold mb-1 mt-4 flex justify-between items-center">
+            <span>A. TENAGA KERJA</span>
+            <button onClick={() => addRow(setManpower, { name: '', count: 1 })} className="print-hidden text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={12}/> Tambah Baris</button>
           </div>
+          <table className="w-full border-collapse border border-black mb-4">
+            <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Jenis Tenaga Kerja</th><th className="border border-black p-1 w-16">Jumlah</th><th className="border border-black p-1 w-10 print-hidden">Aksi</th></tr></thead>
+            <tbody>
+              {manpower.map((m, i) => (
+                <tr key={i}>
+                  <td className="border border-black p-1 text-center">{i+1}</td>
+                  <td className="border border-black p-1"><input value={m.name} onChange={e => updateRow(setManpower, i, 'name', e.target.value)} className="w-full outline-none bg-transparent" /></td>
+                  <td className="border border-black p-1 text-center"><input type="number" value={m.count} onChange={e => updateRow(setManpower, i, 'count', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center print-hidden"><button onClick={() => removeRow(setManpower, i)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
-          <div className="font-bold mb-1 mt-4">B. MATERIAL (Isi Manual) & PROGRESS FISIK HARIAN (Otomatis)</div>
-          <div className="flex gap-4">
-            <div className="w-1/2">
-              <table className="w-full border-collapse border border-black">
-                <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Material</th><th className="border border-black p-1 w-12">Satuan</th><th className="border border-black p-1 w-16">Vol Masuk</th><th className="border border-black p-1 w-16">Vol Pakai</th></tr></thead>
-                <tbody>
-                  {[1,2,3].map(i => (
-                    <tr key={i}>
-                      <td className="border border-black p-1 text-center">{i}</td>
-                      <td className="border border-black p-1" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                      <td className="border border-black p-1 text-center" contentEditable suppressContentEditableWarning></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="w-1/2">
-              <table className="w-full border-collapse border border-black">
-                <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Uraian Pekerjaan</th><th className="border border-black p-1 w-12">Satuan</th><th className="border border-black p-1 w-16">Vol Capaian</th></tr></thead>
-                <tbody>
-                  {progressData.map((p, i) => (
-                    <tr key={i}>
-                      <td className="border border-black p-1 text-center">{i+1}</td>
-                      <td className="border border-black p-1">{p.desc}</td>
-                      <td className="border border-black p-1 text-center">{p.unit}</td>
-                      <td className="border border-black p-1 text-center font-bold">{p.vol}</td>
-                    </tr>
-                  ))}
-                  {progressData.length === 0 && (
-                    <tr><td colSpan={4} className="border border-black p-4 text-center italic text-gray-500">Belum ada input progres harian pada tanggal ini.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+          {/* PERALATAN */}
+          <div className="font-bold mb-1 mt-4 flex justify-between items-center">
+            <span>B. PERALATAN</span>
+            <button onClick={() => addRow(setEquipment, { name: '', capacity: '', status: 'Operasi', count: 1 })} className="print-hidden text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={12}/> Tambah Baris</button>
           </div>
+          <table className="w-full border-collapse border border-black mb-4">
+            <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Jenis Alat</th><th className="border border-black p-1 w-20">Kapasitas</th><th className="border border-black p-1 w-24">Status</th><th className="border border-black p-1 w-16">Unit</th><th className="border border-black p-1 w-10 print-hidden">Aksi</th></tr></thead>
+            <tbody>
+              {equipment.map((eq, i) => (
+                <tr key={i}>
+                  <td className="border border-black p-1 text-center">{i+1}</td>
+                  <td className="border border-black p-1"><input value={eq.name} onChange={e => updateRow(setEquipment, i, 'name', e.target.value)} className="w-full outline-none bg-transparent" /></td>
+                  <td className="border border-black p-1 text-center"><input value={eq.capacity} onChange={e => updateRow(setEquipment, i, 'capacity', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center"><input value={eq.status} onChange={e => updateRow(setEquipment, i, 'status', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center"><input type="number" value={eq.count} onChange={e => updateRow(setEquipment, i, 'count', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center print-hidden"><button onClick={() => removeRow(setEquipment, i)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* MATERIAL */}
+          <div className="font-bold mb-1 mt-4 flex justify-between items-center">
+            <span>C. MATERIAL</span>
+            <button onClick={() => addRow(setMaterials, { name: '', unit: '', inVol: 0, outVol: 0 })} className="print-hidden text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={12}/> Tambah Baris</button>
+          </div>
+          <table className="w-full border-collapse border border-black mb-4">
+            <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Material</th><th className="border border-black p-1 w-16">Satuan</th><th className="border border-black p-1 w-20">Vol Masuk</th><th className="border border-black p-1 w-20">Vol Pakai</th><th className="border border-black p-1 w-10 print-hidden">Aksi</th></tr></thead>
+            <tbody>
+              {materials.map((mat, i) => (
+                <tr key={i}>
+                  <td className="border border-black p-1 text-center">{i+1}</td>
+                  <td className="border border-black p-1"><input value={mat.name} onChange={e => updateRow(setMaterials, i, 'name', e.target.value)} className="w-full outline-none bg-transparent" /></td>
+                  <td className="border border-black p-1 text-center"><input value={mat.unit} onChange={e => updateRow(setMaterials, i, 'unit', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center"><input type="number" value={mat.inVol} onChange={e => updateRow(setMaterials, i, 'inVol', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center"><input type="number" value={mat.outVol} onChange={e => updateRow(setMaterials, i, 'outVol', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center print-hidden"><button onClick={() => removeRow(setMaterials, i)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* PROGRESS FISIK */}
+          <div className="font-bold mb-1 mt-4 flex justify-between items-center">
+            <span>D. PROGRESS FISIK HARIAN</span>
+            <button onClick={() => addRow(setProgressData, { desc: '', unit: '', vol: 0 })} className="print-hidden text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={12}/> Tambah Baris</button>
+          </div>
+          <table className="w-full border-collapse border border-black">
+            <thead className="bg-gray-200"><tr><th className="border border-black p-1 w-8">No</th><th className="border border-black p-1">Uraian Pekerjaan</th><th className="border border-black p-1 w-16">Satuan</th><th className="border border-black p-1 w-20">Vol Capaian</th><th className="border border-black p-1 w-10 print-hidden">Aksi</th></tr></thead>
+            <tbody>
+              {progressData.map((p, i) => (
+                <tr key={i}>
+                  <td className="border border-black p-1 text-center">{i+1}</td>
+                  <td className="border border-black p-1"><input value={p.desc} onChange={e => updateRow(setProgressData, i, 'desc', e.target.value)} className="w-full outline-none bg-transparent" /></td>
+                  <td className="border border-black p-1 text-center"><input value={p.unit} onChange={e => updateRow(setProgressData, i, 'unit', e.target.value)} className="w-full outline-none bg-transparent text-center" /></td>
+                  <td className="border border-black p-1 text-center"><input type="number" value={p.vol} onChange={e => updateRow(setProgressData, i, 'vol', e.target.value)} className="w-full outline-none bg-transparent text-center font-bold" /></td>
+                  <td className="border border-black p-1 text-center print-hidden"><button onClick={() => removeRow(setProgressData, i)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
           <div className="mt-12 grid grid-cols-3 gap-4 text-center">
             <div><p contentEditable suppressContentEditableWarning>Diajukan Oleh, Kontraktor Pelaksana</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>PT. SAKA GRAHA INDONESIA</p></div>

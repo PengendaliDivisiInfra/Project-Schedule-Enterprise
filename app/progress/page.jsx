@@ -8,11 +8,9 @@ export default function ProgressGridPage() {
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // State untuk rentang tanggal
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [dateRange, setDateRange] = useState([]);
 
-  // Efek untuk generate 7 hari dari startDate
   useEffect(() => {
     const dates = [];
     const start = new Date(startDate);
@@ -28,16 +26,13 @@ export default function ProgressGridPage() {
     setLoading(true);
     const { data: tData } = await supabase
       .from('wbs_tasks')
-      .select(`id, name, wbs_code, summary, volume, cost, ahsp_templates ( unit, total_harga_ahsp )`)
+      .select(`id, name, wbs_code, summary, volume, cost, ahsp_templates ( unit )`)
       .order('wbs_code');
     
     if (tData) {
       const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
-      const processedTasks = uniqueTasks.map(task => {
-        const hasChildren = uniqueTasks.some(other => 
-          other.wbs_code !== task.wbs_code && 
-          other.wbs_code.startsWith(task.wbs_code + '.')
-        );
+      setTasks(uniqueTasks.map(task => {
+        const hasChildren = uniqueTasks.some(other => other.wbs_code !== task.wbs_code && other.wbs_code.startsWith(task.wbs_code + '.'));
         return {
           ...task,
           is_parent: hasChildren || task.summary === 'Yes',
@@ -46,10 +41,10 @@ export default function ProgressGridPage() {
           cost: Number(task.cost) || 0,
           harga_satuan: (Number(task.volume) > 0) ? (Number(task.cost) / Number(task.volume)) : 0
         };
-      });
-      setTasks(processedTasks);
+      }));
     }
     
+    // ⚡ Ambil SEMUA data history, bukan cuma minggu ini
     const { data: pData } = await supabase.from('daily_progress').select('*');
     setRecords(pData || []);
     setLoading(false);
@@ -57,13 +52,13 @@ export default function ProgressGridPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Optimasi: Gunakan useMemo agar tidak re-kalkulasi berlebihan
   const tableData = useMemo(() => {
     return tasks.map(task => {
       const taskRecords = records.filter(r => r.task_id === task.id);
       const totalKumulatif = taskRecords.reduce((sum, r) => sum + Number(r.completed_volume), 0);
       const progressPercent = task.volume > 0 ? Math.min((totalKumulatif / task.volume) * 100, 100) : 0;
       const totalRealisasi = totalKumulatif * task.harga_satuan;
+      
       const dailyMap = {};
       taskRecords.forEach(r => { dailyMap[r.record_date] = r.completed_volume; });
 
@@ -85,7 +80,6 @@ export default function ProgressGridPage() {
         }]);
       }
       
-      // Update state lokal secara optimis
       if (existingRecord) {
         setRecords(prev => prev.map(r => r.id === existingRecord.id ? { ...r, completed_volume: numVolume } : r));
       } else {
@@ -101,11 +95,11 @@ export default function ProgressGridPage() {
       <div className="mb-4 flex justify-between items-end">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Rekapitulasi Progres Harian</h1>
-          <p className="text-sm text-gray-500 mt-1">Input volume horizontal. Kalkulasi otomatis.</p>
+          <p className="text-sm text-gray-500 mt-1">Input horizontal. Data lama tetap tersimpan aman di database meski tanggal diubah.</p>
         </div>
-        <div className="flex gap-2 items-center">
-          <label className="text-xs font-bold text-gray-600">Mulai Tanggal:</label>
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 p-1.5 rounded text-sm" />
+        <div className="flex gap-2 items-center bg-white p-2 rounded-lg shadow-sm border">
+          <label className="text-xs font-bold text-gray-600">Mulai Tanggal Tampilan:</label>
+          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="border border-gray-300 p-1 rounded text-sm" />
         </div>
       </div>
 
@@ -126,7 +120,6 @@ export default function ProgressGridPage() {
                   ))}
                   <th className="p-2 border-r border-gray-300 w-24 text-center bg-gray-200 font-bold">Vol Kumulatif</th>
                   <th className="p-2 border-r border-gray-300 w-20 text-center bg-gray-200 font-bold">Prog (%)</th>
-                  <th className="p-2 border-r border-gray-300 w-28 text-right bg-gray-200 font-bold">Harga Satuan</th>
                   <th className="p-2 border-r border-gray-300 w-32 text-right bg-gray-200 font-bold">Total Realisasi</th>
                 </tr>
               </thead>
@@ -155,7 +148,6 @@ export default function ProgressGridPage() {
                         {t.progressPercent.toFixed(1)}%
                       </span>
                     </td>
-                    <td className="p-2 border-r border-gray-200 text-right text-gray-600">Rp {t.harga_satuan.toLocaleString('id-ID')}</td>
                     <td className="p-2 border-r border-gray-200 text-right font-bold text-indigo-700">Rp {t.totalRealisasi.toLocaleString('id-ID')}</td>
                   </tr>
                 ))}
