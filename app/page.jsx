@@ -1,6 +1,6 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase'; // <-- Singleton
+import { supabase } from '../lib/supabase';
 import GanttChart from '../components/GanttChart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { calculateCPM } from '../lib/cpmEngine';
@@ -25,12 +25,15 @@ export default function Dashboard() {
         
         if (projectId) {
           const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs_code', { ascending: true });
+          const { data: records } = await supabase.from('daily_progress').select('*').lte('record_date', statusDate);
+          
           if (data && data.length > 0) {
             const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
             const cpmResult = calculateCPM(data, projectStart);
+            
             if (!cpmResult.error) {
               setTasks(cpmResult.tasks);
-              const evm = generateEVMData(cpmResult.tasks, projectStart, statusDate);
+              const evm = generateEVMData(cpmResult.tasks, projectStart, statusDate, records || []);
               setScurveData(evm.chartData);
               setKpi(evm.summaryKPI);
             } else {
@@ -53,40 +56,17 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-gray-800">Proyek Jembatan Cisomang (Enterprise)</h1>
           <p className="text-sm text-gray-500 mt-1">Status Date: {statusDate} | User: engineering@gmail.com</p>
         </div>
-        <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm">
-          Recalculate CPM & AHSP
-        </button>
+        <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition shadow-sm">Recalculate CPM & EVM</button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">BAC</div>
-          <div className="text-lg font-bold text-gray-800">{formatRp(kpi.bac)}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">SPI</div>
-          <div className={`text-lg font-bold ${kpi.spi >= 1 ? 'text-green-600' : 'text-red-600'}`}>{formatPercent(kpi.spi)}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">CPI</div>
-          <div className={`text-lg font-bold ${kpi.cpi >= 1 ? 'text-green-600' : 'text-red-600'}`}>{formatPercent(kpi.cpi)}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">ETC</div>
-          <div className="text-lg font-bold text-gray-800">{formatRp(kpi.etc)}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">EAC</div>
-          <div className="text-lg font-bold text-gray-800">{formatRp(kpi.eac)}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">VAC</div>
-          <div className={`text-lg font-bold ${kpi.vac >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatRp(kpi.vac)}</div>
-        </div>
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">TCPI</div>
-          <div className={`text-lg font-bold ${kpi.tcpi <= 1 ? 'text-green-600' : 'text-red-600'}`}>{formatPercent(kpi.tcpi)}</div>
-        </div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">BAC</div><div className="text-lg font-bold text-gray-800">{formatRp(kpi.bac)}</div></div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">SPI</div><div className={`text-lg font-bold ${kpi.spi >= 1 ? 'text-green-600' : 'text-red-600'}`}>{formatPercent(kpi.spi)}</div></div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">CPI</div><div className={`text-lg font-bold ${kpi.cpi >= 1 ? 'text-green-600' : 'text-red-600'}`}>{formatPercent(kpi.cpi)}</div></div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">ETC</div><div className="text-lg font-bold text-gray-800">{formatRp(kpi.etc)}</div></div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">EAC</div><div className="text-lg font-bold text-gray-800">{formatRp(kpi.eac)}</div></div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">VAC</div><div className={`text-lg font-bold ${kpi.vac >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatRp(kpi.vac)}</div></div>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200"><div className="text-[10px] text-gray-500 font-bold mb-1 tracking-wider uppercase">TCPI</div><div className={`text-lg font-bold ${kpi.tcpi <= 1 ? 'text-green-600' : 'text-red-600'}`}>{formatPercent(kpi.tcpi)}</div></div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6 p-5">
@@ -110,12 +90,8 @@ export default function Dashboard() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-6">
-        <div className="p-5 border-b border-gray-200 bg-gray-50/50 rounded-t-xl">
-          <h2 className="text-lg font-bold text-gray-800">Interactive Gantt Workspace (CPM Engine)</h2>
-        </div>
-        <div className="p-5">
-          {loading ? <div className="text-center text-gray-500 py-10">Memuat Gantt Chart...</div> : <GanttChart tasks={tasks} />}
-        </div>
+        <div className="p-5 border-b border-gray-200 bg-gray-50/50 rounded-t-xl"><h2 className="text-lg font-bold text-gray-800">Interactive Gantt Workspace (CPM Engine)</h2></div>
+        <div className="p-5">{loading ? <div className="text-center text-gray-500 py-10">Memuat Gantt Chart...</div> : <GanttChart tasks={tasks} />}</div>
       </div>
     </div>
   );
