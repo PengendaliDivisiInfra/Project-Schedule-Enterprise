@@ -45,7 +45,6 @@ export default function GanttPage() {
           `).eq('project_id', projectId).order('wbs_code', { ascending: true });
           
           if (data && data.length > 0) {
-            // Mapping unit ke dalam object task agar mudah dibaca oleh UI
             const mappedData = data.map(t => ({
               ...t,
               satuan_hsd: t.ahsp_templates?.unit || 'unit'
@@ -55,7 +54,6 @@ export default function GanttPage() {
             const result = calculateCPM(mappedData, projectStart, activeWorkingDays, activeExceptions);
             
             if (!result.error) {
-              // Gabungkan kembali satuan_hsd ke hasil kalkulasi CPM
               const finalTasks = result.tasks.map(t => ({
                 ...t,
                 satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit'

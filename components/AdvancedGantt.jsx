@@ -1,28 +1,27 @@
 ﻿'use client';
 import { useRef, useEffect, useState } from 'react';
 
-const DAY_WIDTH = 40; // Lebar kolom sedikit dilebarkan agar label muat
+const DAY_WIDTH = 40;
 const ROW_HEIGHT = 50;
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate }) {
   const leftPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
 
-  // 1. Generate All Calendar Days (untuk menampilkan weekend shading)
+  // 1. Generate All Calendar Days
   let minDate = new Date();
   let maxDate = new Date();
   tasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
   });
-  minDate.setDate(minDate.getDate() - 3); // Padding
-  maxDate.setDate(maxDate.getDate() + 7); // Padding
+  minDate.setDate(minDate.getDate() - 3);
+  maxDate.setDate(maxDate.getDate() + 7);
   
   const calendarDays = [];
   let cur = new Date(minDate);
   while (cur <= maxDate) {
     const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
-    // Cek apakah ini hari kerja berdasarkan setting user
     const isWorking = workingDays.includes(cur.getDay()); 
     calendarDays.push({ date: new Date(cur), isWeekend: !isWorking });
     cur.setDate(cur.getDate() + 1);
@@ -30,12 +29,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
   const totalWidth = calendarDays.length * DAY_WIDTH;
 
-  // Helper: Cari posisi X berdasarkan tanggal (hanya menghitung hari kerja)
+  // Helper: Cari posisi X (hanya menghitung hari kerja)
   const getX = (dateStr) => {
     if (!dateStr) return 0;
     let targetDate = new Date(dateStr);
     targetDate.setHours(0,0,0,0);
-    
     let xPos = 0;
     let current = new Date(minDate);
     
@@ -48,18 +46,16 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return xPos;
   };
 
-  // 2. Hitung Koordinat & SVG Path
+  // 2. Hitung Koordinat SVG Path untuk Garis Panah (Dependency)
   useEffect(() => {
     const paths = [];
     const taskRects = {};
 
     tasks.forEach((t, idx) => {
       const x = getX(t.start_date);
-      // Lebar didasarkan pada durasi hari kerja
       const width = t.duration * DAY_WIDTH;
       const y = idx * ROW_HEIGHT;
       
-      // Simpan koordinat untuk SVG Panah
       taskRects[t.wbs_code] = { 
         x, 
         y, 
@@ -118,27 +114,27 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     setSvgPaths(paths);
   }, [tasks, relations]);
 
-  // Sinkronisasi Scroll
   const handleScroll = (e) => {
     if (leftPanelRef.current) {
       leftPanelRef.current.scrollTop = e.target.scrollTop;
     }
   };
 
-  // Format Tanggal Singkat
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col h-[calc(100vh-160px)] overflow-hidden">
       
-      {/* HEADER: Tabel Kiri & Kalender Kanan */}
+      {/* HEADER */}
       <div className="flex border-b border-gray-300 bg-gray-100 shrink-0 z-20">
-        <div className="w-[450px] border-r border-gray-300 flex text-xs font-bold text-gray-700 p-2 bg-gray-200 shrink-0">
+        <div className="w-[500px] border-r border-gray-300 flex text-[10px] font-bold text-gray-700 p-2 bg-gray-200 shrink-0 items-center">
+          <span className="w-6 text-center" title="Task Mode">📌</span>
+          <span className="w-6 text-center" title="Complete">✓</span>
           <span className="w-12">WBS</span>
           <span className="flex-1">Task Name</span>
-          <span className="w-12 text-center">Dur</span>
-          <span className="w-16 text-center">Pred</span>
-          <span className="w-16 text-center">Float</span>
+          <span className="w-10 text-center">Dur</span>
+          <span className="w-12 text-center">Pred</span>
+          <span className="w-10 text-center">Float</span>
         </div>
         <div className="flex-1 overflow-hidden">
           <div className="flex" style={{ width: totalWidth }}>
@@ -155,21 +151,37 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
         </div>
       </div>
 
-      {/* BODY: Dual Panel */}
+      {/* BODY */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* Tabel Kiri */}
-        <div ref={leftPanelRef} className="w-[450px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
+        {/* KOLOM KIRI (Entry Table) */}
+        <div ref={leftPanelRef} className="w-[500px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {tasks.map((t) => (
-              <div key={t.id} className="flex text-xs items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[50px]">
+              <div key={t.id} className="flex text-[11px] items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[50px]">
+                {/* Kolom Task Mode */}
+                <span className="w-6 text-center">
+                  {t.task_mode === 'Manually Scheduled' ? (
+                    <span title="Manually Scheduled">📌</span>
+                  ) : (
+                    <span title="Auto Scheduled">📅</span>
+                  )}
+                </span>
+                {/* Kolom Complete Checkbox */}
+                <span className="w-6 text-center">
+                  {t.progress_percent === 100 ? (
+                    <span className="text-green-600 font-bold">✓</span>
+                  ) : (
+                    <span className="text-gray-300">☐</span>
+                  )}
+                </span>
                 <span className="w-12 font-mono text-gray-500">{t.wbs_code}</span>
                 <span className={`flex-1 truncate ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }}>
                   {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
                 </span>
-                <span className="w-12 text-center">{t.duration} d</span>
-                <span className="w-16 text-center text-gray-500 text-[10px]">{t.predecessors || '-'}</span>
-                <span className={`w-16 text-center font-bold ${t.summary === 'Yes' ? 'text-gray-400' : (t.is_critical ? 'text-red-600' : 'text-blue-600')}`}>
+                <span className="w-10 text-center">{t.duration} d</span>
+                <span className="w-12 text-center text-gray-500 text-[10px]">{t.predecessors || '-'}</span>
+                <span className={`w-10 text-center font-bold ${t.summary === 'Yes' ? 'text-gray-400' : (t.is_critical ? 'text-red-600' : 'text-blue-600')}`}>
                   {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
                 </span>
               </div>
@@ -177,16 +189,16 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
           </div>
         </div>
 
-        {/* Kanvas Kanan */}
+        {/* KOLOM KANAN (Timeline) */}
         <div className="flex-1 overflow-auto relative bg-gray-50/30 select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: tasks.length * ROW_HEIGHT }}>
             
-            {/* Layer 1: Grid Latar Belakang & Weekend Shading */}
+            {/* Layer 1: Grid & Weekend Shading */}
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => (
                 <div 
                   key={i} 
-                  className={`border-r border-gray-200/50 h-full ${cd.isWeekend ? 'bg-gray-200/60' : ''}`}
+                  className={`border-r border-gray-200/50 h-full ${cd.isWeekend ? 'bg-gray-300/60' : ''}`}
                   style={{ width: DAY_WIDTH }}
                 ></div>
               ))}
@@ -231,7 +243,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               {tasks.map((t, idx) => {
                 const left = getX(t.start_date);
                 const width = t.duration * DAY_WIDTH;
-                const top = idx * ROW_HEIGHT + 13; // Center in 50px row
+                const top = idx * ROW_HEIGHT + 13;
 
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
@@ -239,9 +251,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 const volume = Number(t.volume || 0);
                 const targetHarian = t.duration > 0 ? (volume / t.duration).toFixed(2) : 0;
 
-                // ==========================================
-                // KONDISI 1: MILESTONE (Durasi 0)
-                // ==========================================
+                // MILESTONE
                 if (t.duration === 0) {
                   return (
                     <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 6, top: top - 2 }}>
@@ -253,18 +263,16 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   );
                 }
 
-                // ==========================================
-                // KONDISI 2: SUMMARY TASK (Bentuk Jangkar/Bracket)
-                // ==========================================
+                // SUMMARY TASK (Jangkar/Bracket MS Project)
                 if (isSummary) {
                   return (
                     <div key={t.id} className="absolute pointer-events-auto group" style={{ left, width, top }}>
-                      {/* Batang Utama Induk */}
-                      <div className="absolute top-0 w-full h-[6px] bg-slate-800"></div>
+                      {/* Garis Horizontal */}
+                      <div className="absolute top-0 w-full h-[4px] bg-slate-900"></div>
                       {/* Jangkar Kiri */}
-                      <div className="absolute top-0 left-0 w-[6px] h-3 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 50%)' }}></div>
+                      <div className="absolute top-0 left-0 w-[6px] h-3 bg-slate-900" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 40%)' }}></div>
                       {/* Jangkar Kanan */}
-                      <div className="absolute top-0 right-0 w-[6px] h-3 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 50%, 0 100%)' }}></div>
+                      <div className="absolute top-0 right-0 w-[6px] h-3 bg-slate-900" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 40%, 0 100%)' }}></div>
                       
                       {/* Label Kanan: Progres */}
                       <span className="absolute -top-3 text-[10px] font-bold text-slate-700 whitespace-nowrap" style={{ left: width + 8 }}>
@@ -274,9 +282,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   );
                 }
 
-                // ==========================================
-                // KONDISI 3: STANDARD SUBTASK (Kotak + Multi Label)
-                // ==========================================
+                // STANDARD SUBTASK
                 return (
                   <div key={t.id} className="absolute group" style={{ left, width: Math.max(24, width), top }}>
                     {/* Label Atas: Target per Hari */}
