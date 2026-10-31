@@ -7,6 +7,7 @@ import { calculateCPM } from '../../lib/cpmEngine';
 
 export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
+  const [relations, setRelations] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function GanttPage() {
             
             if (!result.error) {
               setTasks(result.tasks);
+              setRelations(result.relations);
             } else {
               setTasks(data);
             }
@@ -43,14 +45,14 @@ export default function GanttPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Interactive Gantt Workspace</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Visualisasi MS Project Style. Warna <span className="text-red-600 font-bold">Merah</span> menandakan Jalur Kritis.
+            Garis panah merepresentasikan Predecessor (FS/SS). Warna <span className="text-red-600 font-bold">Merah</span> menandakan Jalur Kritis.
           </p>
         </div>
       </div>
 
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner text="Membangun Gantt Chart..." /> : (
-          <AdvancedGantt tasks={tasks} />
+          <AdvancedGantt tasks={tasks} relations={relations} />
         )}
       </div>
     </div>

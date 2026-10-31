@@ -1,148 +1,239 @@
 ﻿'use client';
-import { useMemo } from 'react';
+import { useRef, useEffect, useState } from 'react';
 
-export default function AdvancedGantt({ tasks }) {
-  if (!tasks || tasks.length === 0) {
-    return (
-      <div className="p-10 text-center text-gray-500 bg-white rounded-lg border border-dashed">
-        <p className="text-lg font-medium mb-2">Belum ada data Task.</p>
-        <p className="text-sm">Silakan tambahkan task di menu Tasks (WBS) untuk melihat Gantt Chart.</p>
-      </div>
-    );
-  }
+const DAY_WIDTH = 30;
+const ROW_HEIGHT = 40;
 
-  // 1. Kalkulasi Rentang Tanggal (Timeline Bounds)
+export default function AdvancedGantt({ tasks, relations }) {
+  const leftPanelRef = useRef(null);
+  const rightPanelRef = useRef(null);
+  const [svgPaths, setSvgPaths] = useState([]);
+
+  // 1. Kalkulasi Batas Tanggal
   let minDate = new Date();
   let maxDate = new Date();
-  
   tasks.forEach(t => {
-    const s = new Date(t.start_date || new Date());
-    const f = new Date(t.end_date || new Date());
-    if (s < minDate) minDate = s;
-    if (f > maxDate) maxDate = f;
+    if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
+    if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
   });
-
-  minDate.setDate(minDate.getDate() - 2); // Padding kiri
-  maxDate.setDate(maxDate.getDate() + 3); // Padding kanan
-
+  minDate.setDate(minDate.getDate() - 2);
+  maxDate.setDate(maxDate.getDate() + 5);
+  
   const totalDays = Math.max(1, (maxDate - minDate) / (1000 * 60 * 60 * 24));
+  const totalWidth = totalDays * DAY_WIDTH;
 
-  // 2. Generate Header Tanggal (Harian)
+  // 2. Generate Header Kalender
   const dateHeaders = [];
   let cur = new Date(minDate);
   while (cur <= maxDate) {
-    dateHeaders.push({
-      date: new Date(cur),
-      isWeekend: cur.getDay() === 0 || cur.getDay() === 6
-    });
+    dateHeaders.push({ date: new Date(cur), isWeekend: cur.getDay() === 0 || cur.getDay() === 6 });
     cur.setDate(cur.getDate() + 1);
   }
 
-  // 3. Render Baris Task
-  const renderTaskBar = (task, index) => {
-    const tStart = new Date(task.start_date);
-    const tFinish = new Date(task.end_date);
-    
-    // Hitung posisi berdasarkan persentase
-    const offsetDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
-    const durationDays = Math.max(1, (tFinish - tStart) / (1000 * 60 * 60 * 24));
-    
-    const leftPercent = (offsetDays / totalDays) * 100;
-    const widthPercent = (durationDays / totalDays) * 100;
-    
-    const isSummary = task.summary === 'Yes';
-    const isCritical = task.is_critical;
-    const progress = Number(task.progress_percent) || 0;
+  // 3. Hitung Koordinat & Path SVG (Pure Math, No DOM Read!)
+  useEffect(() => {
+    const paths = [];
+    const taskRects = {};
 
-    // MS Project Style Colors
-    let barColor = 'bg-blue-500'; // Standard Task
-    if (isSummary) barColor = 'bg-slate-800'; // Summary Task
-    else if (isCritical) barColor = 'bg-red-500'; // Critical Path
+    tasks.forEach((t, idx) => {
+      const tStart = new Date(t.start_date);
+      const tFinish = new Date(t.end_date);
+      const offsetDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
+      const durationDays = Math.max(1, (tFinish - tStart) / (1000 * 60 * 60 * 24));
+      
+      const x = offsetDays * DAY_WIDTH;
+      const width = durationDays * DAY_WIDTH;
+      const y = idx * ROW_HEIGHT;
 
-    return (
-      <div key={task.id || index} className="flex border-b border-gray-200 hover:bg-blue-50 transition-colors h-10">
-        {/* Kolom Kiri: Tabel Data */}
-        <div className="w-[450px] border-r border-gray-300 flex text-xs items-center px-2 bg-white shrink-0 z-10">
-          <span className="w-12 font-mono text-gray-500">{task.wbs_code}</span>
-          <span className={`flex-1 truncate ${isSummary ? 'font-bold' : ''}`} style={{ paddingLeft: `${(task.indent_level || 0) * 12}px` }}>
-            {isSummary ? '📁 ' : '📄 '} {task.name}
-          </span>
-          <span className="w-12 text-center">{task.duration} d</span>
-          <span className="w-16 text-center text-gray-500 text-[10px]">{task.predecessors || '-'}</span>
-          <span className={`w-16 text-center font-bold ${isSummary ? 'text-gray-400' : (isCritical ? 'text-red-600' : 'text-blue-600')}`}>
-            {isSummary ? '-' : (task.total_float !== undefined ? task.total_float : '-')}
-          </span>
-        </div>
+      taskRects[t.wbs_code] = { x, y, width, height: 20 }; // Tinggi bar 20px
+    });
 
-        {/* Kolom Kanan: Timeline Bar */}
-        <div className="flex-1 relative flex items-center min-w-[600px] bg-gray-50/30">
-          {/* Grid Background */}
-          <div className="absolute inset-0 flex">
-            {dateHeaders.map((dh, i) => (
-              <div 
-                key={i} 
-                className={`flex-1 border-r border-gray-200 ${dh.isWeekend ? 'bg-gray-100/50' : ''}`}
-                style={{ minWidth: '20px' }}
-              ></div>
-            ))}
-          </div>
+    relations.forEach(rel => {
+      const from = taskRects[rel.from];
+      const to = taskRects[rel.to];
+      if (!from || !to) return;
 
-          {/* Task Bar */}
-          <div
-            className={`absolute h-5 rounded-sm shadow-sm flex items-center overflow-hidden ${barColor}`}
-            style={{ left: `${leftPercent}%`, width: `${widthPercent}%`, minWidth: isSummary ? '8px' : '20px' }}
-            title={`${task.name} (${progress}%)`}
-          >
-            {/* Progress Fill (Hanya untuk leaf task) */}
-            {!isSummary && (
-              <div className="h-full bg-black/20 absolute top-0 left-0" style={{ width: `${progress}%` }}></div>
-            )}
-            <span className="text-[9px] text-white font-bold px-1 z-10 w-full truncate">
-              {!isSummary && progress > 0 ? `${progress}%` : ''}
-            </span>
-          </div>
+      let sourceX, sourceY, targetX, targetY;
+      const fromCenterY = from.y + (from.height / 2);
+      const toCenterY = to.y + (to.height / 2);
 
-          {/* Milestone Diamond (Jika durasi 0) */}
-          {task.duration === 0 && (
-            <div 
-              className="absolute w-3 h-3 bg-yellow-400 rotate-45 transform -translate-x-1/2 shadow-sm z-10"
-              style={{ left: `${leftPercent}%` }}
-              title="Milestone"
-            ></div>
-          )}
-        </div>
-      </div>
-    );
+      if (rel.type === 'FS') {
+        sourceX = from.x + from.width; sourceY = fromCenterY;
+        targetX = to.x; targetY = toCenterY;
+      } else if (rel.type === 'SS') {
+        sourceX = from.x; sourceY = fromCenterY;
+        targetX = to.x; targetY = toCenterY;
+      } else if (rel.type === 'FF') {
+        sourceX = from.x + from.width; sourceY = fromCenterY;
+        targetX = to.x + to.width; targetY = toCenterY;
+      } else if (rel.type === 'SF') {
+        sourceX = from.x; sourceY = fromCenterY;
+        targetX = to.x + to.width; targetY = toCenterY;
+      }
+
+      const points = [[sourceX, sourceY]];
+      const paddingX = 16;
+
+      if (rel.type === 'FS') {
+        if (targetX >= sourceX + paddingX) {
+          const midX = sourceX + (targetX - sourceX) / 2;
+          points.push([midX, sourceY]); points.push([midX, targetY]);
+        } else {
+          const midY = fromCenterY + (toCenterY - fromCenterY) / 2;
+          points.push([sourceX + paddingX, sourceY]); points.push([sourceX + paddingX, midY]);
+          points.push([targetX - paddingX, midY]); points.push([targetX - paddingX, targetY]);
+        }
+      } else {
+        const midX = sourceX + (targetX - sourceX) / 2;
+        points.push([midX, sourceY]); points.push([midX, targetY]);
+      }
+      points.push([targetX, targetY]);
+
+      let d = `M ${points[0][0]} ${points[0][1]}`;
+      for (let i = 1; i < points.length; i++) d += ` L ${points[i][0]} ${points[i][1]}`;
+
+      paths.push({ d, is_critical: rel.is_critical });
+    });
+
+    setSvgPaths(paths);
+  }, [tasks, relations, minDate, maxDate]);
+
+  // 4. Sinkronisasi Scroll
+  const handleScroll = (e) => {
+    if (leftPanelRef.current) {
+      leftPanelRef.current.scrollTop = e.target.scrollTop;
+    }
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-300 overflow-hidden flex flex-col h-[calc(100vh-140px)]">
-      {/* Header Tabel */}
-      <div className="flex bg-gray-100 border-b border-gray-300 shrink-0 z-20">
-        <div className="w-[450px] flex text-xs font-bold text-gray-700 p-2 border-r border-gray-300 bg-gray-200">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col h-[calc(100vh-160px)] overflow-hidden">
+      
+      {/* Header Tabel & Kalender */}
+      <div className="flex border-b border-gray-300 bg-gray-100 shrink-0 z-20">
+        <div className="w-[450px] border-r border-gray-300 flex text-xs font-bold text-gray-700 p-2 bg-gray-200 shrink-0">
           <span className="w-12">WBS</span>
           <span className="flex-1">Task Name</span>
           <span className="w-12 text-center">Dur</span>
           <span className="w-16 text-center">Pred</span>
           <span className="w-16 text-center">Float</span>
         </div>
-        <div className="flex-1 flex overflow-hidden">
-          {dateHeaders.map((dh, i) => (
-            <div 
-              key={i} 
-              className={`flex-1 text-center text-[10px] border-r border-gray-300 font-semibold ${dh.isWeekend ? 'bg-gray-300 text-gray-600' : 'bg-gray-200'}`}
-              style={{ minWidth: '20px' }}
-            >
-              {dh.date.getDate()}
-            </div>
-          ))}
+        <div className="flex-1 overflow-hidden">
+          <div className="flex" style={{ width: totalWidth }}>
+            {dateHeaders.map((dh, i) => (
+              <div 
+                key={i} 
+                className={`text-center text-[10px] border-r border-gray-300 font-semibold py-2 ${dh.isWeekend ? 'bg-gray-300 text-gray-600' : 'bg-gray-200'}`}
+                style={{ width: DAY_WIDTH }}
+              >
+                {dh.date.getDate()}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Body Gantt (Scrollable Sync) */}
-      <div className="flex-1 overflow-y-auto overflow-x-auto relative">
-        <div className="min-w-max">
-          {tasks.map((task, index) => renderTaskBar(task, index))}
+      {/* Body Gantt (Dual Panel) */}
+      <div className="flex flex-1 overflow-hidden">
+        
+        {/* Panel Kiri: Tabel Data */}
+        <div ref={leftPanelRef} className="w-[450px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
+          <div className="min-w-full">
+            {tasks.map((t, idx) => (
+              <div key={t.id} className="flex text-xs items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[40px]">
+                <span className="w-12 font-mono text-gray-500">{t.wbs_code}</span>
+                <span className={`flex-1 truncate ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }}>
+                  {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
+                </span>
+                <span className="w-12 text-center">{t.duration} d</span>
+                <span className="w-16 text-center text-gray-500 text-[10px]">{t.predecessors || '-'}</span>
+                <span className={`w-16 text-center font-bold ${t.summary === 'Yes' ? 'text-gray-400' : (t.is_critical ? 'text-red-600' : 'text-blue-600')}`}>
+                  {t.summary === 'Yes' ? '-' : (t.total_float !== undefined ? t.total_float : '-')}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Panel Kanan: Timeline & SVG Links */}
+        <div 
+          ref={rightPanelRef} 
+          className="flex-1 overflow-auto relative bg-gray-50/30 select-none"
+          onScroll={handleScroll}
+        >
+          <div className="relative" style={{ width: totalWidth, height: tasks.length * ROW_HEIGHT }}>
+            
+            {/* Layer 1: Grid Background */}
+            <div className="absolute inset-0 flex pointer-events-none">
+              {dateHeaders.map((dh, i) => (
+                <div 
+                  key={i} 
+                  className={`border-r border-gray-200/50 h-full ${dh.isWeekend ? 'bg-gray-200/40' : ''}`}
+                  style={{ width: DAY_WIDTH }}
+                ></div>
+              ))}
+            </div>
+
+            {/* Layer 2: SVG Dependency Lines */}
+            <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={tasks.length * ROW_HEIGHT}>
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#94a3b8" />
+                </marker>
+                <marker id="arrow-critical" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#ef4444" />
+                </marker>
+              </defs>
+              {svgPaths.map((p, i) => (
+                <path 
+                  key={i} 
+                  d={p.d} 
+                  fill="none" 
+                  stroke={p.is_critical ? "#ef4444" : "#94a3b8"} 
+                  strokeWidth={p.is_critical ? 2 : 1.5} 
+                  markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} 
+                />
+              ))}
+            </svg>
+
+            {/* Layer 3: Task Bars */}
+            <div className="absolute inset-0 z-20 pointer-events-none">
+              {tasks.map((t, idx) => {
+                const tStart = new Date(t.start_date);
+                const tFinish = new Date(t.end_date);
+                const offsetDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
+                const durationDays = Math.max(1, (tFinish - tStart) / (1000 * 60 * 60 * 24));
+                
+                const left = offsetDays * DAY_WIDTH;
+                const width = durationDays * DAY_WIDTH;
+                const top = idx * ROW_HEIGHT + 10; // Center vertically in 40px row
+
+                const isSummary = t.summary === 'Yes';
+                const isCritical = t.is_critical;
+                const progress = Number(t.progress_percent) || 0;
+
+                let barColor = 'bg-blue-500';
+                if (isSummary) barColor = 'bg-slate-800';
+                else if (isCritical) barColor = 'bg-red-500';
+
+                return (
+                  <div
+                    key={t.id}
+                    className={`absolute h-5 rounded-sm shadow-sm flex items-center overflow-hidden ${barColor} pointer-events-auto cursor-pointer`}
+                    style={{ left, width: isSummary ? width : Math.max(20, width) }}
+                    title={`${t.name} (${progress}%)`}
+                  >
+                    {!isSummary && (
+                      <div className="h-full bg-black/20 absolute top-0 left-0" style={{ width: `${progress}%` }}></div>
+                    )}
+                    <span className="text-[9px] text-white font-bold px-1 z-10 w-full truncate">
+                      {!isSummary && progress > 0 ? `${progress}%` : ''}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
         </div>
       </div>
     </div>
