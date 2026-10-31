@@ -1,39 +1,51 @@
 ﻿'use client';
 import { useRef, useEffect, useState } from 'react';
 
-const DAY_WIDTH = 30;
-const ROW_HEIGHT = 40;
+const DAY_WIDTH = 40; // Lebar kolom sedikit dilebarkan agar label muat
+const ROW_HEIGHT = 50;
 
-export default function AdvancedGantt({ tasks, relations }) {
+export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate }) {
   const leftPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
 
-  // 1. Generate Working Days Array
+  // 1. Generate All Calendar Days (untuk menampilkan weekend shading)
   let minDate = new Date();
   let maxDate = new Date();
   tasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
   });
-  minDate.setDate(minDate.getDate() - 2); // Padding
-  maxDate.setDate(maxDate.getDate() + 5); // Padding
+  minDate.setDate(minDate.getDate() - 3); // Padding
+  maxDate.setDate(maxDate.getDate() + 7); // Padding
   
-  const workingDays = [];
+  const calendarDays = [];
   let cur = new Date(minDate);
   while (cur <= maxDate) {
-    if (cur.getDay() !== 0 && cur.getDay() !== 6) { // 0=Minggu, 6=Sabtu
-      workingDays.push(new Date(cur));
-    }
+    const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
+    // Cek apakah ini hari kerja berdasarkan setting user
+    const isWorking = workingDays.includes(cur.getDay()); 
+    calendarDays.push({ date: new Date(cur), isWeekend: !isWorking });
     cur.setDate(cur.getDate() + 1);
   }
 
-  const totalWidth = workingDays.length * DAY_WIDTH;
+  const totalWidth = calendarDays.length * DAY_WIDTH;
 
-  // Helper: Cari posisi X berdasarkan tanggal
+  // Helper: Cari posisi X berdasarkan tanggal (hanya menghitung hari kerja)
   const getX = (dateStr) => {
     if (!dateStr) return 0;
-    const idx = workingDays.findIndex(d => d.toISOString().split('T')[0] === dateStr);
-    return idx !== -1 ? idx * DAY_WIDTH : 0;
+    let targetDate = new Date(dateStr);
+    targetDate.setHours(0,0,0,0);
+    
+    let xPos = 0;
+    let current = new Date(minDate);
+    
+    while (current < targetDate) {
+      if (workingDays.includes(current.getDay())) {
+        xPos += DAY_WIDTH;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return xPos;
   };
 
   // 2. Hitung Koordinat & SVG Path
@@ -43,9 +55,17 @@ export default function AdvancedGantt({ tasks, relations }) {
 
     tasks.forEach((t, idx) => {
       const x = getX(t.start_date);
+      // Lebar didasarkan pada durasi hari kerja
       const width = t.duration * DAY_WIDTH;
       const y = idx * ROW_HEIGHT;
-      taskRects[t.wbs_code] = { x, y, width, height: 20 };
+      
+      // Simpan koordinat untuk SVG Panah
+      taskRects[t.wbs_code] = { 
+        x, 
+        y, 
+        width: Math.max(width, t.summary === 'Yes' ? width : 24), 
+        height: t.summary === 'Yes' ? 8 : 24 
+      };
     });
 
     relations.forEach(rel => {
@@ -54,8 +74,8 @@ export default function AdvancedGantt({ tasks, relations }) {
       if (!from || !to) return;
 
       let sourceX, sourceY, targetX, targetY;
-      const fromCenterY = from.y + (from.height / 2);
-      const toCenterY = to.y + (to.height / 2);
+      const fromCenterY = from.y + 25;
+      const toCenterY = to.y + 25;
 
       if (rel.type === 'FS') {
         sourceX = from.x + from.width; sourceY = fromCenterY;
@@ -98,17 +118,20 @@ export default function AdvancedGantt({ tasks, relations }) {
     setSvgPaths(paths);
   }, [tasks, relations]);
 
-  // 3. Sinkronisasi Scroll
+  // Sinkronisasi Scroll
   const handleScroll = (e) => {
     if (leftPanelRef.current) {
       leftPanelRef.current.scrollTop = e.target.scrollTop;
     }
   };
 
+  // Format Tanggal Singkat
+  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '';
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col h-[calc(100vh-160px)] overflow-hidden">
       
-      {/* Header Tabel & Kalender */}
+      {/* HEADER: Tabel Kiri & Kalender Kanan */}
       <div className="flex border-b border-gray-300 bg-gray-100 shrink-0 z-20">
         <div className="w-[450px] border-r border-gray-300 flex text-xs font-bold text-gray-700 p-2 bg-gray-200 shrink-0">
           <span className="w-12">WBS</span>
@@ -119,27 +142,27 @@ export default function AdvancedGantt({ tasks, relations }) {
         </div>
         <div className="flex-1 overflow-hidden">
           <div className="flex" style={{ width: totalWidth }}>
-            {workingDays.map((wd, i) => (
+            {calendarDays.map((cd, i) => (
               <div 
                 key={i} 
-                className="text-center text-[10px] border-r border-gray-300 font-semibold py-2 bg-gray-200"
+                className={`text-center text-[10px] border-r border-gray-300 font-semibold py-2 ${cd.isWeekend ? 'bg-gray-300 text-gray-500' : 'bg-gray-200'}`}
                 style={{ width: DAY_WIDTH }}
               >
-                {wd.getDate()}
+                {cd.date.getDate()}
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Body Gantt (Dual Panel) */}
+      {/* BODY: Dual Panel */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* Panel Kiri: Tabel Data */}
+        {/* Tabel Kiri */}
         <div ref={leftPanelRef} className="w-[450px] border-r border-gray-300 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {tasks.map((t) => (
-              <div key={t.id} className="flex text-xs items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[40px]">
+              <div key={t.id} className="flex text-xs items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[50px]">
                 <span className="w-12 font-mono text-gray-500">{t.wbs_code}</span>
                 <span className={`flex-1 truncate ${t.summary === 'Yes' ? 'font-bold' : ''}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }}>
                   {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
@@ -154,25 +177,34 @@ export default function AdvancedGantt({ tasks, relations }) {
           </div>
         </div>
 
-        {/* Panel Kanan: Timeline & SVG Links */}
-        <div 
-          className="flex-1 overflow-auto relative bg-gray-50/30 select-none"
-          onScroll={handleScroll}
-        >
+        {/* Kanvas Kanan */}
+        <div className="flex-1 overflow-auto relative bg-gray-50/30 select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: tasks.length * ROW_HEIGHT }}>
             
-            {/* Layer 1: Grid Background */}
-            <div className="absolute inset-0 flex pointer-events-none">
-              {workingDays.map((wd, i) => (
+            {/* Layer 1: Grid Latar Belakang & Weekend Shading */}
+            <div className="absolute inset-0 flex pointer-events-none z-0">
+              {calendarDays.map((cd, i) => (
                 <div 
                   key={i} 
-                  className="border-r border-gray-200/50 h-full"
+                  className={`border-r border-gray-200/50 h-full ${cd.isWeekend ? 'bg-gray-200/60' : ''}`}
                   style={{ width: DAY_WIDTH }}
                 ></div>
               ))}
             </div>
 
-            {/* Layer 2: SVG Dependency Lines */}
+            {/* Layer 2: Status Date & Current Date Lines */}
+            <div 
+              className="absolute top-0 bottom-0 border-l-2 border-dashed border-green-500 z-10 pointer-events-none"
+              style={{ left: getX(statusDate) }}
+              title="Status Date"
+            ></div>
+            <div 
+              className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none"
+              style={{ left: getX(new Date().toISOString().split('T')[0]) }}
+              title="Current Date"
+            ></div>
+
+            {/* Layer 3: SVG Dependency Lines */}
             <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={tasks.length * ROW_HEIGHT}>
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -194,45 +226,86 @@ export default function AdvancedGantt({ tasks, relations }) {
               ))}
             </svg>
 
-            {/* Layer 3: Task Bars */}
+            {/* Layer 4: Task Bars & Labels */}
             <div className="absolute inset-0 z-20 pointer-events-none">
               {tasks.map((t, idx) => {
                 const left = getX(t.start_date);
                 const width = t.duration * DAY_WIDTH;
-                const top = idx * ROW_HEIGHT + 10;
+                const top = idx * ROW_HEIGHT + 13; // Center in 50px row
 
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
                 const progress = Number(t.progress_percent) || 0;
+                const volume = Number(t.volume || 0);
+                const targetHarian = t.duration > 0 ? (volume / t.duration).toFixed(2) : 0;
 
-                let barColor = 'bg-blue-500';
-                if (isSummary) barColor = 'bg-slate-800';
-                else if (isCritical) barColor = 'bg-red-500';
-
-                if (width === 0) {
+                // ==========================================
+                // KONDISI 1: MILESTONE (Durasi 0)
+                // ==========================================
+                if (t.duration === 0) {
                   return (
-                    <div
-                      key={t.id}
-                      className="absolute w-3 h-3 bg-yellow-400 rotate-45 transform -translate-x-1/2 shadow-sm pointer-events-auto cursor-pointer z-30"
-                      style={{ left: left, top: top - 2 }}
-                      title={`Milestone: ${t.name}`}
-                    ></div>
+                    <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 6, top: top - 2 }}>
+                      <div className="w-3 h-3 bg-slate-900 rotate-45 shadow-sm z-30"></div>
+                      <span className="ml-3 text-[10px] font-bold text-slate-700 whitespace-nowrap bg-white/80 px-1 rounded border border-slate-200">
+                        {t.name}
+                      </span>
+                    </div>
                   );
                 }
 
+                // ==========================================
+                // KONDISI 2: SUMMARY TASK (Bentuk Jangkar/Bracket)
+                // ==========================================
+                if (isSummary) {
+                  return (
+                    <div key={t.id} className="absolute pointer-events-auto group" style={{ left, width, top }}>
+                      {/* Batang Utama Induk */}
+                      <div className="absolute top-0 w-full h-[6px] bg-slate-800"></div>
+                      {/* Jangkar Kiri */}
+                      <div className="absolute top-0 left-0 w-[6px] h-3 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 50%)' }}></div>
+                      {/* Jangkar Kanan */}
+                      <div className="absolute top-0 right-0 w-[6px] h-3 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 50%, 0 100%)' }}></div>
+                      
+                      {/* Label Kanan: Progres */}
+                      <span className="absolute -top-3 text-[10px] font-bold text-slate-700 whitespace-nowrap" style={{ left: width + 8 }}>
+                        {progress}% Complete
+                      </span>
+                    </div>
+                  );
+                }
+
+                // ==========================================
+                // KONDISI 3: STANDARD SUBTASK (Kotak + Multi Label)
+                // ==========================================
                 return (
-                  <div
-                    key={t.id}
-                    className={`absolute h-5 rounded-sm shadow-sm flex items-center overflow-hidden ${barColor} pointer-events-auto cursor-pointer`}
-                    style={{ left, width: Math.max(20, width) }}
-                    title={`${t.name} (${progress}%)`}
-                  >
-                    {!isSummary && (
-                      <div className="h-full bg-black/20 absolute top-0 left-0" style={{ width: `${progress}%` }}></div>
-                    )}
-                    <span className="text-[9px] text-white font-bold px-1 z-10 w-full truncate">
-                      {!isSummary && progress > 0 ? `${progress}%` : ''}
+                  <div key={t.id} className="absolute group" style={{ left, width: Math.max(24, width), top }}>
+                    {/* Label Atas: Target per Hari */}
+                    <div 
+                      className="absolute -top-4 w-full text-center text-[9px] font-bold text-indigo-600 bg-indigo-50/90 px-1 rounded border border-indigo-100 whitespace-nowrap shadow-2xs z-10"
+                    >
+                      🎯 {targetHarian} {t.satuan_hsd}/hari
+                    </div>
+
+                    {/* Batang Utama */}
+                    <div className={`h-6 rounded relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'}`}>
+                      <div style={{ width: `${progress}%` }} className="bg-black/20 h-full text-[10px] text-white flex items-center justify-end pr-1 font-bold overflow-hidden">
+                        {progress > 15 && `${progress}%`}
+                      </div>
+                    </div>
+
+                    {/* Label Kiri: Tanggal Mulai */}
+                    <span className="absolute top-[6px] text-[10px] font-semibold text-slate-400 text-right w-10 whitespace-nowrap" style={{ left: -45 }}>
+                      {fmtDate(t.start_date)}
                     </span>
+
+                    {/* Label Kanan: Tanggal Selesai, Volume, & Unit */}
+                    <div className="absolute top-[5px] flex items-center gap-1 text-[10px] font-medium whitespace-nowrap" style={{ left: Math.max(24, width) + 8 }}>
+                      <span className="text-slate-400 font-semibold">{fmtDate(t.end_date)}</span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-slate-800 font-bold bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        Vol: {volume} {t.satuan_hsd}
+                      </span>
+                    </div>
                   </div>
                 );
               })}

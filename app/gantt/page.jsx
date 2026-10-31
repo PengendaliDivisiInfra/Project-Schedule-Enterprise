@@ -11,6 +11,7 @@ export default function GanttPage() {
   const [loading, setLoading] = useState(true);
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
+  const [statusDate, setStatusDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     async function loadData() {
@@ -26,7 +27,6 @@ export default function GanttPage() {
         let activeExceptions = [];
 
         if (projectId) {
-          // Gunakan maybeSingle agar tidak error 406 jika data kosong
           let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).maybeSingle();
           
           if (cal && cal.id) {
@@ -38,18 +38,34 @@ export default function GanttPage() {
           setWorkingDays(activeWorkingDays);
           setExceptions(activeExceptions);
 
-          const { data } = await supabase.from('wbs_tasks').select('*').eq('project_id', projectId).order('wbs_code', { ascending: true });
+          // ⚠️ NESTED QUERY: Ambil unit dari ahsp_templates
+          const { data } = await supabase.from('wbs_tasks').select(`
+            *, 
+            ahsp_templates ( unit )
+          `).eq('project_id', projectId).order('wbs_code', { ascending: true });
           
           if (data && data.length > 0) {
+            // Mapping unit ke dalam object task agar mudah dibaca oleh UI
+            const mappedData = data.map(t => ({
+              ...t,
+              satuan_hsd: t.ahsp_templates?.unit || 'unit'
+            }));
+
             const projectStart = data[0].start_date || new Date().toISOString().split('T')[0];
-            const result = calculateCPM(data, projectStart, activeWorkingDays, activeExceptions);
+            const result = calculateCPM(mappedData, projectStart, activeWorkingDays, activeExceptions);
             
             if (!result.error) {
-              setTasks(result.tasks);
+              // Gabungkan kembali satuan_hsd ke hasil kalkulasi CPM
+              const finalTasks = result.tasks.map(t => ({
+                ...t,
+                satuan_hsd: mappedData.find(m => m.id === t.id)?.satuan_hsd || 'unit'
+              }));
+              
+              setTasks(finalTasks);
               setRelations(result.relations);
             } else {
               console.error("CPM Error:", result.error);
-              setTasks(data);
+              setTasks(mappedData);
             }
           }
         }
@@ -68,14 +84,14 @@ export default function GanttPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Interactive Gantt Workspace</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Kalender Kerja Aktif: <b>{workingDays.length} Hari/Minggu</b> | {exceptions.length} Hari Libur.
+            Kalender: <b>{workingDays.length} Hari/Minggu</b> | Status Date: <b>{new Date(statusDate).toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</b>
           </p>
         </div>
       </div>
 
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner text="Membangun Gantt Chart..." /> : (
-          <AdvancedGantt tasks={tasks} relations={relations} workingDays={workingDays} />
+          <AdvancedGantt tasks={tasks} relations={relations} workingDays={workingDays} statusDate={statusDate} />
         )}
       </div>
     </div>
