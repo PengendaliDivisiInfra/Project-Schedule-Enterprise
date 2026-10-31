@@ -38,7 +38,6 @@ export default function GanttPage() {
           setWorkingDays(activeWorkingDays);
           setExceptions(activeExceptions);
 
-          // ⚠️ NESTED QUERY: Ambil unit dari ahsp_templates
           const { data } = await supabase.from('wbs_tasks').select(`
             *, 
             ahsp_templates ( unit )
@@ -89,7 +88,7 @@ export default function GanttPage() {
 
       <div className="flex-1 px-4 pb-4">
         {loading ? <LoadingSpinner text="Membangun Gantt Chart..." /> : (
-          <AdvancedGantt tasks={tasks} relations={relations} workingDays={workingDays} statusDate={statusDate} />
+          <AdvancedGantt tasks={tasks} relations={relations} workingDays={workingDays} statusDate={statusDate} exceptions={exceptions} />
         )}
       </div>
     </div>
