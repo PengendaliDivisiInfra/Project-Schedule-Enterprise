@@ -2,14 +2,13 @@
 import { useRef, useEffect, useState } from 'react';
 
 const DAY_WIDTH = 40;
-const ROW_HEIGHT = 50;
+const ROW_HEIGHT = 45; // Sedikit lebih tinggi agar lega
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
   const leftPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
 
-  // Filter Critical Only
   const displayTasks = showCriticalOnly 
     ? tasks.filter(t => t.is_critical || t.summary === 'Yes') 
     : tasks;
@@ -35,6 +34,34 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
   const totalWidth = calendarDays.length * DAY_WIDTH;
 
+  // 2. Grouping Header by Month & Year
+  const monthGroups = [];
+  let currentMonth = -1;
+  let currentYear = -1;
+  let monthStartIndex = 0;
+
+  calendarDays.forEach((cd, idx) => {
+    const m = cd.date.getMonth();
+    const y = cd.date.getFullYear();
+    if (m !== currentMonth || y !== currentYear) {
+      if (currentMonth !== -1) {
+        monthGroups.push({
+          name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
+          span: idx - monthStartIndex
+        });
+      }
+      currentMonth = m;
+      currentYear = y;
+      monthStartIndex = idx;
+    }
+  });
+  if (currentMonth !== -1) {
+    monthGroups.push({
+      name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
+      span: calendarDays.length - monthStartIndex
+    });
+  }
+
   const getX = (dateStr) => {
     if (!dateStr) return 0;
     let targetDate = new Date(dateStr);
@@ -51,7 +78,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return xPos;
   };
 
-  // 2. Hitung SVG Path
+  // 3. Hitung SVG Path (Garis Panah)
   useEffect(() => {
     const paths = [];
     const taskRects = {};
@@ -68,8 +95,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       const to = taskRects[rel.to];
       if (!from || !to) return;
       let sourceX, sourceY, targetX, targetY;
-      const fromCenterY = from.y + 25;
-      const toCenterY = to.y + 25;
+      const fromCenterY = from.y + (ROW_HEIGHT / 2);
+      const toCenterY = to.y + (ROW_HEIGHT / 2);
 
       if (rel.type === 'FS') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; } 
       else if (rel.type === 'SS') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; } 
@@ -130,10 +157,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col h-[calc(100vh-160px)] overflow-hidden">
       
-      {/* Header & Filter */}
+      {/* HEADER (2 Baris: Bulan & Tanggal) */}
       <div className="flex border-b border-gray-300 bg-gray-100 shrink-0 z-20">
-        <div className="w-[600px] border-r border-gray-300 flex flex-col p-2 bg-gray-200 shrink-0">
-          <div className="flex justify-between items-center mb-1">
+        <div className="w-[600px] border-r border-gray-300 flex flex-col bg-gray-200 shrink-0">
+          {/* Header Atas (Tabel Kiri) */}
+          <div className="flex justify-between items-center p-2 border-b border-gray-300">
             <div className="flex text-[10px] font-bold text-gray-700 gap-4">
               <span className="w-6 text-center" title="Task Mode">📌</span>
               <span className="w-6 text-center" title="Complete">✓</span>
@@ -143,23 +171,36 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               <span className="w-16 text-center">Target/hr</span>
               <span className="w-20">Resource</span>
             </div>
-          </div>
-        </div>
-        <div className="flex-1 overflow-hidden relative flex flex-col justify-end">
-          {/* Filter Toggle */}
-          <div className="absolute top-1 right-2 z-30">
             <button 
               onClick={() => setShowCriticalOnly(!showCriticalOnly)}
-              className={`text-[10px] px-2 py-1 rounded border ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-gray-600 border-gray-300'}`}
+              className={`text-[10px] px-2 py-1 rounded border transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}
             >
-              {showCriticalOnly ? 'Showing Critical Path' : 'Filter: All Tasks'}
+              {showCriticalOnly ? 'Showing Critical' : 'All Tasks'}
             </button>
           </div>
+          {/* Header Bawah (Tabel Kiri) - Kosong sebagai spacer */}
+          <div className="h-[30px]"></div>
+        </div>
+        
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Header Atas (Timeline) - Bulan */}
+          <div className="flex border-b border-gray-300" style={{ width: totalWidth }}>
+            {monthGroups.map((mg, i) => (
+              <div 
+                key={i} 
+                className="text-center text-[11px] font-bold text-gray-800 border-r border-gray-300 bg-gray-200 py-1"
+                style={{ width: mg.span * DAY_WIDTH }}
+              >
+                {mg.name}
+              </div>
+            ))}
+          </div>
+          {/* Header Bawah (Timeline) - Tanggal */}
           <div className="flex" style={{ width: totalWidth }}>
             {calendarDays.map((cd, i) => (
               <div 
                 key={i} 
-                className={`text-center text-[10px] border-r border-gray-300 font-semibold py-2 ${cd.isWeekend ? 'bg-gray-300 text-gray-500' : 'bg-gray-200'}`}
+                className={`text-center text-[10px] border-r border-gray-300 font-semibold py-1.5 ${cd.isWeekend ? 'bg-gray-300 text-gray-500' : 'bg-gray-100 text-gray-600'}`}
                 style={{ width: DAY_WIDTH }}
               >
                 {cd.date.getDate()}
@@ -178,7 +219,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             {displayTasks.map((t) => {
               const dailyTarget = calculateDailyTarget(t);
               return (
-                <div key={t.id} className="flex text-[11px] items-center px-2 border-b border-gray-100 hover:bg-blue-50 h-[50px] group">
+                <div key={t.id} className={`flex text-[11px] items-center px-2 border-b border-gray-200 hover:bg-blue-50 h-[45px] group ${t.summary === 'Yes' ? 'bg-gray-50' : ''}`}>
                   <span className="w-6 text-center">
                     {t.task_mode === 'Manually Scheduled' ? <span title="Manually Scheduled">📌</span> : <span title="Auto Scheduled">📅</span>}
                   </span>
@@ -190,7 +231,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     {t.summary === 'Yes' ? '📁 ' : '📄 '} {t.name}
                   </span>
                   
-                  {/* Inline Edit Durasi */}
                   <div className="w-12 text-center">
                     {t.summary === 'Yes' ? (
                       <span>{t.duration} d</span>
@@ -208,7 +248,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     {t.summary === 'Yes' ? '-' : `${dailyTarget} /hr`}
                   </span>
 
-                  {/* Inline Edit Resource */}
                   <div className="w-20 px-1">
                     {t.summary === 'No' && (
                       <input 
@@ -216,7 +255,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                         defaultValue={t.resource_names || ''} 
                         placeholder="Assign..."
                         onBlur={(e) => onInlineUpdate(t.id, 'resource_names', e.target.value)}
-                        className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate"
+                        className="w-full border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-gray-300"
                         title={t.resource_names}
                       />
                     )}
@@ -228,17 +267,22 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
         </div>
 
         {/* KOLOM KANAN (Timeline) */}
-        <div className="flex-1 overflow-auto relative bg-gray-50/30 select-none" onScroll={handleScroll}>
+        <div className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
             
-            {/* Layer 1: Grid & Weekend Shading */}
+            {/* Layer 1: Grid & Weekend Shading & Horizontal Lines */}
+            <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
+              {displayTasks.map((_, i) => (
+                <div key={i} className="w-full border-b border-gray-200/60" style={{ height: ROW_HEIGHT }}></div>
+              ))}
+            </div>
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => (
-                <div key={i} className={`border-r border-gray-200/50 h-full ${cd.isWeekend ? 'bg-gray-300/60' : ''}`} style={{ width: DAY_WIDTH }}></div>
+                <div key={i} className={`border-r border-gray-200/50 h-full ${cd.isWeekend ? 'bg-gray-100/80' : ''}`} style={{ width: DAY_WIDTH }}></div>
               ))}
             </div>
 
-            {/* Layer 2: Status Date Lines */}
+            {/* Layer 2: Status Date & Current Date Lines */}
             <div className="absolute top-0 bottom-0 border-l-2 border-dashed border-green-500 z-10 pointer-events-none" style={{ left: getX(statusDate) }} title="Status Date"></div>
             <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
 
@@ -246,14 +290,14 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={displayTasks.length * ROW_HEIGHT}>
               <defs>
                 <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                  <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#94a3b8" />
+                  <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#64748b" />
                 </marker>
                 <marker id="arrow-critical" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#ef4444" />
                 </marker>
               </defs>
               {svgPaths.map((p, i) => (
-                <path key={i} d={p.d} fill="none" stroke={p.is_critical ? "#ef4444" : "#94a3b8"} strokeWidth={p.is_critical ? 2 : 1.5} markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} />
+                <path key={i} d={p.d} fill="none" stroke={p.is_critical ? "#ef4444" : "#64748b"} strokeWidth={p.is_critical ? 2 : 1.5} markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} />
               ))}
             </svg>
 
@@ -262,7 +306,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               {displayTasks.map((t, idx) => {
                 const left = getX(t.start_date);
                 const width = t.duration * DAY_WIDTH;
-                const top = idx * ROW_HEIGHT + 13;
+                const top = idx * ROW_HEIGHT + 10; // Center in 45px row
 
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
@@ -272,7 +316,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 if (t.duration === 0) {
                   return (
                     <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 6, top: top - 2 }}>
-                      <div className="w-3 h-3 bg-slate-900 rotate-45 shadow-sm z-30"></div>
+                      <div className="w-3.5 h-3.5 bg-slate-900 rotate-45 shadow-sm z-30"></div>
                       <span className="ml-3 text-[10px] font-bold text-slate-700 whitespace-nowrap bg-white/80 px-1 rounded border border-slate-200">{t.name}</span>
                     </div>
                   );
@@ -281,9 +325,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 if (isSummary) {
                   return (
                     <div key={t.id} className="absolute pointer-events-auto group" style={{ left, width, top }}>
-                      <div className="absolute top-0 w-full h-[4px] bg-slate-900"></div>
-                      <div className="absolute top-0 left-0 w-[6px] h-3 bg-slate-900" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 40%)' }}></div>
-                      <div className="absolute top-0 right-0 w-[6px] h-3 bg-slate-900" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 40%, 0 100%)' }}></div>
+                      <div className="absolute top-0 w-full h-[5px] bg-slate-800"></div>
+                      <div className="absolute top-0 left-0 w-[6px] h-3.5 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 40%)' }}></div>
+                      <div className="absolute top-0 right-0 w-[6px] h-3.5 bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 40%, 0 100%)' }}></div>
                       <span className="absolute -top-3 text-[10px] font-bold text-slate-700 whitespace-nowrap" style={{ left: width + 8 }}>{progress}% Complete</span>
                     </div>
                   );
@@ -291,7 +335,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
                 return (
                   <div key={t.id} className="absolute group" style={{ left, width: Math.max(24, width), top }}>
-                    <div className="absolute -top-4 w-full text-center text-[9px] font-bold text-indigo-600 bg-indigo-50/90 px-1 rounded border border-indigo-100 whitespace-nowrap shadow-2xs z-10">
+                    <div className="absolute -top-3.5 w-full text-center text-[9px] font-bold text-indigo-600 bg-indigo-50/90 px-1 rounded border border-indigo-100 whitespace-nowrap shadow-sm z-10">
                       🎯 {dailyTarget} {t.satuan_hsd || 'unit'}/hari
                     </div>
 
