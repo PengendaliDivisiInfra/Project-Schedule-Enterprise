@@ -86,7 +86,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
     displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
-      const width = t.duration * DAY_WIDTH;
+      let dynamicWidth = t.duration * DAY_WIDTH;
+      if (t.start_date && t.end_date) {
+        const startX = getX(t.start_date);
+        const endX = getX(t.end_date);
+        if (endX >= startX) {
+          dynamicWidth = (endX - startX) + DAY_WIDTH;
+        }
+      }
+      const width = Math.max(16, dynamicWidth);
       const y = idx * ROW_HEIGHT;
       taskRects[t.wbs_code] = { x, y, width: Math.max(width, t.summary === 'Yes' ? width : 16), height: t.summary === 'Yes' ? 6 : 16 };
     });
@@ -146,6 +154,32 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     } catch (e) { return ''; }
   };
 
+
+    const handleDateChange = (task, field, newValue) => {
+    let updates = { [field]: newValue };
+    
+    // Jika tanggal diubah, hitung ulang durasi (hari kerja)
+    if (field === 'start_date' || field === 'end_date') {
+      const start = new Date(field === 'start_date' ? newValue : task.start_date);
+      const end = new Date(field === 'end_date' ? newValue : task.end_date);
+      if (!isNaN(start) && !isNaN(end)) {
+        let count = 0;
+        let cur = new Date(start);
+        while (cur <= end) {
+          if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) {
+            count++;
+          }
+          cur.setDate(cur.getDate() + 1);
+        }
+        updates.duration = Math.max(1, count);
+      }
+    }
+
+    // Kirim semua update (tanggal + durasi baru) ke parent component
+    Object.keys(updates).forEach(key => {
+      onInlineUpdate(task.id, key, updates[key]);
+    });
+  };
 
   const calculateDailyTarget = (task) => {
     if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
@@ -264,12 +298,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   <div className="w-[85px] text-center border-l border-slate-100">
                     {isSummary ? <span className="text-slate-600">{fmtDate(t.start_date)}</span> : (
-                      <input type="date" defaultValue={formatDateForInput(t.start_date)} onBlur={(e) => onInlineUpdate(t.id, 'start_date', e.target.value)} className="w-[75px] border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]" />
+                      <input type="date" defaultValue={formatDateForInput(t.start_date)} onBlur={(e) => handleDateChange(t, 'start_date', e.target.value)} className="w-[75px] border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]" />
                     )}
                   </div>
                   <div className="w-[85px] text-center border-l border-slate-100">
                     {isSummary ? <span className="text-slate-600">{fmtDate(t.end_date)}</span> : (
-                      <input type="date" defaultValue={formatDateForInput(t.end_date)} onBlur={(e) => onInlineUpdate(t.id, 'end_date', e.target.value)} className="w-[75px] border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]" />
+                      <input type="date" defaultValue={formatDateForInput(t.end_date)} onBlur={(e) => handleDateChange(t, 'end_date', e.target.value)} className="w-[75px] border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]" />
                     )}
                   </div>
                   <span className="w-12 text-center text-slate-500 border-l border-slate-100 truncate">{t.predecessors || '-'}</span>
@@ -327,7 +361,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             <div className="absolute inset-0 z-20 pointer-events-none">
               {displayTasks.map((t, idx) => {
                 const left = getX(t.start_date);
-                const width = t.duration * DAY_WIDTH;
+                let dynamicWidth = t.duration * DAY_WIDTH;
+      if (t.start_date && t.end_date) {
+        const startX = getX(t.start_date);
+        const endX = getX(t.end_date);
+        if (endX >= startX) {
+          dynamicWidth = (endX - startX) + DAY_WIDTH;
+        }
+      }
+      const width = Math.max(16, dynamicWidth);
                 const top = idx * ROW_HEIGHT + 8;
                 const isHovered = hoveredTaskId === t.id; // Dual Highlight
 
@@ -386,4 +428,5 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
