@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function ResourcesPage() {
-  const [activeTab, setActiveTab] = useState('sheet'); // 'sheet' atau 'usage'
+  const [activeTab, setActiveTab] = useState('sheet');
 
   return (
     <div>
@@ -13,7 +13,6 @@ export default function ResourcesPage() {
         <p className="text-sm text-gray-500 mt-1">Kelola Master Data Sumber Daya dan lihat agregasi kebutuhan (BoQ).</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex border-b border-gray-200 mb-6">
         <button 
           onClick={() => setActiveTab('sheet')} 
@@ -189,7 +188,7 @@ function ResourceSheet() {
 }
 
 // ==========================================
-// KOMPONEN 2: RESOURCE USAGE (BOQ AGREGATION)
+// KOMPONEN 2: RESOURCE USAGE (BOQ AGREGATION) - ROBUST JS MAPPING
 // ==========================================
 function ResourceUsage() {
   const [aggregated, setAggregated] = useState([]);
@@ -198,41 +197,48 @@ function ResourceUsage() {
   useEffect(() => {
     async function loadData() {
       try {
-        // 1. Ambil Task yang sudah di-assign
+        // 1. Ambil SEMUA data mentah secara terpisah (Menghindari error nested join Supabase)
         const { data: tasks } = await supabase.from('wbs_tasks').select('*').not('ahsp_template_id', 'is', null);
         if (!tasks || tasks.length === 0) { setLoading(false); return; }
 
-        const templateIds = [...new Set(tasks.map(t => t.ahsp_template_id))];
-        
-        // 2. Ambil Detail AHSP dengan Relasi Eksplisit (!hsd_id)
-        const { data: details, error } = await supabase.from('ahsp_details')
-          .select(`
-            koefisien, 
-            ahsp_template_id, 
-            master_hsd!hsd_id ( id, item_name, resource_type, unit, base_price ),
-            ahsp_templates ( overhead_percent )
-          `)
-          .in('ahsp_template_id', templateIds);
+        const { data: details } = await supabase.from('ahsp_details').select('*');
+        const { data: hsdItems } = await supabase.from('master_hsd').select('*');
+        const { data: templates } = await supabase.from('ahsp_templates').select('*');
 
-        if (error) throw error;
-        if (!details || details.length === 0) { setLoading(false); return; }
+        // 2. Buat Peta (Map) untuk pencarian O(1)
+        const hsdMap = {};
+        hsdItems?.forEach(h => { hsdMap[h.id] = h; });
 
+        const templateMap = {};
+        templates?.forEach(t => { templateMap[t.id] = t; });
+
+        // Kelompokkan detail berdasarkan template_id
+        const detailsByTemplate = {};
+        details?.forEach(d => {
+          if (!detailsByTemplate[d.ahsp_template_id]) {
+            detailsByTemplate[d.ahsp_template_id] = [];
+          }
+          detailsByTemplate[d.ahsp_template_id].push(d);
+        });
+
+        // 3. Lakukan Kalkulasi Agregasi di JavaScript
         const grouped = {};
         tasks.forEach(task => {
-          const taskDetails = details.filter(d => d.ahsp_template_id === task.ahsp_template_id);
+          const taskDetails = detailsByTemplate[task.ahsp_template_id] || [];
           const volume = task.volume || 0;
+          
+          // Ambil Overhead dari Template
+          const template = templateMap[task.ahsp_template_id];
+          const overheadPercent = template?.overhead_percent || 15;
+          const factor = 1 + (overheadPercent / 100);
 
           taskDetails.forEach(detail => {
-            const hsd = detail.master_hsd;
+            const hsd = hsdMap[detail.hsd_id];
             if (!hsd) return;
-
-            // Ambil persentase overhead (default 15%)
-            const overheadPercent = detail.ahsp_templates?.overhead_percent || 15;
-            const factor = 1 + (overheadPercent / 100);
 
             const totalVol = volume * detail.koefisien;
             
-            // Kalikan harga dasar dengan Overhead (F = D + E)
+            // Harga Satuan (F) = Harga Dasar * (1 + Overhead)
             const adjustedUnitPrice = (hsd.base_price || 0) * factor;
             const totalCost = totalVol * adjustedUnitPrice;
 
@@ -241,7 +247,7 @@ function ResourceUsage() {
                 ...hsd, 
                 total_volume: 0, 
                 total_cost: 0,
-                adjusted_price: adjustedUnitPrice // Simpan harga yang sudah include overhead
+                adjusted_price: adjustedUnitPrice
               };
             }
             grouped[hsd.id].total_volume += totalVol;
@@ -289,7 +295,6 @@ function ResourceUsage() {
                   <td className="p-4">{r.item_name}</td>
                   <td className="p-4 text-right font-bold">{r.total_volume.toFixed(2)}</td>
                   <td className="p-4">{r.unit}</td>
-                  {/* Menampilkan Harga F (D + Overhead) */}
                   <td className="p-4 text-right">Rp {r.adjusted_price?.toLocaleString('id-ID')}</td>
                   <td className="p-4 text-right font-bold text-gray-800">Rp {r.total_cost.toLocaleString('id-ID')}</td>
                 </tr>
