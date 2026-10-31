@@ -159,7 +159,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       
       {/* HEADER (2 Baris: Bulan & Tanggal) */}
       <div className="flex border-b border-gray-400 bg-[#f3f3f3] shrink-0 z-20">
-        <div className="w-[980px] border-r border-gray-400 flex flex-col shrink-0">
+        <div className="w-[1020px] border-r border-gray-400 flex flex-col shrink-0">
           {/* Header Atas (Tabel Kiri) */}
           <div className="flex justify-between items-center px-1 py-1 border-b border-gray-300 bg-[#e6e6e6]">
             <div className="flex text-[11px] font-semibold text-gray-700 items-center">
@@ -174,7 +174,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               <span className="w-16 text-center border-l border-gray-300">Resource</span>
               <span className="w-10 text-center border-l border-gray-300">%</span>
               <span className="w-12 text-center border-l border-gray-300">Target</span>
-              <span className="w-14 text-center border-l border-gray-300 bg-slate-200 text-slate-800" title="Volume dari Assignments">Volume</span>
+              <span className="w-20 text-center border-l border-gray-300 bg-slate-200 text-slate-800" title="Volume dari Assignments">Volume</span>
               <span className="w-10 text-center border-l border-gray-300">Sisa</span>
               <span className="w-12 text-center border-l border-gray-300">T/hr</span>
             </div>
@@ -221,7 +221,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       <div className="flex flex-1 overflow-hidden">
         
         {/* KOLOM KIRI (Entry Table) */}
-        <div ref={leftPanelRef} className="w-[980px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
+        <div ref={leftPanelRef} className="w-[1020px] border-r border-gray-400 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {displayTasks.map((t, idx) => {
               const dailyTarget = calculateDailyTarget(t);
@@ -286,8 +286,10 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   {/* SMART Target */}
                   <span className="w-12 text-center font-bold text-indigo-700 border-l border-gray-100">{isSummary ? '-' : t.smart_target}</span>
                   
-                  {/* VOLUME (Baru) */}
-                  <span className="w-14 text-center font-bold text-slate-700 bg-slate-50 border-l border-gray-100">{isSummary ? '-' : (t.volume || 0)}</span>
+                  {/* VOLUME + SATUAN (Baru) */}
+                  <span className="w-20 text-center font-bold text-slate-700 bg-slate-50 border-l border-gray-100 truncate" title={`${t.volume || 0} ${t.satuan_hsd || ''}`}>
+                    {isSummary ? '-' : `${t.volume || 0} ${t.satuan_hsd || ''}`}
+                  </span>
 
                   {/* Sisa Hari */}
                   <span className="w-10 text-center text-slate-500 border-l border-gray-100">{isSummary ? '-' : (t.sisa_hari_efektif || 0)}</span>
@@ -389,9 +391,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     {/* Label Kanan (Resource & Volume) */}
                     <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(16, width) + 6 }}>
                       {t.resource_names && <span className="text-gray-700 font-medium">{t.resource_names}</span>}
-                      {/* Menampilkan Volume dari Assignments */}
+                      {/* Menampilkan Volume dari Assignments beserta Satuan */}
                       <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
-                        Vol: {Number(t.volume) || 0} {t.satuan_hsd}
+                        Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}
                       </span>
                     </div>
                   </div>
