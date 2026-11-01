@@ -105,7 +105,7 @@ export default function AHSPPage() {
   const bahan = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'bahan');
   const alat = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'alat');
 
-  const calcTotal = (items) => items.reduce((sum, item) => sum + (item.koefisien * (item.master_hsd?.base_price || 0)), 0);
+  const calcTotal = (items) => items.reduce((sum, item) => sum + (item.koefisien * (item.master_hsd?.harga_dasar || 0)), 0);
   const totalA = calcTotal(upah);
   const totalB = calcTotal(bahan);
   const totalC = calcTotal(alat);
@@ -114,7 +114,7 @@ export default function AHSPPage() {
   const totalF = totalD + totalE;
 
   const renderRow = (item, index) => {
-    const hargaSatuan = item.master_hsd?.base_price || 0;
+    const hargaSatuan = item.master_hsd?.harga_dasar || 0;
     const jumlahHarga = item.koefisien * hargaSatuan;
     return (
       <tr key={item.id || index} className="border-b hover:bg-gray-50 group">
@@ -226,4 +226,5 @@ export default function AHSPPage() {
     </div>
   );
 }
+
 
