@@ -1,198 +1,110 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 
-export default function HSDPage() {
+export default function HsdPage() {
   const [hsdList, setHsdList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [isAdding, setIsAdding] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [projectId, setProjectId] = useState(null);
   
-  const [formData, setFormData] = useState({ id: null, kode: '', resource_type: 'Bahan', item_name: '', unit: '', base_price: 0 });
+  // State untuk Modal Hapus
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchData = async () => {
+  const fetchHsd = async () => {
     setLoading(true);
-    try {
-      let { data: projects } = await supabase.from('projects').select('id').limit(1);
-      let pid = projects?.[0]?.id;
-      if (!pid) {
-        let { data: tData } = await supabase.from('master_hsd').select('project_id').limit(1);
-        pid = tData?.[0]?.project_id;
-      }
-      setProjectId(pid);
-
-      const { data: hsd } = await supabase.from('master_hsd').select('*').order('resource_type').order('item_name');
-      
-      const { data: usages } = await supabase.from('ahsp_details').select(`
-        hsd_id, ahsp_templates ( name )
-      `);
-
-      const usageMap = {};
-      usages?.forEach(u => {
-        if (!u.hsd_id) return;
-        if (!usageMap[u.hsd_id]) usageMap[u.hsd_id] = [];
-        const templateName = u.ahsp_templates?.name;
-        if (templateName && !usageMap[u.hsd_id].includes(templateName)) {
-          usageMap[u.hsd_id].push(templateName);
-        }
-      });
-
-      const combined = (hsd || []).map(item => ({ ...item, used_in: usageMap[item.id] || [] }));
-      setHsdList(combined);
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    const { data, error } = await supabase.from('master_hsd').select('*').order('nama_item');
+    if (data) setHsdList(data);
+    setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchHsd();
+  }, []);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    try {
-      if (isEditing) {
-        const { error } = await supabase.from('master_hsd').update({
-          kode: formData.kode, resource_type: formData.resource_type,
-          item_name: formData.item_name, unit: formData.unit, base_price: formData.base_price
-        }).eq('id', formData.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('master_hsd').insert([{
-          project_id: projectId, kode: formData.kode, resource_type: formData.resource_type,
-          item_name: formData.item_name, unit: formData.unit, base_price: formData.base_price
-        }]);
-        if (error) throw error;
-      }
-      
-      setIsAdding(false);
-      setIsEditing(false);
-      setFormData({ id: null, kode: '', resource_type: 'Bahan', item_name: '', unit: '', base_price: 0 });
-      fetchData();
-    } catch (err) { alert('Gagal menyimpan: ' + err.message); }
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    
+    // Simulasi delay UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    const { error } = await supabase.from('master_hsd').delete().eq('id', deleteTarget.id);
+    if (error) {
+      alert("Gagal menghapus: " + error.message);
+    } else {
+      setDeleteTarget(null);
+      fetchHsd();
+    }
+    setIsDeleting(false);
   };
 
-  const handleEdit = (item) => {
-    setFormData(item);
-    setIsEditing(true);
-    setIsAdding(true);
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('Hapus HSD ini? Data di AHSP yang menggunakan HSD ini mungkin akan error.')) return;
-    await supabase.from('master_hsd').delete().eq('id', id);
-    fetchData();
-  };
-
-  const getTypeColor = (type) => {
-    const t = type?.toLowerCase();
-    if (t === 'upah' || t === 'work') return 'bg-green-100 text-green-700';
-    if (t === 'bahan' || t === 'material') return 'bg-blue-100 text-blue-700';
-    return 'bg-orange-100 text-orange-700';
-  };
+  if (loading) return <LoadingSpinner text="Memuat Data HSD..." />;
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Harga Satuan Dasar (HSD)</h1>
-          <p className="text-sm text-gray-500 mt-1">Database induk Material, Upah, dan Alat.</p>
+    <div className="p-6 bg-slate-50 min-h-screen relative">
+      <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+        
+        {/* HEADER */}
+        <div className="flex justify-between items-center p-4 border-b border-slate-200 bg-slate-50">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Harga Satuan Dasar (HSD)</h1>
+            <p className="text-sm text-slate-500">Database induk Material, Upah, dan Alat.</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={fetchHsd} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+              Refresh
+            </button>
+            <button className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow transition-colors">
+              + Tambah HSD Baru
+            </button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => fetchData()} className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-200 transition">
-            🔄 Refresh
-          </button>
-          <button onClick={() => { setFormData({ id: null, kode: '', resource_type: 'Bahan', item_name: '', unit: '', base_price: 0 }); setIsEditing(false); setIsAdding(!isAdding); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700 transition shadow-sm">
-            {isAdding && !isEditing ? 'Batal' : '+ Tambah HSD Baru'}
-          </button>
-        </div>
-      </div>
 
-      {isAdding && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border mb-6">
-          <h3 className="font-bold mb-4">{isEditing ? 'Edit HSD' : 'Tambah HSD Baru'}</h3>
-          <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-            <div>
-              <label className="block text-xs font-medium mb-1">Kode (Opsional)</label>
-              <input type="text" value={formData.kode} onChange={e => setFormData({...formData, kode: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="M.01" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Tipe</label>
-              <select value={formData.resource_type} onChange={e => setFormData({...formData, resource_type: e.target.value})} className="w-full border rounded p-2 text-sm">
-                <option value="Bahan">Bahan / Material</option>
-                <option value="Upah">Tenaga Kerja / Upah</option>
-                <option value="Alat">Peralatan / Alat</option>
-              </select>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-xs font-medium mb-1">Nama Item</label>
-              <input type="text" required value={formData.item_name} onChange={e => setFormData({...formData, item_name: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="Semen Portland" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Satuan</label>
-              <input type="text" required value={formData.unit} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full border rounded p-2 text-sm" placeholder="Zak / OH" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium mb-1">Harga Dasar (Rp)</label>
-              <input type="number" required value={formData.base_price} onChange={e => setFormData({...formData, base_price: e.target.value})} className="w-full border rounded p-2 text-sm" />
-            </div>
-            <div className="md:col-span-4 flex justify-end mt-2">
-              <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded-lg text-sm hover:bg-green-700">
-                {isEditing ? 'Simpan Perubahan' : 'Tambahkan ke Master'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
-        {loading ? <LoadingSpinner text="Memuat Data HSD..." /> : (
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
+        {/* TABEL DATA */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
               <tr>
-                <th className="p-4 w-24">Tipe</th>
-                <th className="p-4 w-24">Kode</th>
-                <th className="p-4">Nama Item</th>
-                <th className="p-4 w-24">Satuan</th>
-                <th className="p-4 text-right">Harga Dasar</th>
-                <th className="p-4 w-1/3">Digunakan Pada (AHSP)</th>
-                <th className="p-4 text-center w-24">Aksi</th>
+                <th className="p-3">Tipe</th>
+                <th className="p-3">Kode</th>
+                <th className="p-3">Nama Item</th>
+                <th className="p-3">Satuan</th>
+                <th className="p-3 text-right">Harga Dasar</th>
+                <th className="p-3 text-center">Digunakan Pada (AHSP)</th>
+                <th className="p-3 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="text-sm divide-y divide-gray-100">
-              {hsdList.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getTypeColor(r.resource_type)}`}>
-                      {r.resource_type}
-                    </span>
+            <tbody className="divide-y divide-slate-100">
+              {hsdList.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50 text-slate-700">
+                  <td className="p-3">
+                    <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${
+                      item.tipe === 'Upah' ? 'bg-emerald-100 text-emerald-700' :
+                      item.tipe === 'Bahan' ? 'bg-blue-100 text-blue-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>{item.tipe}</span>
                   </td>
-                  <td className="p-4 font-mono text-xs">{r.kode || '-'}</td>
-                  <td className="p-4 font-medium">{r.item_name}</td>
-                  <td className="p-4 text-gray-600">{r.unit}</td>
-                  <td className="p-4 text-right font-bold text-gray-800">Rp {r.base_price?.toLocaleString('id-ID')}</td>
-                  <td className="p-4">
-                    <div className="flex flex-wrap gap-1">
-                      {r.used_in.length > 0 ? r.used_in.map((ahsp, idx) => (
-                        <span key={idx} className="text-[10px] bg-gray-100 text-gray-600 px-2 py-1 rounded border">
-                          {ahsp}
-                        </span>
-                      )) : (
-                        <span className="text-xs text-gray-400 italic">Belum digunakan</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4 flex justify-center gap-2">
-                    <button onClick={() => handleEdit(r)} className="text-blue-600 hover:underline text-xs">Edit</button>
-                    <button onClick={() => handleDelete(r.id)} className="text-red-500 hover:underline text-xs">Hapus</button>
+                  <td className="p-3 font-mono text-xs">{item.kode || '-'}</td>
+                  <td className="p-3 font-semibold">{item.nama_item}</td>
+                  <td className="p-3">{item.satuan}</td>
+                  <td className="p-3 text-right font-bold">Rp {Number(item.harga_dasar).toLocaleString('id-ID')}</td>
+                  <td className="p-3 text-center text-xs italic text-slate-400">Belum digunakan</td>
+                  <td className="p-3 text-center text-blue-600 font-medium text-xs whitespace-nowrap">
+                    <button className="hover:underline">Edit</button> | 
+                    <button onClick={() => setDeleteTarget(item)} className="text-red-500 hover:underline ml-1">Hapus</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
+
+      {/* ========================================== */}
       {/* ENTERPRISE DELETE MODAL */}
+      {/* ========================================== */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
@@ -200,15 +112,30 @@ export default function HSDPage() {
               <AlertTriangle className="h-8 w-8 text-red-600" />
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-2">Hapus HSD Ini?</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              Anda akan menghapus <strong className="text-slate-800">{deleteTarget.name || deleteTarget.nama_item}</strong>.
-              <span className="block mt-2 text-amber-600 font-bold text-xs bg-amber-50 p-2 rounded">
-                Peringatan: Data di AHSP yang menggunakan HSD ini mungkin akan error atau berubah nilainya.
-              </span>
+            <p className="text-sm text-slate-500 mb-4">
+              Anda akan menghapus <strong className="text-slate-800">{deleteTarget.nama_item}</strong>.
             </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-left flex items-start gap-2">
+              <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={16} />
+              <p className="text-xs text-amber-800 font-medium">
+                Peringatan: Data di AHSP yang menggunakan HSD ini mungkin akan error atau berubah nilainya.
+              </p>
+            </div>
             <div className="flex justify-center gap-3">
-              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 w-full transition-colors">Batal</button>
-              <button onClick={handleDeleteConfirm} className="px-4 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md w-full transition-colors">Ya, Hapus</button>
+              <button 
+                onClick={() => setDeleteTarget(null)} 
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 w-full transition-colors disabled:opacity-50"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={handleDeleteConfirm} 
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md w-full transition-colors flex items-center justify-center gap-2 disabled:bg-red-400"
+              >
+                {isDeleting ? <><Loader2 size={16} className="animate-spin" /> Menghapus...</> : 'Ya, Hapus'}
+              </button>
             </div>
           </div>
         </div>
