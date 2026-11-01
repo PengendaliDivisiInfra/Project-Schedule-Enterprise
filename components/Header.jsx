@@ -2,7 +2,7 @@
 import { Menu, Search, Bell, ChevronDown, UserCircle } from 'lucide-react';
 import { useState } from 'react';
 
-export default function Header({ toggleSidebar, currentUser }) {
+export default function Header({ toggleSidebar, currentUser, openSearch }) {
   const [showProfile, setShowProfile] = useState(false);
 
   const roleColors = {
@@ -18,7 +18,6 @@ export default function Header({ toggleSidebar, currentUser }) {
           <Menu size={20} />
         </button>
         
-        {/* Project Selector */}
         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-md cursor-pointer hover:bg-slate-100 transition-colors">
           <span className="text-sm font-semibold text-slate-700">Proyek Jembatan Cisomang</span>
           <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded font-bold uppercase">Aktif</span>
@@ -27,18 +26,16 @@ export default function Header({ toggleSidebar, currentUser }) {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Global Search (Placeholder) */}
-        <div className="relative hidden md:block">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Cari task, material... (Ctrl+K)" 
-            className="pl-9 pr-4 py-1.5 text-sm bg-slate-100 border border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-md w-64 transition-all outline-none"
-            readOnly
-          />
-        </div>
+        {/* Search Trigger (Membuka Command Palette) */}
+        <button 
+          onClick={openSearch}
+          className="relative hidden md:flex items-center text-left w-64 bg-slate-100 hover:bg-slate-200 border border-transparent transition-colors px-3 py-1.5 rounded-md"
+        >
+          <Search size={16} className="text-slate-400 mr-2" />
+          <span className="text-sm text-slate-400 flex-1">Cari task, material...</span>
+          <kbd className="hidden sm:inline-block bg-white border border-slate-300 text-slate-500 text-[10px] font-mono px-1.5 py-0.5 rounded shadow-sm">Ctrl K</kbd>
+        </button>
 
-        {/* Notifications */}
         <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full relative">
           <Bell size={20} />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
@@ -46,7 +43,6 @@ export default function Header({ toggleSidebar, currentUser }) {
 
         <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
-        {/* User Profile */}
         <div className="relative">
           <button 
             onClick={() => setShowProfile(!showProfile)}
@@ -63,7 +59,6 @@ export default function Header({ toggleSidebar, currentUser }) {
             </div>
           </button>
 
-          {/* Dropdown Profile */}
           {showProfile && (
             <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-lg shadow-xl py-1 z-50 animate-fade-in">
               <div className="px-4 py-2 border-b border-slate-100">

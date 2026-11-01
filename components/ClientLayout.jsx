@@ -2,25 +2,31 @@
 import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import CommandPalette from './CommandPalette';
 import { supabase } from '../lib/supabase';
 
 export default function ClientLayout({ children }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   useEffect(() => {
-    // Simulasi mengambil data user dari tabel profiles
-    // Di production, ini harusnya mengambil dari Supabase Auth (auth.getUser())
     const fetchUser = async () => {
       const { data } = await supabase.from('profiles').select('*').limit(1).single();
-      if (data) {
-        setCurrentUser(data);
-      } else {
-        // Fallback jika database kosong
-        setCurrentUser({ full_name: 'Admin User', role: 'owner' });
-      }
+      if (data) setCurrentUser(data);
+      else setCurrentUser({ full_name: 'Admin User', role: 'owner' });
     };
     fetchUser();
+
+    // Global Keyboard Shortcut (Ctrl+K / Cmd+K)
+    const down = (e) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setIsSearchOpen((open) => !open);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
   }, []);
 
   return (
@@ -33,12 +39,20 @@ export default function ClientLayout({ children }) {
       <div className="flex flex-col flex-1 min-w-0">
         <Header 
           toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
-          currentUser={currentUser} 
+          currentUser={currentUser}
+          openSearch={() => setIsSearchOpen(true)}
         />
         <main className="flex-1 overflow-auto bg-slate-50 p-6">
           {children}
         </main>
       </div>
+
+      {/* Global Command Palette */}
+      <CommandPalette 
+        isOpen={isSearchOpen} 
+        setIsOpen={setIsSearchOpen} 
+        currentUser={currentUser} 
+      />
     </div>
   );
 }
