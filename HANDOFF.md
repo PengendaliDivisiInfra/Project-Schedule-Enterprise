@@ -1,32 +1,38 @@
-﻿# Project Handoff Document - Promanage Construction
+﻿# Project Handoff Document - ProManage Construction
 
-**Status Proyek:** 🟢 Production Ready (V8 - Enterprise Grade)
-**Terakhir Diperbarui:** 31 October 2026
+**Status Proyek:** 🟢 Production Ready (V9 - Dynamic Auto-Scheduled CPM)
+**Terakhir Diperbarui:** 01 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Current Status)
-Sistem telah mencapai tahap *Enterprise Grade* dengan stabilitas perhitungan matematis yang tinggi. Repositori kini bersifat **Public** untuk mendukung kuota GitHub Actions yang tak terbatas.
+Sistem telah mencapai tahap *Enterprise Grade* dengan mesin penjadwalan otomatis (Auto-Scheduled CPM) yang berjalan di sisi Database (Supabase PostgreSQL) dan UI yang sangat responsif (Optimistic UI).
 
 ### Fitur Unggulan yang Telah Selesai:
-- **EVM & S-Curve Akurat:** Perhitungan *Earned Value Management* (PV, EV, AC, SPI, CPI, ETC, EAC, VAC, TCPI) yang dipotong tepat di Status Date berdasarkan data lapangan.
-- **Gantt Chart MS Project Style:** Visualisasi WBS dengan fitur *Sticky Header*, garis ketergantungan (SVG Dependency Lines), Kalender Kerja (skip weekend), dan pewarnaan Jalur Kritis (Merah).
-- **Progress Harian (Excel-like Grid):** Input volume pekerjaan horizontal berbasis tanggal. Sistem otomatis mengalkulasi volume kumulatif dan persentasenya.
-- **Laporan Mingguan (Standar PUPR):** Pembuatan laporan kemajuan fisik otomatis dengan format A4, kalkulasi PPN/PPh, *zebra striping*, dan 3 kolom tanda tangan yang bisa diedit langsung.
-- **Modul AHSP & HSD:** Katalog AHSP standar PUPR dengan *Database Trigger* untuk *Global Price Invalidation* (perubahan harga HSD langsung memperbarui harga AHSP).
-- **Procurement & BoQ:** Perbandingan otomatis antara Harga Rencana (AHSP) dengan Harga Actual (PO Vendor) beserta perhitungan pajak dan Selisih (*Variance*).
+- **Dynamic Auto-Schedule CPM Engine (Database Trigger):** 
+  - Sinkronisasi otomatis antara Durasi, Start Date, dan Finish Date.
+  - Penghitungan otomatis yang melompati hari libur (Weekend & Hari Libur Nasional).
+  - *Cascading Update:* Jika tanggal suatu tugas berubah, tugas *Successor* (yang bergantung padanya) akan otomatis bergeser tanggalnya secara berantai.
+  - *Roll-up Summary Task:* Tugas Induk (Parent) otomatis menyesuaikan tanggal dari anak-anaknya dan tidak bisa diedit manual.
+- **Optimistic UI (Real-time Gantt Chart):** Pergeseran tanggal dan durasi terasa instan di UI tanpa perlu me-refresh halaman, karena UI memperbarui memori lokal sebelum mengirim data ke database.
+- **Interactive Gantt Chart:** 
+  - Bar chart otomatis meregang/menyusut mengikuti Durasi & Tanggal.
+  - Visualisasi hari Sabtu/Minggu (abu-abu) dan Hari Libur Nasional (merah pudar).
+  - Input tanggal Start dikunci secara otomatis jika tugas memiliki Predecessor.
+- **Kalender Kerja Fleksibel:** Pengaturan 5 hari kerja, 6 hari kerja, atau *Full Day* (7 hari) yang langsung memengaruhi kalkulasi UI Gantt dan Database Trigger.
+- **Sinkronisasi Laporan:** Laporan Harian dan Mingguan otomatis menarik data (Nama Proyek, Kontraktor, Nilai Kontrak, dll) dari halaman Database Proyek.
 
 ## 2. Isu yang Diketahui (Known Issues)
-- **Warning GoTrueClient:** Peringatan kuning di *console* browser. Ini adalah efek samping dari *React StrictMode* di Next.js. **Aman untuk diabaikan**.
-- **Batas Kuota GitHub Actions:** Terselesaikan dengan mengubah visibilitas repositori menjadi Publik.
+- **Warning GoTrueClient:** Peringatan kuning di *console* browser akibat *React StrictMode*. **Aman untuk diabaikan**.
+- **Kalkulasi Backward Pass (Float & Jalur Kritis):** Saat ini perhitungan jalur kritis (warna merah) masih menggunakan status *default* dari database. Untuk kalkulasi *Total Float* (Backward Pass) secara akurat, disarankan menambahkan tombol "Recalculate CPM" yang memanggil Stored Procedure di masa mendatang.
 
 ## 3. Panduan Developer Selanjutnya (Next Steps)
-1. **Autentikasi (Login/Register):** Implementasikan Supabase Auth sebelum aplikasi digunakan oleh banyak user.
-2. **Web Worker Optimization:** Pindahkan algoritma calculateCPM ke dalam *Web Worker* jika proyek mencapai puluhan ribu baris untuk menjaga performa UI.
-3. **Resource Leveling:** Terapkan algoritma perataan beban kerja (deteksi *Overallocated*) untuk mendeteksi pekerja yang ditugaskan di dua tempat pada tanggal yang sama.
+1. **Recalculate CPM Button:** Implementasikan fungsi SQL `WITH RECURSIVE` untuk menghitung *Backward Pass* (Late Start, Late Finish, Total Float) guna mewarnai Jalur Kritis secara akurat.
+2. **Autentikasi (Login/Register):** Implementasikan Supabase Auth (RLS) sebelum aplikasi digunakan oleh banyak user.
+3. **Lag / Lead (FS+2, SS-1):** Tambahkan logika parsing di `process_cpm_schedule` untuk mendeteksi jeda waktu (Lag) pada Predecessor.
 
 ## 4. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
 - **Supabase Dashboard:** [Link Supabase]
-- **Repository GitHub:** [Link GitHub]
+- **Repository GitHub:** https://github.com/PengendaliDivisiInfra/Project-Schedule-Enterprise
