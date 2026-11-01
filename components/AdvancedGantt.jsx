@@ -1,7 +1,6 @@
 ﻿'use client';
 import { useRef, useEffect, useState } from 'react';
 
-const DAY_WIDTH = 36;
 const ROW_HEIGHT = 38;
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
@@ -10,6 +9,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [localTasks, setLocalTasks] = useState(tasks);
+  
+  // STATE BARU: Zoom Level
+  const [zoomLevel, setZoomLevel] = useState('day'); // 'day' | 'week' | 'month'
 
   useEffect(() => {
     setLocalTasks(tasks);
@@ -19,15 +21,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
     : localTasks;
 
-  // 1. Generate Calendar Days
+  // 1. Generate Calendar Days (Base: Selalu harian untuk kalkulasi)
   let minDate = new Date();
   let maxDate = new Date();
   displayTasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
   });
-  minDate.setDate(minDate.getDate() - 3);
-  maxDate.setDate(maxDate.getDate() + 7);
+  minDate.setDate(minDate.getDate() - 7);
+  maxDate.setDate(maxDate.getDate() + 14);
 
   const calendarDays = [];
   let cur = new Date(minDate);
@@ -38,62 +40,58 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     cur.setDate(cur.getDate() + 1);
   }
 
-  const totalWidth = calendarDays.length * DAY_WIDTH;
+  // 2. Kalkulasi Lebar Berdasarkan Zoom
+  const pixelsPerDay = zoomLevel === 'day' ? 36 : zoomLevel === 'week' ? 16 : 4;
+  const totalWidth = calendarDays.length * pixelsPerDay;
 
-  // 2. Grouping Header by Month & Year
-  const monthGroups = [];
-  let currentMonth = -1;
-  let currentYear = -1;
-  let monthStartIndex = 0;
+  // Helper: Cari Nomor Minggu
+  const getWeekNumber = (d) => {
+    const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
+    const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+    return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  };
 
-  calendarDays.forEach((cd, idx) => {
-    const m = cd.date.getMonth();
-    const y = cd.date.getFullYear();
-    if (m !== currentMonth || y !== currentYear) {
-      if (currentMonth !== -1) {
-        monthGroups.push({
-          name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }),
-          span: idx - monthStartIndex
-        });
-      }
-      currentMonth = m;
-      currentYear = y;
-      monthStartIndex = idx;
+  // 3. Grouping Header Atas (Tahun/Bulan)
+  const topGroups = [];
+  let currentGroup = null;
+  calendarDays.forEach((cd) => {
+    let groupName = '';
+    if (zoomLevel === 'month') {
+      groupName = cd.date.getFullYear().toString();
+    } else {
+      groupName = cd.date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
+    }
+
+    if (!currentGroup || currentGroup.name !== groupName) {
+      currentGroup = { name: groupName, span: 1 };
+      topGroups.push(currentGroup);
+    } else {
+      currentGroup.span++;
     }
   });
-  if (currentMonth !== -1) {
-    monthGroups.push({
-      name: new Date(currentYear, currentMonth).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }),
-      span: calendarDays.length - monthStartIndex
-    });
-  }
 
+  // 4. Hitung Posisi X
   const getX = (dateStr) => {
     if (!dateStr) return 0;
     let targetDate = new Date(dateStr);
     targetDate.setHours(0,0,0,0);
-    let xPos = 0;
     let current = new Date(minDate);
-
-    while (current < targetDate) {
-      if (workingDays.includes(current.getDay())) {
-        xPos += DAY_WIDTH;
-      }
-      current.setDate(current.getDate() + 1);
-    }
-    return xPos;
+    current.setHours(0,0,0,0);
+    let daysDiff = Math.round((targetDate - current) / (1000 * 60 * 60 * 24));
+    return daysDiff * pixelsPerDay;
   };
 
-  // 3. Hitung SVG Path
+  // 5. Hitung SVG Path
   useEffect(() => {
     const paths = [];
     const taskRects = {};
 
     displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
-      const width = t.duration * DAY_WIDTH;
+      const width = t.duration * pixelsPerDay;
       const y = idx * ROW_HEIGHT;
-      taskRects[t.wbs_code] = { x, y, width: Math.max(width, t.summary === 'Yes' ? width : 16), height: t.summary === 'Yes' ? 6 : 16 };
+      taskRects[t.wbs_code] = { x, y, width: Math.max(width, t.summary === 'Yes' ? width : 8), height: t.summary === 'Yes' ? 6 : 16 };
     });
 
     relations.forEach(rel => {
@@ -110,7 +108,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       else if (rel.type === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
 
       const points = [[sourceX, sourceY]];
-      const paddingX = 12;
+      const paddingX = zoomLevel === 'day' ? 12 : 4;
 
       if (rel.type === 'FS') {
         if (targetX >= sourceX + paddingX) {
@@ -134,7 +132,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     });
 
     setSvgPaths(paths);
-  }, [displayTasks, relations]);
+  }, [displayTasks, relations, zoomLevel]);
 
   const handleScroll = (e) => {
     if (leftPanelRef.current) {
@@ -152,7 +150,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     } catch (e) { return ''; }
   };
 
-  // HELPER: Hitung total hari kerja antara 2 tanggal
   const countWorkingDays = (startStr, endStr, workingDays, exceptions) => {
     if (!startStr || !endStr) return 1;
     const start = new Date(startStr);
@@ -170,13 +167,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return Math.max(1, count);
   };
 
-  // HELPER: Tambah N hari kerja ke tanggal tertentu (skip weekend)
   const addWorkingDays = (startStr, daysToAdd, workingDays, exceptions) => {
     if (!startStr) return '';
     let currentDate = new Date(startStr);
     let added = 0;
 
-    // Pastikan start date bukan weekend. Jika iya, maju ke hari kerja.
     while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
       currentDate.setDate(currentDate.getDate() + 1);
     }
@@ -194,14 +189,13 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return currentDate.toISOString().split('T')[0];
   };
 
-  // HELPER BARU: Cari hari kerja berikutnya jika input jatuh di weekend/libur
   const snapToWorkingDay = (dateStr, workingDays, exceptions) => {
     if (!dateStr) return '';
     let d = new Date(dateStr);
     let isWorking = workingDays.includes(d.getDay()) && !exceptions.some(e => e.exception_date === dateStr);
     
     while (!isWorking) {
-      d.setDate(d.getDate() + 1); // Maju 1 hari
+      d.setDate(d.getDate() + 1);
       const newDateStr = d.toISOString().split('T')[0];
       isWorking = workingDays.includes(d.getDay()) && !exceptions.some(e => e.exception_date === newDateStr);
     }
@@ -277,7 +271,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
-      {/* HEADER (2 Baris: Bulan & Tanggal) */}
+      {/* HEADER UTAMA */}
       <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 z-20">
         <div className="w-[1020px] border-r border-slate-300 flex flex-col shrink-0">
           <div className="flex justify-between items-center px-2 py-2 border-b border-slate-200 bg-slate-100">
@@ -297,30 +291,59 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               <span className="w-10 text-center border-l border-slate-300">Sisa</span>
               <span className="w-12 text-center border-l border-slate-300">T/hr</span>
             </div>
-            <button 
-              onClick={() => setShowCriticalOnly(!showCriticalOnly)}
-              className={`text-[10px] px-2 py-1 rounded font-bold border ml-2 transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
-            >
-              {showCriticalOnly ? 'Critical' : 'All'}
-            </button>
+            
+            {/* KONTROL ZOOM & FILTER */}
+            <div className="flex items-center gap-2 ml-2">
+              <div className="flex bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
+                <button onClick={() => setZoomLevel('day')} className={`px-3 py-1 text-[10px] font-bold ${zoomLevel === 'day' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Hari</button>
+                <button onClick={() => setZoomLevel('week')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'week' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Minggu</button>
+                <button onClick={() => setZoomLevel('month')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'month' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Bulan</button>
+              </div>
+              
+              <button 
+                onClick={() => setShowCriticalOnly(!showCriticalOnly)}
+                className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+              >
+                {showCriticalOnly ? 'Critical' : 'All'}
+              </button>
+            </div>
           </div>
           <div className="h-[24px] bg-slate-50"></div>
         </div>
         
+        {/* HEADER TIMELINE KANAN */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex border-b border-slate-200 bg-slate-100" style={{ width: totalWidth }}>
-            {monthGroups.map((mg, i) => (
-              <div key={i} className="text-center text-[10px] font-bold text-slate-600 border-r border-slate-300 py-1" style={{ width: mg.span * DAY_WIDTH }}>
+            {topGroups.map((mg, i) => (
+              <div key={i} className="text-center text-[10px] font-bold text-slate-600 border-r border-slate-300 py-1 truncate" style={{ width: mg.span * pixelsPerDay }}>
                 {mg.name}
               </div>
             ))}
           </div>
           <div className="flex bg-slate-50" style={{ width: totalWidth }}>
-            {calendarDays.map((cd, i) => (
-              <div key={i} className={`text-center text-[10px] border-r border-slate-200 font-medium py-1 ${cd.isWeekend ? 'bg-slate-200 text-slate-500' : 'text-slate-700'}`} style={{ width: DAY_WIDTH }}>
-                {cd.date.getDate()}
-              </div>
-            ))}
+            {calendarDays.map((cd, i) => {
+              let showLabel = false;
+              let label = '';
+              if (zoomLevel === 'day') {
+                showLabel = true;
+                label = cd.date.getDate();
+              } else if (zoomLevel === 'week') {
+                if (cd.date.getDay() === 1) { // Senin
+                  showLabel = true;
+                  label = `W${getWeekNumber(cd.date)}`;
+                }
+              } else if (zoomLevel === 'month') {
+                if (cd.date.getDate() === 1) {
+                  showLabel = true;
+                  label = cd.date.toLocaleDateString('id-ID', { month: 'short' });
+                }
+              }
+              return (
+                <div key={i} className={`text-center text-[10px] border-r border-slate-200 font-medium py-1 ${cd.isWeekend && zoomLevel === 'day' ? 'bg-slate-200 text-slate-500' : 'text-slate-700'}`} style={{ width: pixelsPerDay }}>
+                  {showLabel ? label : ''}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -415,7 +438,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
         <div className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
             
-            {/* Layer 1: Grid & Weekend Shading */}
+            {/* Layer 1: Grid & Shading */}
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
               {displayTasks.map((_, i) => (
                 <div key={i} className="w-full border-b border-slate-100" style={{ height: ROW_HEIGHT }}></div>
@@ -425,10 +448,16 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               {calendarDays.map((cd, i) => {
                 const dateStr = cd.date.toISOString().split('T')[0];
                 const isHoliday = exceptions.some(e => e.exception_date === dateStr);
+                
                 let bgClass = '';
                 if (isHoliday) bgClass = 'bg-red-50/50';
-                else if (cd.isWeekend) bgClass = 'bg-slate-100';
-                return <div key={i} className={`border-r border-slate-200 h-full ${bgClass}`} style={{ width: DAY_WIDTH }}></div>;
+                else if (zoomLevel === 'day' && cd.isWeekend) bgClass = 'bg-slate-50';
+
+                let borderClass = 'border-r border-slate-100';
+                if (zoomLevel === 'week' && cd.date.getDay() === 1) borderClass = 'border-r border-slate-300';
+                if (zoomLevel === 'month' && cd.date.getDate() === 1) borderClass = 'border-r border-slate-400';
+
+                return <div key={i} className={`${borderClass} h-full ${bgClass}`} style={{ width: pixelsPerDay }}></div>;
               })}
             </div>
 
@@ -455,15 +484,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             <div className="absolute inset-0 z-20 pointer-events-none">
               {displayTasks.map((t, idx) => {
                 const left = getX(t.start_date);
-                let width = t.duration * DAY_WIDTH;
+                let width = t.duration * pixelsPerDay;
                 if (t.start_date && t.end_date) {
                   const startX = getX(t.start_date);
                   const endX = getX(t.end_date);
                   if (endX >= startX) {
-                    width = (endX - startX) + DAY_WIDTH;
+                    width = (endX - startX) + pixelsPerDay;
                   }
                 }
-                width = Math.max(16, width);
+                width = Math.max(8, width); // Minimum width for visibility
                 
                 const top = idx * ROW_HEIGHT + 8;
                 const isHovered = hoveredTaskId === t.id;
@@ -477,7 +506,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   return (
                     <div key={t.id} className={`absolute pointer-events-auto flex items-center ${isHovered ? 'bg-blue-100/50' : ''}`} style={{ left: left - 5, top: top - 1 }}>
                       <div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div>
-                      <span className="ml-2 text-[10px] text-slate-700 font-medium whitespace-nowrap bg-white/90 px-1">{t.name}</span>
                     </div>
                   );
                 }
@@ -488,31 +516,30 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                       <div className="absolute top-0 w-full h-[4px] bg-slate-800"></div>
                       <div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div>
                       <div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div>
-                      <span className="absolute -top-3.5 text-[10px] font-semibold text-slate-700 whitespace-nowrap" style={{ left: width + 4 }}>{progress}%</span>
                     </div>
                   );
                 }
 
                 return (
-                  <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width: Math.max(16, width), top }}>
-                    <div className="absolute -top-4 w-full text-center text-[9px] font-semibold text-indigo-600 bg-white/90 px-0.5 border border-indigo-200 rounded-sm whitespace-nowrap shadow-sm z-10">
-                      🎯 {dailyTarget} {t.satuan_hsd || 'unit'}
-                    </div>
-
+                  <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width: Math.max(8, width), top }}>
                     <div className={`h-[18px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
                       <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[9px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
                         {progress > 20 && `${progress}%`}
                       </div>
                     </div>
 
-                    <span className="absolute top-[4px] text-[9px] font-semibold text-slate-500 text-right w-10 whitespace-nowrap" style={{ left: -44 }}>{fmtDate(t.start_date)}</span>
-
-                    <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(16, width) + 6 }}>
-                      {t.resource_names && <span className="text-slate-700 font-medium">{t.resource_names}</span>}
-                      <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
-                        Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}
-                      </span>
-                    </div>
+                    {/* Tampilkan Label HANYA jika Zoom bukan 'month' agar tidak terlalu padat */}
+                    {zoomLevel !== 'month' && (
+                      <>
+                        <span className="absolute top-[4px] text-[9px] font-semibold text-slate-500 text-right w-10 whitespace-nowrap" style={{ left: -44 }}>{fmtDate(t.start_date)}</span>
+                        <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(8, width) + 6 }}>
+                          {t.resource_names && <span className="text-slate-700 font-medium">{t.resource_names}</span>}
+                          <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
+                            Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
