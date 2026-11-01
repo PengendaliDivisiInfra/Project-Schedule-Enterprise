@@ -1,4 +1,4 @@
-/* app/globals.css */
+﻿/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,4 +14,17 @@
   height: 40px;
   width: auto;
   object-fit: contain;
+}
+/* FITUR HIDE SIDEBAR */
+body.sidebar-hidden aside {
+  display: none !important;
+}
+body.sidebar-hidden main {
+  margin-left: 0 !important;
+  width: 100% !important;
+}
+
+/* ANIMASI TRANSISI */
+aside {
+  transition: transform 0.3s ease-in-out;
 }
