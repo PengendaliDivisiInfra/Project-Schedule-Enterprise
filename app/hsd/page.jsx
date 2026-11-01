@@ -1,11 +1,13 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
 export default function HSDPage() {
   const [hsdList, setHsdList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [isAdding, setIsAdding] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [projectId, setProjectId] = useState(null);
@@ -190,6 +192,27 @@ export default function HSDPage() {
           </table>
         )}
       </div>
+      {/* ENTERPRISE DELETE MODAL */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+              <AlertTriangle className="h-8 w-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Hapus HSD Ini?</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              Anda akan menghapus <strong className="text-slate-800">{deleteTarget.name || deleteTarget.nama_item}</strong>.
+              <span className="block mt-2 text-amber-600 font-bold text-xs bg-amber-50 p-2 rounded">
+                Peringatan: Data di AHSP yang menggunakan HSD ini mungkin akan error atau berubah nilainya.
+              </span>
+            </p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 w-full transition-colors">Batal</button>
+              <button onClick={handleDeleteConfirm} className="px-4 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md w-full transition-colors">Ya, Hapus</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
