@@ -14,7 +14,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     resource_type: 'Bahan',
     item_name: '',
     unit: '',
-    base_price: ''
+    harga_dasar: ''
   });
 
   const [loading, setLoading] = useState(false);
@@ -24,7 +24,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       setMode('existing');
       setSelectedHsdId('');
       setKoefisien('');
-      setNewHsd({ resource_type: 'Bahan', item_name: '', unit: '', base_price: '' });
+      setNewHsd({ resource_type: 'Bahan', item_name: '', unit: '', harga_dasar: '' });
       
       const fetchHsd = async () => {
         const { data } = await supabase.from('master_hsd').select('*').order('resource_type');
@@ -57,7 +57,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
         if (existingHsd) {
           // Jika sudah ada, gunakan ID yang ada (dan update harganya jika berubah)
           finalHsdId = existingHsd.id;
-          await supabase.from('master_hsd').update({ base_price: Number(newHsd.base_price) }).eq('id', finalHsdId);
+          await supabase.from('master_hsd').update({ harga_dasar: Number(newHsd.harga_dasar) }).eq('id', finalHsdId);
         } else {
           // Jika belum ada, buat baru
           const { data: insertedHsd, error: insertError } = await supabase
@@ -67,7 +67,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
               resource_type: newHsd.resource_type,
               item_name: newHsd.item_name,
               unit: newHsd.unit,
-              base_price: Number(newHsd.base_price)
+              harga_dasar: Number(newHsd.harga_dasar)
             }])
             .select()
             .single();
@@ -128,7 +128,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
                   <optgroup key={type} label={type.toUpperCase()}>
                     {items.map(item => (
                       <option key={item.id} value={item.id}>
-                        {item.item_name} ({item.unit}) - Rp {item.base_price?.toLocaleString('id-ID')}
+                        {item.item_name} ({item.unit}) - Rp {item.harga_dasar?.toLocaleString('id-ID')}
                       </option>
                     ))}
                   </optgroup>
@@ -159,7 +159,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Harga Satuan (Rp)</label>
-                  <input type="number" required placeholder="65000" value={newHsd.base_price} onChange={e => setNewHsd({...newHsd, base_price: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+                  <input type="number" required placeholder="65000" value={newHsd.harga_dasar} onChange={e => setNewHsd({...newHsd, harga_dasar: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
                 </div>
               </div>
             </>
@@ -181,5 +181,6 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
+
 
 
