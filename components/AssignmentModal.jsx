@@ -1,179 +1,208 @@
 ﻿'use client';
 import { useState, useEffect } from 'react';
-
-
 import { supabase } from '../lib/supabase';
+import { Loader2, Plus } from 'lucide-react';
 
-export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveSuccess }) {
-  const [mode, setMode] = useState('existing');
-  const [masterHsd, setMasterHsd] = useState([]);
-  const [selectedHsdId, setSelectedHsdId] = useState('');
-  const [koefisien, setKoefisien] = useState('');
-  
-  const [newHsd, setNewHsd] = useState({
-    tipe: 'Bahan',
-    nama_item: '',
-    satuan: 'Unit',
-    harga_dasar: ''
+export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) {
+  const [activeTab, setActiveTab] = useState('existing'); // 'existing' | 'new'
+  const [hsdList, setHsdList] = useState([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // State untuk Form Input HSD Baru
+  const [formData, setFormData] = useState({
+    tipe: 'Bahan', 
+    nama_item: '', 
+    satuan: 'Unit', // Default value untuk mencegah null
+    harga_dasar: 0, 
+    koefisien: 1
   });
 
-  const [loading, setLoading] = useState(false);
+  const [selectedHsdId, setSelectedHsdId] = useState('');
+  const [selectedKoefisien, setSelectedKoefisien] = useState(1);
 
   useEffect(() => {
     if (isOpen) {
-      setMode('existing');
-      setSelectedHsdId('');
-      setKoefisien('');
-      setNewHsd({ tipe: 'Bahan', nama_item: '', satuan: 'Unit', harga_dasar: '' });
-      
-      const fetchHsd = async () => {
-        const { data } = await supabase.from('master_hsd').select('*').order('tipe');
-        setMasterHsd(data || []);
-      };
       fetchHsd();
     }
   }, [isOpen]);
 
-  if (!isOpen || !ahspTemplate) return null;
+  const fetchHsd = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('master_hsd').select('*').order('nama_item');
+    if (data) setHsdList(data);
+    setLoading(false);
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    
+    setIsSaving(true);
+
     try {
       let finalHsdId = selectedHsdId;
 
-      if (mode === 'new') {
-        // ⚠️ PERBAIKAN: Cek apakah item sudah ada di master_hsd
-        let { data: existingHsd } = await supabase
-          .from('master_hsd')
-          .select('id')
-          .eq('project_id', ahspTemplate.project_id)
-          .eq('nama_item', newHsd.nama_item)
-          .eq('satuan', newHsd.unit)
-          .limit(1)
-          .maybeSingle();
+      // JIKA TAB "INPUT BARU" DIPILIH: Simpan dulu ke master_hsd
+      if (activeTab === 'new') {
+        const payloadHsd = {
+          tipe: formData.tipe,
+          nama_item: formData.nama_item,
+          satuan: formData.satuan || 'Unit', // Pastikan tidak null
+          harga_dasar: Number(formData.harga_dasar) || 0
+        };
 
-        if (existingHsd) {
-          // Jika sudah ada, gunakan ID yang ada (dan update harganya jika berubah)
-          finalHsdId = existingHsd.id;
-          await supabase.from('master_hsd').update({ harga_dasar: Number(newHsd.harga_dasar) }).eq('id', finalHsdId);
-        } else {
-          // Jika belum ada, buat baru
-          const { data: insertedHsd, error: insertError } = await supabase
-            .from('master_hsd')
-            .insert([{
-              project_id: ahspTemplate.project_id,
-              tipe: newHsd.tipe,
-              nama_item: newHsd.nama_item,
-              satuan: newHsd.unit,
-              harga_dasar: Number(newHsd.harga_dasar)
-            }])
-            .select()
-            .single();
-            
-          if (insertError) throw insertError;
-          finalHsdId = insertedHsd.id;
-        }
+        const { data: newHsd, error: errHsd } = await supabase
+          .from('master_hsd')
+          .insert([payloadHsd])
+          .select()
+          .single();
+
+        if (errHsd) throw new Error("Gagal simpan HSD: " + errHsd.message);
+        finalHsdId = newHsd.id;
       }
 
-      if (!finalHsdId) throw new Error("Pilih komponen atau isi data baru.");
-
-      // Simpan ke detail AHSP
-      const { error: detailError } = await supabase.from('ahsp_details').insert([{
-        ahsp_template_id: ahspTemplate.id,
+      // SIMPAN KE ahsp_details (Menghubungkan AHSP dengan HSD)
+      const payloadDetail = {
+        ahsp_template_id: ahspId,
         hsd_id: finalHsdId,
-        koefisien: Number(koefisien)
-      }]);
+        koefisien: activeTab === 'new' ? Number(formData.koefisien) : Number(selectedKoefisien)
+      };
 
-      if (detailError) throw detailError;
+      const { error: errDetail } = await supabase
+        .from('ahsp_details')
+        .insert([payloadDetail]);
 
-      onSaveSuccess();
+      if (errDetail) throw new Error("Gagal simpan Detail: " + errDetail.message);
+
+      // Sukses
+      onRefresh();
       onClose();
-    } catch (err) {
-      alert('Gagal menyimpan: ' + err.message);
+      
+    } catch (error) {
+      alert(error.message);
     } finally {
-      setLoading(false);
+      setIsSaving(false);
     }
   };
 
-  const groupedHsd = masterHsd.reduce((acc, curr) => {
-    if (!acc[curr.tipe]) acc[curr.tipe] = [];
-    acc[curr.tipe].push(curr);
-    return acc;
-  }, {});
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-        <h2 className="text-xl font-bold mb-1">Tambah Komponen AHSP</h2>
-        <p className="text-sm text-gray-500 mb-4">Untuk AHSP: <span className="font-semibold text-gray-800">{ahspTemplate.name}</span></p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
         
-        <div className="flex bg-gray-100 p-1 rounded-lg mb-6">
-          <button type="button" onClick={() => setMode('existing')} className={`flex-1 py-2 text-sm font-medium rounded-md transition ${mode === 'existing' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+        {/* HEADER */}
+        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800">Tambah Komponen AHSP</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+        </div>
+
+        {/* TABS */}
+        <div className="flex border-b border-slate-200 bg-white">
+          <button 
+            type="button"
+            onClick={() => setActiveTab('existing')} 
+            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'existing' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
             Pilih dari Master HSD
           </button>
-          <button type="button" onClick={() => setMode('new')} className={`flex-1 py-2 text-sm font-medium rounded-md transition ${mode === 'new' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+          <button 
+            type="button"
+            onClick={() => setActiveTab('new')} 
+            className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'new' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+          >
             + Input HSD Baru
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-4">
-          {mode === 'existing' ? (
-            <div>
-              <label className="block text-sm font-medium mb-1">Pilih Komponen (HSD)</label>
-              <select required value={selectedHsdId} onChange={e => setSelectedHsdId(e.target.value)} className="w-full border rounded-lg p-2 text-sm">
-                <option value="">-- Pilih Komponen --</option>
-                {Object.entries(groupedHsd).map(([type, items]) => (
-                  <optgroup key={type} label={type.toUpperCase()}>
-                    {items.map(item => (
-                      <option key={item.id} value={item.id}>
-                        {item.nama_item} ({item.unit}) - Rp {item.harga_dasar?.toLocaleString('id-ID')}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-          ) : (
+        <form onSubmit={handleSave} className="p-6 space-y-4">
+          
+          {/* TAB 1: PILIH DARI MASTER HSD */}
+          {activeTab === 'existing' && (
             <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Jenis Komponen</label>
-                  <select required value={newHsd.tipe} onChange={e => setNewHsd({...newHsd, tipe: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
-                    <option value="Bahan">Bahan / Material</option>
-                    <option value="Upah">Tenaga Kerja / Upah</option>
-                    <option value="Alat">Peralatan / Sewa Alat</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Nama Item</label>
-                  <input type="text" required placeholder="Contoh: Semen Portland" value={newHsd.nama_item} onChange={e => setNewHsd({...newHsd, nama_item: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Pilih Komponen (HSD)</label>
+                <select 
+                  required
+                  value={selectedHsdId} 
+                  onChange={e => setSelectedHsdId(e.target.value)}
+                  className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                >
+                  <option value="" disabled>-- Pilih Komponen --</option>
+                  {hsdList.map(hsd => (
+                    <option key={hsd.id} value={hsd.id}>
+                      [{hsd.tipe}] {hsd.nama_item} - Rp {Number(hsd.harga_dasar).toLocaleString('id-ID')} / {hsd.satuan}
+                    </option>
+                  ))}
+                </select>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Satuan</label>
-                  <input type="text" required placeholder="Zak / m3" value={newHsd.unit} onChange={e => setNewHsd({...newHsd, satuan: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Harga Satuan (Rp)</label>
-                  <input type="number" required placeholder="65000" value={newHsd.harga_dasar} onChange={e => setNewHsd({...newHsd, harga_dasar: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Koefisien (Kuantitas)</label>
+                <input required type="number" step="any" value={selectedKoefisien} onChange={e => setSelectedKoefisien(e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
             </>
           )}
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Koefisien (Kuantitas)</label>
-            <input type="number" step="0.001" required placeholder="1.5" value={koefisien} onChange={e => setKoefisien(e.target.value)} className="w-full border rounded-lg p-2 text-sm" />
-          </div>
-          
-          <div className="flex justify-end gap-2 mt-6">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Batal</button>
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {loading ? 'Menyimpan...' : 'Tambahkan ke AHSP'}
+          {/* TAB 2: INPUT HSD BARU */}
+          {activeTab === 'new' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Jenis Komponen</label>
+                  <select value={formData.tipe} onChange={e => setFormData({...formData, tipe: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="Bahan">Bahan / Material</option>
+                    <option value="Upah">Upah / Tenaga Kerja</option>
+                    <option value="Alat">Peralatan / Sewa Alat</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Nama Item</label>
+                  <input required type="text" value={formData.nama_item} onChange={e => setFormData({...formData, nama_item: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Satuan</label>
+                  {/* DROPDOWN SATUAN LENGKAP */}
+                  <select 
+                    required 
+                    value={formData.satuan} 
+                    onChange={e => setFormData({...formData, satuan: e.target.value})} 
+                    className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option value="" disabled>-- Pilih Satuan --</option>
+                    <option value="Unit">Unit</option>
+                    <option value="LS">LS (Lump Sum)</option>
+                    <option value="M3">M3 (Kubik)</option>
+                    <option value="M2">M2 (Persegi)</option>
+                    <option value="M1">M1 (Meter Lari)</option>
+                    <option value="Kg">Kg (Kilogram)</option>
+                    <option value="Ton">Ton</option>
+                    <option value="Zak">Zak</option>
+                    <option value="Liter">Liter</option>
+                    <option value="OH">OH (Orang Hari)</option>
+                    <option value="Jam">Jam</option>
+                    <option value="Hari">Hari</option>
+                    <option value="Buah">Buah</option>
+                    <option value="Set">Set</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Harga Satuan (Rp)</label>
+                  <input required type="number" value={formData.harga_dasar} onChange={e => setFormData({...formData, harga_dasar: Number(e.target.value)})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Koefisien (Kuantitas)</label>
+                <input required type="number" step="any" value={formData.koefisien} onChange={e => setFormData({...formData, koefisien: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+            </>
+          )}
+
+          {/* FOOTER BUTTONS */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
+            <button type="submit" disabled={isSaving} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+              {isSaving ? <><Loader2 size={16} className="animate-spin" /> Menyimpan...</> : 'Tambahkan ke AHSP'}
             </button>
           </div>
         </form>
@@ -181,10 +210,3 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
-
-
-
-
-
-
-
