@@ -1,5 +1,6 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 
@@ -16,6 +17,7 @@ export default function TasksPage() {
   
   // State untuk Notifikasi (Toast)
   const [toast, setToast] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // State Form Data
   const [formData, setFormData] = useState({
@@ -65,7 +67,11 @@ export default function TasksPage() {
   // Simpan Data (Tambah/Edit)
   const handleSave = async (e) => {
     e.preventDefault();
+    setIsSaving(true); // Mulai loading
     
+    // Simulasi delay kecil agar spinner terlihat (opsional, untuk UX)
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     if (editingTask) {
       await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
       showToast('success', 'Task berhasil diperbarui!');
@@ -74,6 +80,7 @@ export default function TasksPage() {
       showToast('success', 'Task baru berhasil ditambahkan!');
     }
     
+    setIsSaving(false); // Hentikan loading
     setIsModalOpen(false);
     fetchTasks();
   };
@@ -110,7 +117,17 @@ export default function TasksPage() {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+      <div className="max-w-6xl mx-auto space-y-4">
+        {/* INLINE BANNER ALERT */}
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+          <div>
+            <h4 className="text-sm font-bold text-amber-800">Perhatian Khusus</h4>
+            <p className="text-xs text-amber-700">Terdapat 1 Task (WBS 1.1) yang belum memiliki Harga Satuan. Segera lengkapi data di menu Assignments.</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         <div className="flex justify-between items-center p-4 border-b border-slate-200">
           <div>
             <h1 className="text-xl font-bold text-slate-800">Task Management (CPM Engine)</h1>
@@ -214,7 +231,19 @@ export default function TasksPage() {
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
-                <button type="submit" className="px-6 py-2 text-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-md transition-all">Simpan Task</button>
+                <button 
+                  type="submit" 
+                  disabled={isSaving}
+                  className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2
+                    ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
+                  `}
+                >
+                  {isSaving ? (
+                    <><Loader2 size={16} className="animate-spin" /> Menyimpan...</>
+                  ) : (
+                    'Simpan Task'
+                  )}
+                </button>
               </div>
             </form>
           </div>
@@ -245,3 +274,4 @@ export default function TasksPage() {
     </div>
   );
 }
+
