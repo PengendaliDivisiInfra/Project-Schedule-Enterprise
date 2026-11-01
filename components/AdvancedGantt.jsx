@@ -300,10 +300,23 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             </div>
             
             <div className="flex items-center gap-2 ml-2">
-              <div className="flex bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
-                <button onClick={() => setZoomLevel('day')} className={`px-3 py-1 text-[10px] font-bold ${zoomLevel === 'day' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Hari</button>
-                <button onClick={() => setZoomLevel('week')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'week' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Minggu</button>
-                <button onClick={() => setZoomLevel('month')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'month' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Bulan</button>
+              {/* ZOOM DROPDOWN ENTERPRISE */}
+              <div className="relative">
+                <select
+                  value={zoomLevel}
+                  onChange={(e) => setZoomLevel(e.target.value)}
+                  className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded shadow-sm py-1 pl-7 pr-6 text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer transition-colors"
+                >
+                  <option value="day">Skala: Hari</option>
+                  <option value="week">Skala: Minggu</option>
+                  <option value="month">Skala: Bulan</option>
+                </select>
+                {/* Ikon Kaca Pembesar (Magnifying Glass) di kiri */}
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
+                  <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
               </div>
               <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[10px] px-2 py-1 rounded font-bold border ${showCriticalOnly ? 'bg-red-500 text-white' : 'bg-white text-slate-600'}`}>{showCriticalOnly ? 'Critical' : 'All'}</button>
             </div>
@@ -470,3 +483,4 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
