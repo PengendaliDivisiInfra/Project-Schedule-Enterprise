@@ -64,7 +64,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const calendarDays = [];
   let cur = new Date(minDate);
   while (cur <= maxDate) {
-    const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
+    // Menggunakan workingDays dari props
     const isWorking = workingDays.includes(cur.getDay());
     calendarDays.push({ date: new Date(cur), isWeekend: !isWorking });
     cur.setDate(cur.getDate() + 1);
@@ -426,3 +426,4 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
