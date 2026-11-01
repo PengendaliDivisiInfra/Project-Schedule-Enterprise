@@ -161,7 +161,45 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   };
 
 
-    const handleDateChange = (task, field, newValue) => {
+      // HELPER: Hitung total hari kerja antara 2 tanggal
+  const countWorkingDays = (startStr, endStr, workingDays, exceptions) => {
+    if (!startStr || !endStr) return 1;
+    const start = new Date(startStr);
+    const end = new Date(endStr);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1;
+    
+    let count = 0;
+    let cur = new Date(start);
+    while (cur <= end) {
+      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) {
+        count++;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return Math.max(1, count);
+  };
+
+  // HELPER: Tambah N hari kerja ke tanggal tertentu (skip weekend)
+  const addWorkingDays = (startStr, daysToAdd, workingDays, exceptions) => {
+    if (!startStr) return '';
+    let currentDate = new Date(startStr);
+    let added = 0;
+    
+    // Jika durasi 0 atau 1, langsung return
+    if (daysToAdd <= 1) return startStr;
+
+    while (added < (daysToAdd - 1)) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      const dayOfWeek = currentDate.getDay();
+      const dateStr = currentDate.toISOString().split('T')[0];
+      if (workingDays.includes(dayOfWeek) && !exceptions.some(e => e.exception_date === dateStr)) {
+        added++;
+      }
+    }
+    return currentDate.toISOString().split('T')[0];
+  };
+
+  const handleDateChange = (task, field, newValue) => {
     let updates = { [field]: newValue };
     
     // Jika tanggal diubah, hitung ulang durasi (hari kerja)
@@ -187,14 +225,25 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     });
   };
 
-    const handleLocalInlineUpdate = (id, field, value) => {
-    // A. UPDATE UI SEKETIKA (Tanpa nunggu database)
+      const handleLocalInlineUpdate = (taskId, field, value) => {
     setLocalTasks(prev => prev.map(t => {
-      if (t.id === id) return { ...t, [field]: value };
+      if (t.id === taskId) {
+        let updatedTask = { ...t, [field]: value };
+
+        // AUTO-SCHEDULE: Jika Durasi diubah, hitung ulang Tanggal Finish
+        if (field === 'duration' && updatedTask.start_date) {
+          const newEndDate = addWorkingDays(updatedTask.start_date, Number(value), workingDays, exceptions);
+          updatedTask.end_date = newEndDate;
+          onInlineUpdate(taskId, 'end_date', newEndDate); // Kirim tanggal baru ke DB
+        }
+
+        return updatedTask;
+      }
       return t;
     }));
-    // B. Kirim ke database via parent
-    onInlineUpdate(id, field, value);
+    
+    // Kirim field utama ke database
+    onInlineUpdate(taskId, field, value);
   };
 
   const calculateDailyTarget = (task) => {
@@ -444,6 +493,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
 
 
