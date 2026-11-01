@@ -11,6 +11,28 @@ export default function HsdPage() {
   
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState({ tipe: 'Upah', kode: '', nama_item: '', satuan: '', harga_dasar: 0 });
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+    await new Promise(resolve => setTimeout(resolve, 500)); // UX Delay
+
+    const { error } = await supabase.from('master_hsd').insert([formData]);
+    
+    if (error) {
+      alert("Gagal menyimpan: " + error.message);
+    } else {
+      setIsModalOpen(false);
+      setFormData({ tipe: 'Upah', kode: '', nama_item: '', satuan: '', harga_dasar: 0 });
+      // Refresh data setelah simpan
+      const { data } = await supabase.from('master_hsd').select('*').order('nama_item');
+      if (data) setHsdList(data);
+    }
+    setIsSaving(false);
+  };
 
   // Memindahkan fetchHsd ke dalam useEffect atau dibungkus dengan useCallback untuk menghindari warning
   useEffect(() => {
@@ -55,9 +77,7 @@ export default function HsdPage() {
             <button className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
               Refresh
             </button>
-            <button className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow transition-colors">
-              + Tambah HSD Baru
-            </button>
+            <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow transition-colors">+ Tambah HSD Baru</button>
           </div>
         </div>
 
@@ -151,7 +171,53 @@ export default function HsdPage() {
           </div>
         </div>
       )}
+      {/* MODAL TAMBAH HSD */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-bold text-slate-800">📄 Tambah Data HSD</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+            </div>
+            <form onSubmit={handleSave} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Tipe</label>
+                  <select value={formData.tipe} onChange={e => setFormData({...formData, tipe: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="Upah">Upah</option>
+                    <option value="Bahan">Bahan</option>
+                    <option value="Alat">Alat</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Kode (Opsional)</label>
+                  <input type="text" value={formData.kode} onChange={e => setFormData({...formData, kode: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Nama Item</label>
+                <input required type="text" value={formData.nama_item} onChange={e => setFormData({...formData, nama_item: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Satuan</label>
+                  <input required type="text" value={formData.satuan} onChange={e => setFormData({...formData, satuan: e.target.value})} placeholder="cth: OH, Zak, M3" className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Harga Dasar (Rp)</label>
+                  <input required type="number" value={formData.harga_dasar} onChange={e => setFormData({...formData, harga_dasar: Number(e.target.value)})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
+                <button type="submit" disabled={isSaving} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                  {isSaving ? 'Menyimpan...' : 'Simpan HSD'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
