@@ -2,75 +2,103 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  LayoutDashboard, CalendarDays, ListTodo, TrendingUp, 
-  FileText, FileSpreadsheet, Box, Link2, Coins, FolderKanban, Settings 
+  LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
+  FileText, CalendarDays, Box, Package, Users, Database, 
+  Settings, ShieldCheck, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
-export default function Sidebar() {
+export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   const pathname = usePathname();
-  const menus = [
-    { name: 'Dashboard S-Curve', path: '/', icon: LayoutDashboard },
-    { name: 'Gantt Workspace', path: '/gantt', icon: CalendarDays },
-    { name: 'Tasks (WBS)', path: '/tasks', icon: ListTodo },
-    { name: 'Progress Harian', path: '/progress', icon: TrendingUp },
-    { name: 'Laporan Harian', path: '/reports/daily', icon: FileText },
-    { name: 'Laporan Mingguan', path: '/reports/weekly', icon: FileSpreadsheet },
-    { name: 'AHSP', path: '/ahsp', icon: Box },
-    { name: 'Resources', path: '/resources', icon: Link2 },
-    { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Coins },
-    { name: 'Assignments', path: '/assignments', icon: Box },
-    { name: 'Database Proyek', path: '/projects', icon: FolderKanban },
-    { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings },
+  const role = currentUser?.role || 'pelaksana';
+
+  // Definisi Menu & RBAC Gate
+  const menuItems = [
+    { group: 'Utama', items: [
+      { name: 'Dashboard S-Curve', path: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'pelaksana'] },
+      { name: 'Gantt Workspace', path: '/gantt', icon: GanttChartSquare, roles: ['owner', 'admin'] },
+    ]},
+    { group: 'Perencanaan', items: [
+      { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin'] },
+      { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pelaksana'] },
+    ]},
+    { group: 'Pelaporan', items: [
+      { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin'] },
+      { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin'] },
+    ]},
+    { group: 'Manajemen Biaya', items: [
+      { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin'] },
+      { name: 'Resources', path: '/resources', icon: Users, roles: ['owner', 'admin'] },
+      { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Package, roles: ['owner', 'admin'] },
+      { name: 'Assignments', path: '/assignments', icon: Database, roles: ['owner', 'admin'] },
+    ]},
+    { group: 'Sistem', items: [
+      { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner'] },
+      { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, roles: ['owner', 'admin'] },
+      { name: 'Audit Logs', path: '/logs', icon: ShieldCheck, roles: ['owner'] },
+    ]}
   ];
 
   return (
-    <div className="w-64 bg-[#0F172A] text-slate-300 flex flex-col shrink-0 print:hidden shadow-xl z-50">
-      {/* Logo Area */}
-      <div className="h-16 flex items-center px-6 border-b border-slate-800">
-        <div className="flex items-center gap-2 text-white font-bold text-lg tracking-tight">
-          <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
-            <span className="text-xs">P</span>
-          </div>
-          InfraControl <span className="text-xs bg-slate-800 px-2 py-0.5 rounded text-slate-400 ml-auto">PRO</span>
+    <aside className={`bg-[#0F172A] text-slate-300 flex flex-col shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
+      {/* Brand Logo */}
+      <div className="h-[64px] flex items-center px-4 border-b border-slate-800 shrink-0">
+        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 24C4 24 10 10 16 10C22 10 28 24 28 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M16 10V24" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M8 24L24 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3"/>
+            <path d="M24 24L8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3"/>
+          </svg>
         </div>
+        {!isCollapsed && (
+          <div className="ml-3 flex items-center animate-fade-in">
+            <span className="font-bold text-white text-lg tracking-wide">InfraControl</span>
+            <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded ml-2 font-bold">PRO</span>
+          </div>
+        )}
       </div>
 
-      {/* Navigation Menu */}
-      <div className="flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1">
-        {menus.map((menu) => {
-          const isActive = pathname === menu.path;
-          const Icon = menu.icon;
+      {/* Menu Items */}
+      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 custom-scrollbar">
+        {menuItems.map((group, idx) => {
+          // Filter items based on role
+          const visibleItems = group.items.filter(item => item.roles.includes(role));
+          if (visibleItems.length === 0) return null;
+
           return (
-            <Link 
-              key={menu.path} 
-              href={menu.path} 
-              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ${
-                isActive ? 'bg-blue-600/10 text-blue-400 font-semibold' : 'hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              {/* Indikator Garis Kiri Aktif */}
-              {isActive && <div className="absolute left-0 top-2 bottom-2 w-1 bg-blue-500 rounded-r-md"></div>}
-              
-              <Icon size={18} strokeWidth={1.5} className={`${isActive ? 'text-blue-500' : 'text-slate-500 group-hover:text-slate-300'}`} />
-              <span className="text-sm">{menu.name}</span>
-            </Link>
+            <div key={idx}>
+              {!isCollapsed && <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{group.group}</p>}
+              <div className="space-y-1">
+                {visibleItems.map((item) => {
+                  const isActive = pathname === item.path;
+                  const Icon = item.icon;
+                  return (
+                    <Link 
+                      key={item.path} 
+                      href={item.path}
+                      title={isCollapsed ? item.name : ''}
+                      className={`flex items-center px-3 py-2.5 rounded-md transition-all group relative
+                        ${isActive ? 'bg-blue-600/10 text-blue-400 font-semibold' : 'hover:bg-slate-800 hover:text-white'}
+                      `}
+                    >
+                      {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-r-md"></div>}
+                      <Icon size={18} className={`shrink-0 ${isActive ? 'text-blue-500' : 'text-slate-400 group-hover:text-white'}`} />
+                      {!isCollapsed && <span className="ml-3 text-sm truncate">{item.name}</span>}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           );
         })}
       </div>
 
-      {/* User Profile Anchor */}
-      <div className="p-4 border-t border-slate-800">
-        <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors">
-          <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold border-2 border-slate-600">
-            A
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-semibold text-white">Admin User</span>
-            <span className="text-[10px] font-bold text-red-400 bg-red-400/10 px-1.5 rounded w-fit">Head Controller</span>
-          </div>
-        </div>
+      {/* Toggle Button (Mini Mode) */}
+      <div className="p-3 border-t border-slate-800 shrink-0">
+        <button onClick={toggleSidebar} className="w-full flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors text-slate-400 hover:text-white">
+          {isCollapsed ? <ChevronRight size={18} /> : <div className="flex items-center gap-2"><ChevronLeft size={18} /><span className="text-xs font-bold">Collapse Sidebar</span></div>}
+        </button>
       </div>
-    </div>
+    </aside>
   );
 }
-

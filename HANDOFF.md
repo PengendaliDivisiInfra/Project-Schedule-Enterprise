@@ -35,3 +35,10 @@ Sistem telah mencapai tahap **Enterprise Grade** dengan implementasi *Scheduling
 - **Vercel Dashboard:** [Link Vercel]
 - **Supabase Dashboard:** [Link Supabase]
 - **Repository GitHub:** [Link GitHub]
+
+## 5. ROADMAP: Langkah Selanjutnya (Enterprise Upgrade)
+Untuk mencapai standar 100% SaaS Global, tahapan berikutnya adalah:
+- **Opsi C (Modals & Feedback):** Menambahkan loading spinner pada tombol simpan, dan sistem validasi input ganda.
+- **Opsi D (Global Search):** Menambahkan fitur Command Palette (Ctrl+K) untuk mencari task, material, atau navigasi menu dengan cepat.
+- **Audit Logs:** Mencatat setiap perubahan data (CRUD) ke dalam tabel log khusus (IP Address, User ID, Data Sebelum/Sesudah).
+- **Autentikasi Penuh:** Menghubungkan halaman Login dengan Supabase Auth (Email/Password).

@@ -1,33 +1,44 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
-import { Menu, X } from 'lucide-react';
+import Header from './Header';
+import { supabase } from '../lib/supabase';
 
 export default function ClientLayout({ children }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => {
+    // Simulasi mengambil data user dari tabel profiles
+    // Di production, ini harusnya mengambil dari Supabase Auth (auth.getUser())
+    const fetchUser = async () => {
+      const { data } = await supabase.from('profiles').select('*').limit(1).single();
+      if (data) {
+        setCurrentUser(data);
+      } else {
+        // Fallback jika database kosong
+        setCurrentUser({ full_name: 'Admin User', role: 'owner' });
+      }
+    };
+    fetchUser();
+  }, []);
 
   return (
-    <div className="flex bg-gray-50 h-screen overflow-hidden">
-      {/* Sidebar Container */}
-      <div className={`transition-all duration-300 ease-in-out shrink-0 ${isSidebarOpen ? 'w-64' : 'w-0'} overflow-hidden`}>
-        <Sidebar />
-      </div>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        {/* Toggle Button */}
-        <button 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute top-4 left-4 z-50 bg-white p-2 rounded-md shadow-md border border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors"
-          title={isSidebarOpen ? "Hide Sidebar" : "Show Sidebar"}
-        >
-          {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
-
-        <div className="flex-1 overflow-y-auto p-4 pt-16">
+    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+      <Sidebar 
+        isCollapsed={isSidebarCollapsed} 
+        toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+        currentUser={currentUser}
+      />
+      <div className="flex flex-col flex-1 min-w-0">
+        <Header 
+          toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+          currentUser={currentUser} 
+        />
+        <main className="flex-1 overflow-auto bg-slate-50 p-6">
           {children}
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
