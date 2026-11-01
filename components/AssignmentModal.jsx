@@ -7,6 +7,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
   const [activeTab, setActiveTab] = useState('existing');
   const [hsdList, setHsdList] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   const [formData, setFormData] = useState({
     tipe: 'Bahan', 
@@ -78,7 +79,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
       onClose(); // Tutup modal
       
     } catch (error) {
-      alert(error.message);
+      setErrorMsg(error.message);
     } finally {
       setIsSaving(false);
     }
@@ -171,7 +172,13 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
             </>
           )}
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
+          {errorMsg && (
+              <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-lg flex items-start gap-2 mb-4">
+                <span>⚠️</span>
+                <span>{errorMsg}</span>
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
             <button type="submit" disabled={isSaving} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
               {isSaving ? <><Loader2 size={16} className="animate-spin" /> Menyimpan...</> : 'Tambahkan ke AHSP'}
@@ -182,3 +189,4 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
     </div>
   );
 }
+

@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AssignmentModal from '../../components/AssignmentModal';
-import { Plus, Printer, Trash2 } from 'lucide-react';
+import { Plus, Printer, Trash2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 export default function AhspPage() {
   const [ahspList, setAhspList] = useState([]);
@@ -13,8 +13,18 @@ export default function AhspPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // State untuk Overhead (Default 15%)
+  // State Overhead
   const [overheadPct, setOverheadPct] = useState(15);
+
+  // State untuk Custom Dialog & Toast
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (type, message) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   // 1. Fetch Daftar Induk AHSP
   const fetchAhspList = async () => {
@@ -30,7 +40,7 @@ export default function AhspPage() {
     setLoading(false);
   };
 
-  // 2. Fetch Detail Komponen (Fetch terpisah agar anti-gagal)
+  // 2. Fetch Detail Komponen
   const fetchAhspDetails = useCallback(async (ahspId) => {
     if (!ahspId) return;
     
@@ -40,7 +50,7 @@ export default function AhspPage() {
       .eq('ahsp_template_id', ahspId);
       
     if (detailError) {
-      console.error("Error detail:", detailError);
+      showToast('danger', "Gagal memuat detail: " + detailError.message);
       return;
     }
 
@@ -65,9 +75,7 @@ export default function AhspPage() {
     }
   }, []);
 
-  useEffect(() => { 
-    fetchAhspList(); 
-  }, []);
+  useEffect(() => { fetchAhspList(); }, []);
 
   useEffect(() => {
     if (selectedAhspId) {
@@ -77,24 +85,26 @@ export default function AhspPage() {
     }
   }, [selectedAhspId, ahspList, fetchAhspDetails]);
 
-  // 3. Handle Refresh dari Modal
   const handleRefresh = () => {
-    if (selectedAhspId) {
-      fetchAhspDetails(selectedAhspId);
-    }
+    if (selectedAhspId) fetchAhspDetails(selectedAhspId);
   };
 
-  // 4. Fungsi Hapus Komponen
-  const handleDeleteDetail = async (id) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus komponen ini dari AHSP?")) return;
-    
-    const { error } = await supabase.from('ahsp_details').delete().eq('id', id);
+  // 3. Konfirmasi Hapus (Menggantikan confirm browser)
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    await new Promise(resolve => setTimeout(resolve, 300)); // UX Delay
+
+    const { error } = await supabase.from('ahsp_details').delete().eq('id', deleteTarget.id);
     
     if (error) {
-      alert("Gagal menghapus: " + error.message);
+      showToast('danger', "Gagal menghapus: " + error.message);
     } else {
-      handleRefresh(); // Refresh tabel setelah dihapus
+      showToast('success', "Komponen berhasil dihapus.");
+      handleRefresh();
     }
+    setIsDeleting(false);
+    setDeleteTarget(null);
   };
 
   // --- KALKULASI TOTAL PUPR ---
@@ -115,8 +125,16 @@ export default function AhspPage() {
   if (loading) return <LoadingSpinner text="Memuat Katalog AHSP..." />;
 
   return (
-    <div className="p-6 bg-slate-100 min-h-screen flex flex-col items-center">
+    <div className="p-6 bg-slate-100 min-h-screen flex flex-col items-center relative">
       
+      {/* TOAST NOTIFICATION */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-lg shadow-xl text-white font-bold animate-fade-in-up flex items-center gap-2 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+          {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+          {toast.message}
+        </div>
+      )}
+
       {/* KONTROL ATAS */}
       <div className="w-full max-w-5xl flex justify-between items-end mb-4 print:hidden bg-white p-4 rounded-lg shadow-sm border border-slate-200">
         <div className="flex flex-col gap-1 w-1/2">
@@ -145,10 +163,8 @@ export default function AhspPage() {
 
       {/* KERTAS DOKUMEN PUPR */}
       <div className="bg-white w-full max-w-5xl shadow-xl border border-slate-300 p-8 print:shadow-none print:border-none print:p-0">
-        
         {selectedAhsp ? (
           <>
-            {/* HEADER DOKUMEN */}
             <div className="mb-6">
               <h1 className="text-xl font-bold text-black border-b-2 border-black pb-2 mb-2">
                 {selectedAhsp.kode_ahsp ? `${selectedAhsp.kode_ahsp} ` : ''} {selectedAhsp.name}
@@ -156,7 +172,6 @@ export default function AhspPage() {
               <p className="text-sm font-semibold text-slate-700">Satuan: {selectedAhsp.unit}</p>
             </div>
 
-            {/* TABEL PUPR */}
             <table className="w-full border-collapse border border-black text-[11px] text-black mb-8">
               <thead>
                 <tr className="bg-gray-200">
@@ -181,7 +196,6 @@ export default function AhspPage() {
                 </tr>
               </thead>
               <tbody>
-                
                 {/* A. TENAGA KERJA */}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1 text-center">A</td>
@@ -197,7 +211,7 @@ export default function AhspPage() {
                     <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-center print:hidden">
-                      <button onClick={() => handleDeleteDetail(d.id)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
+                      <button onClick={() => setDeleteTarget(d)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
                     </td>
                   </tr>
                 ))}
@@ -222,7 +236,7 @@ export default function AhspPage() {
                     <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-center print:hidden">
-                      <button onClick={() => handleDeleteDetail(d.id)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
+                      <button onClick={() => setDeleteTarget(d)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
                     </td>
                   </tr>
                 ))}
@@ -247,7 +261,7 @@ export default function AhspPage() {
                     <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-center print:hidden">
-                      <button onClick={() => handleDeleteDetail(d.id)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
+                      <button onClick={() => setDeleteTarget(d)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
                     </td>
                   </tr>
                 ))}
@@ -289,7 +303,6 @@ export default function AhspPage() {
                   <td className="border border-black p-2 text-right">{totalF.toLocaleString('id-ID')}</td>
                   <td className="border border-black p-2 print:hidden"></td>
                 </tr>
-
               </tbody>
             </table>
           </>
@@ -297,6 +310,27 @@ export default function AhspPage() {
           <div className="text-center text-slate-500 py-10">Pilih AHSP terlebih dahulu.</div>
         )}
       </div>
+
+      {/* ENTERPRISE DELETE MODAL */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+              <AlertTriangle className="h-8 w-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-2">Hapus Komponen Ini?</h3>
+            <p className="text-sm text-slate-500 mb-6">
+              Anda akan menghapus <strong className="text-slate-800">{deleteTarget.master_hsd?.nama_item}</strong> dari AHSP.
+            </p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 w-full transition-colors disabled:opacity-50">Batal</button>
+              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-4 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md w-full transition-colors flex items-center justify-center gap-2 disabled:bg-red-400">
+                {isDeleting ? 'Menghapus...' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL TAMBAH KOMPONEN */}
       <AssignmentModal 
