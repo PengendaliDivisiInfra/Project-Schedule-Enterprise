@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AssignmentModal from '../../components/AssignmentModal';
-import { Plus, Printer, FileText } from 'lucide-react';
+import { Plus, Printer, Trash2 } from 'lucide-react';
 
 export default function AhspPage() {
   const [ahspList, setAhspList] = useState([]);
@@ -34,7 +34,6 @@ export default function AhspPage() {
   const fetchAhspDetails = useCallback(async (ahspId) => {
     if (!ahspId) return;
     
-    // A. Ambil data detail
     const { data: detailData, error: detailError } = await supabase
       .from('ahsp_details')
       .select('*')
@@ -46,7 +45,6 @@ export default function AhspPage() {
     }
 
     if (detailData) {
-      // B. Ambil data HSD berdasarkan ID yang ada
       const hsdIds = detailData.map(d => d.hsd_id).filter(id => id);
       let hsdData = [];
       
@@ -58,7 +56,6 @@ export default function AhspPage() {
         hsdData = hsdRes || [];
       }
 
-      // C. Gabungkan data
       const merged = detailData.map(d => ({
         ...d,
         master_hsd: hsdData.find(h => h.id === d.hsd_id) || {}
@@ -84,6 +81,19 @@ export default function AhspPage() {
   const handleRefresh = () => {
     if (selectedAhspId) {
       fetchAhspDetails(selectedAhspId);
+    }
+  };
+
+  // 4. Fungsi Hapus Komponen
+  const handleDeleteDetail = async (id) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus komponen ini dari AHSP?")) return;
+    
+    const { error } = await supabase.from('ahsp_details').delete().eq('id', id);
+    
+    if (error) {
+      alert("Gagal menghapus: " + error.message);
+    } else {
+      handleRefresh(); // Refresh tabel setelah dihapus
     }
   };
 
@@ -157,6 +167,7 @@ export default function AhspPage() {
                   <th className="border border-black p-1 w-20">Koefisien</th>
                   <th className="border border-black p-1 w-32 text-right">Harga Satuan (Rp)</th>
                   <th className="border border-black p-1 w-32 text-right">Jumlah Harga (Rp)</th>
+                  <th className="border border-black p-1 w-10 print:hidden">Aksi</th>
                 </tr>
                 <tr className="bg-gray-100">
                   <th className="border border-black p-1">1</th>
@@ -166,6 +177,7 @@ export default function AhspPage() {
                   <th className="border border-black p-1">5</th>
                   <th className="border border-black p-1">6</th>
                   <th className="border border-black p-1">7</th>
+                  <th className="border border-black p-1 print:hidden">-</th>
                 </tr>
               </thead>
               <tbody>
@@ -173,7 +185,7 @@ export default function AhspPage() {
                 {/* A. TENAGA KERJA */}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1 text-center">A</td>
-                  <td className="border border-black p-1" colSpan={6}>TENAGA KERJA</td>
+                  <td className="border border-black p-1" colSpan={7}>TENAGA KERJA</td>
                 </tr>
                 {details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'upah').map((d, i) => (
                   <tr key={d.id}>
@@ -184,17 +196,21 @@ export default function AhspPage() {
                     <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
                     <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
+                    <td className="border border-black p-1 text-center print:hidden">
+                      <button onClick={() => handleDeleteDetail(d.id)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
+                    </td>
                   </tr>
                 ))}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1" colSpan={6} align="right">Jumlah Harga Tenaga Kerja (A)</td>
                   <td className="border border-black p-1 text-right">{totalUpah.toLocaleString('id-ID')}</td>
+                  <td className="border border-black p-1 print:hidden"></td>
                 </tr>
 
                 {/* B. BAHAN */}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1 text-center">B</td>
-                  <td className="border border-black p-1" colSpan={6}>BAHAN</td>
+                  <td className="border border-black p-1" colSpan={7}>BAHAN</td>
                 </tr>
                 {details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'bahan').map((d, i) => (
                   <tr key={d.id}>
@@ -205,17 +221,21 @@ export default function AhspPage() {
                     <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
                     <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
+                    <td className="border border-black p-1 text-center print:hidden">
+                      <button onClick={() => handleDeleteDetail(d.id)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
+                    </td>
                   </tr>
                 ))}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1" colSpan={6} align="right">Jumlah Harga Bahan (B)</td>
                   <td className="border border-black p-1 text-right">{totalBahan.toLocaleString('id-ID')}</td>
+                  <td className="border border-black p-1 print:hidden"></td>
                 </tr>
 
                 {/* C. PERALATAN */}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1 text-center">C</td>
-                  <td className="border border-black p-1" colSpan={6}>PERALATAN</td>
+                  <td className="border border-black p-1" colSpan={7}>PERALATAN</td>
                 </tr>
                 {details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'alat').map((d, i) => (
                   <tr key={d.id}>
@@ -226,11 +246,15 @@ export default function AhspPage() {
                     <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
                     <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                     <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
+                    <td className="border border-black p-1 text-center print:hidden">
+                      <button onClick={() => handleDeleteDetail(d.id)} className="text-red-500 hover:text-red-700" title="Hapus"><Trash2 size={14} /></button>
+                    </td>
                   </tr>
                 ))}
                 <tr className="font-bold bg-gray-50">
                   <td className="border border-black p-1" colSpan={6} align="right">Jumlah Harga Peralatan (C)</td>
                   <td className="border border-black p-1 text-right">{totalAlat.toLocaleString('id-ID')}</td>
+                  <td className="border border-black p-1 print:hidden"></td>
                 </tr>
 
                 {/* D. JUMLAH TOTAL */}
@@ -238,6 +262,7 @@ export default function AhspPage() {
                   <td className="border border-black p-1 text-center">D</td>
                   <td className="border border-black p-1" colSpan={5}>Jumlah Harga Tenaga Kerja, Bahan dan Peralatan (A+B+C)</td>
                   <td className="border border-black p-1 text-right">{totalD.toLocaleString('id-ID')}</td>
+                  <td className="border border-black p-1 print:hidden"></td>
                 </tr>
 
                 {/* E. OVERHEAD & PROFIT */}
@@ -254,6 +279,7 @@ export default function AhspPage() {
                     <span className="print:inline hidden">({overheadPct}%)</span> x D
                   </td>
                   <td className="border border-black p-1 text-right">{totalE.toLocaleString('id-ID')}</td>
+                  <td className="border border-black p-1 print:hidden"></td>
                 </tr>
 
                 {/* F. HARGA SATUAN PEKERJAAN */}
@@ -261,6 +287,7 @@ export default function AhspPage() {
                   <td className="border border-black p-2 text-center">F</td>
                   <td className="border border-black p-2" colSpan={5}>Harga Satuan Pekerjaan (D+E)</td>
                   <td className="border border-black p-2 text-right">{totalF.toLocaleString('id-ID')}</td>
+                  <td className="border border-black p-2 print:hidden"></td>
                 </tr>
 
               </tbody>
