@@ -13,9 +13,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   // STATE BARU: Zoom Level
   const [zoomLevel, setZoomLevel] = useState('day'); // 'day' | 'week' | 'month'
 
-  useEffect(() => {
-    setLocalTasks(tasks);
-  }, [tasks]);
+  // Sinkronisasi awal dihapus untuk mencegah UI revert saat proses save
 
   const displayTasks = showCriticalOnly
     ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
@@ -550,3 +548,4 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
