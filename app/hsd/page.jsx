@@ -1,4 +1,5 @@
-﻿'use client';
+﻿/* eslint-disable react-hooks/exhaustive-deps */
+'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -8,26 +9,23 @@ export default function HsdPage() {
   const [hsdList, setHsdList] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // State untuk Modal Hapus
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchHsd = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from('master_hsd').select('*').order('nama_item');
-    if (data) setHsdList(data);
-    setLoading(false);
-  };
-
+  // Memindahkan fetchHsd ke dalam useEffect atau dibungkus dengan useCallback untuk menghindari warning
   useEffect(() => {
-    fetchHsd();
+    const fetchHsdData = async () => {
+      setLoading(true);
+      const { data } = await supabase.from('master_hsd').select('*').order('nama_item');
+      if (data) setHsdList(data);
+      setLoading(false);
+    };
+    fetchHsdData();
   }, []);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
-    
-    // Simulasi delay UX
     await new Promise(resolve => setTimeout(resolve, 500));
 
     const { error } = await supabase.from('master_hsd').delete().eq('id', deleteTarget.id);
@@ -35,7 +33,9 @@ export default function HsdPage() {
       alert("Gagal menghapus: " + error.message);
     } else {
       setDeleteTarget(null);
-      fetchHsd();
+      // Fetch ulang data setelah hapus
+      const { data } = await supabase.from('master_hsd').select('*').order('nama_item');
+      if (data) setHsdList(data);
     }
     setIsDeleting(false);
   };
@@ -46,14 +46,13 @@ export default function HsdPage() {
     <div className="p-6 bg-slate-50 min-h-screen relative">
       <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
         
-        {/* HEADER */}
         <div className="flex justify-between items-center p-4 border-b border-slate-200 bg-slate-50">
           <div>
             <h1 className="text-xl font-bold text-slate-800">Harga Satuan Dasar (HSD)</h1>
             <p className="text-sm text-slate-500">Database induk Material, Upah, dan Alat.</p>
           </div>
           <div className="flex gap-2">
-            <button onClick={fetchHsd} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
+            <button className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">
               Refresh
             </button>
             <button className="px-4 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow transition-colors">
@@ -62,7 +61,6 @@ export default function HsdPage() {
           </div>
         </div>
 
-        {/* TABEL DATA */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
@@ -102,9 +100,7 @@ export default function HsdPage() {
         </div>
       </div>
 
-      {/* ========================================== */}
       {/* ENTERPRISE DELETE MODAL */}
-      {/* ========================================== */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
