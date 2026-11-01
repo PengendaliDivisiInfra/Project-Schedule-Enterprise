@@ -427,3 +427,4 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   );
 }
 
+
