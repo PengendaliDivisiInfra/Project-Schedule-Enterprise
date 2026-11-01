@@ -55,8 +55,16 @@ export default function GanttPage() {
       const rels = [];
       taskData.forEach(t => {
         if (t.predecessors && t.summary !== 'Yes') {
+          // Regex untuk menangkap format 1.1, 1.1FS, 1.1SS+2, dll
           const match = t.predecessors.match(/([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?/);
-          if (match) rels.push({ from: match[1], to: t.wbs_code, type: match[2] || 'FS', is_critical: t.is_critical });
+          if (match) {
+            rels.push({ 
+              from: match[1], 
+              to: t.wbs_code, 
+              type: match[2] || 'FS', 
+              is_critical: t.is_critical 
+            });
+          }
         }
       });
       setRelations(rels);
@@ -112,5 +120,6 @@ export default function GanttPage() {
     </div>
   );
 }
+
 
 

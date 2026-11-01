@@ -100,7 +100,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
     displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
-      let width = t.duration * pixelsPerDay;
+      let width = t.duration * pixelsPerDay; if (rawLeft < 0) width = width + rawLeft;
       if (t.start_date && t.end_date) {
         const startX = getX(t.start_date);
         const endX = getX(t.end_date);
@@ -393,7 +393,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   <div className="w-12 px-1 border-l border-slate-100">
                     {!isSummary ? (
-                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-indigo-600 placeholder:text-slate-300 placeholder:font-normal" />
+                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-slate-800 font-bold placeholder:text-slate-400" />
                     ) : (
                       <div className="text-center text-slate-300 text-[10px]">-</div>
                     )}
@@ -450,8 +450,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             <div className="absolute inset-0 z-20 pointer-events-none">
               {visibleTasks.map((t, idx) => {
                 const actualIndex = startIndex + idx;
-                const left = getX(t.start_date);
-                let width = t.duration * pixelsPerDay;
+                const rawLeft = getX(t.start_date); const left = Math.max(0, rawLeft);
+                let width = t.duration * pixelsPerDay; if (rawLeft < 0) width = width + rawLeft;
                 if (t.start_date && t.end_date) {
                   const endX = getX(t.end_date);
                   if (endX >= left) width = (endX - left) + pixelsPerDay;
@@ -483,4 +483,5 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
