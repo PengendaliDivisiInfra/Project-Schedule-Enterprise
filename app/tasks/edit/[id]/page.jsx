@@ -1,6 +1,6 @@
 ﻿'use client';
 import { useState, useEffect } from 'react';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../../lib/supabase';
 import { useRouter } from 'next/navigation';
 
 export default function TaskFormPage({ params }) {
@@ -53,3 +53,4 @@ export default function TaskFormPage({ params }) {
     </div>
   );
 }
+
