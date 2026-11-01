@@ -1,48 +1,46 @@
-﻿'use client';
+﻿/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @next/next/no-img-element */
+'use client';
 import { useRef, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
 
 const ROW_HEIGHT = 38;
+const BUFFER_SIZE = 10; // Jumlah baris ekstra di atas/bawah layar
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate, onRefresh }) {
   const leftPanelRef = useRef(null);
+  const rightPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [localTasks, setLocalTasks] = useState(tasks);
   const [zoomLevel, setZoomLevel] = useState('day');
-  const [baselines, setBaselines] = useState({});
+  
+  // VIRTUAL SCROLLING STATES
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(600);
 
   useEffect(() => {
     setLocalTasks(tasks);
-    fetchBaselines();
   }, [tasks]);
 
-  const fetchBaselines = async () => {
-    const { data } = await supabase.from('task_baselines').select('*');
-    if (data) {
-      const bMap = {};
-      data.forEach(b => { bMap[b.task_id] = b; });
-      setBaselines(bMap);
-    }
-  };
-
-  const handleSetBaseline = async () => {
-    if (!confirm("Apakah Anda yakin ingin mengunci jadwal saat ini sebagai Baseline?")) return;
-    await supabase.rpc('set_project_baseline');
-    alert("✅ Baseline berhasil disimpan!");
-    fetchBaselines();
-  };
-
-  const handleRecalculateCPM = async () => {
-    await supabase.rpc('calculate_cpm');
-    alert("✅ Jalur Kritis (CPM) berhasil dihitung ulang!");
-    if (onRefresh) onRefresh();
-  };
+  // Deteksi tinggi layar untuk virtual scrolling
+  useEffect(() => {
+    const handleResize = () => {
+      if (rightPanelRef.current) setViewportHeight(rightPanelRef.current.clientHeight);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const displayTasks = showCriticalOnly
     ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
     : localTasks;
+
+  // --- LOGIKA VIRTUAL SCROLLING ---
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_SIZE);
+  const endIndex = Math.min(displayTasks.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + BUFFER_SIZE);
+  const visibleTasks = displayTasks.slice(startIndex, endIndex);
 
   // 1. Generate Calendar Days
   let minDate = new Date();
@@ -50,10 +48,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   displayTasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
-    if (baselines[t.id]?.baseline_start) {
-      const bs = new Date(baselines[t.id].baseline_start);
-      if (bs < minDate) minDate = bs;
-    }
   });
   minDate.setDate(minDate.getDate() - 7);
   maxDate.setDate(maxDate.getDate() + 14);
@@ -99,41 +93,77 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return daysDiff * pixelsPerDay;
   };
 
+  // 2. Hitung SVG Paths (Hanya render yang berpotensi terlihat)
   useEffect(() => {
     const paths = [];
     const taskRects = {};
+
     displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
-      const width = t.duration * pixelsPerDay;
+      let width = t.duration * pixelsPerDay;
+      if (t.start_date && t.end_date) {
+        const startX = getX(t.start_date);
+        const endX = getX(t.end_date);
+        if (endX >= startX) width = (endX - startX) + pixelsPerDay;
+      }
+      width = Math.max(8, width);
       const y = idx * ROW_HEIGHT;
-      taskRects[t.wbs_code] = { x, y, width: Math.max(width, t.summary === 'Yes' ? width : 8), height: t.summary === 'Yes' ? 6 : 16 };
+      taskRects[t.wbs_code] = { x, y, width, index: idx };
     });
 
     relations.forEach(rel => {
       const from = taskRects[rel.from];
       const to = taskRects[rel.to];
       if (!from || !to) return;
-      let sourceX = from.x + from.width; let sourceY = from.y + (ROW_HEIGHT / 2);
-      let targetX = to.x; let targetY = to.y + (ROW_HEIGHT / 2);
+
+      // VIRTUAL SCROLL CHECK: Hanya hitung path jika salah satu node ada di area pandang + buffer
+      if (from.index < startIndex - BUFFER_SIZE && to.index < startIndex - BUFFER_SIZE) return;
+      if (from.index > endIndex + BUFFER_SIZE && to.index > endIndex + BUFFER_SIZE) return;
+
+      let sourceX, sourceY, targetX, targetY;
+      const fromCenterY = from.y + (ROW_HEIGHT / 2);
+      const toCenterY = to.y + (ROW_HEIGHT / 2);
+
+      if (rel.type === 'FS') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; }
+      else if (rel.type === 'SS') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; }
+      else if (rel.type === 'FF') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
+      else if (rel.type === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
+
       const points = [[sourceX, sourceY]];
       const paddingX = zoomLevel === 'day' ? 12 : 4;
-      if (targetX >= sourceX + paddingX) {
+
+      if (rel.type === 'FS') {
+        if (targetX >= sourceX + paddingX) {
+          const midX = sourceX + (targetX - sourceX) / 2;
+          points.push([midX, sourceY]); points.push([midX, targetY]);
+        } else {
+          const midY = fromCenterY + (toCenterY - fromCenterY) / 2;
+          points.push([sourceX + paddingX, sourceY]); points.push([sourceX + paddingX, midY]);
+          points.push([targetX - paddingX, midY]); points.push([targetX - paddingX, targetY]);
+        }
+      } else {
         const midX = sourceX + (targetX - sourceX) / 2;
         points.push([midX, sourceY]); points.push([midX, targetY]);
-      } else {
-        const midY = sourceY + (targetY - sourceY) / 2;
-        points.push([sourceX + paddingX, sourceY]); points.push([sourceX + paddingX, midY]);
-        points.push([targetX - paddingX, midY]); points.push([targetX - paddingX, targetY]);
       }
       points.push([targetX, targetY]);
+
       let d = `M ${points[0][0]} ${points[0][1]}`;
       for (let i = 1; i < points.length; i++) d += ` L ${points[i][0]} ${points[i][1]}`;
+
       paths.push({ d, is_critical: rel.is_critical });
     });
-    setSvgPaths(paths);
-  }, [displayTasks, relations, zoomLevel, baselines]);
 
-  const handleScroll = (e) => { if (leftPanelRef.current) leftPanelRef.current.scrollTop = e.target.scrollTop; };
+    setSvgPaths(paths);
+  }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay]);
+
+  const handleScroll = (e) => {
+    const newScrollTop = e.currentTarget.scrollTop;
+    setScrollTop(newScrollTop);
+    if (leftPanelRef.current) {
+      leftPanelRef.current.scrollTop = newScrollTop;
+    }
+  };
+
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
   
   const formatDateForInput = (dateString) => {
@@ -187,14 +217,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     setLocalTasks(prev => {
       let updated = prev.map(t => t.id === task.id ? { ...t, start_date: startStr, end_date: endStr, duration: newDuration } : t);
       
-      // Local Parent Roll-up
       if (task.parent_id) {
         const siblings = updated.filter(t => t.parent_id === task.parent_id);
         if (siblings.length > 0) {
           const minStart = siblings.reduce((min, s) => new Date(s.start_date) < new Date(min) ? s.start_date : min, siblings[0].start_date);
           const maxEnd = siblings.reduce((max, s) => new Date(s.end_date) > new Date(max) ? s.end_date : max, siblings[0].end_date);
           const pDur = countWorkingDays(minStart, maxEnd, workingDays, exceptions);
-          
           updated = updated.map(t => {
             if (t.id === task.parent_id) {
               return { ...t, start_date: minStart, end_date: maxEnd, duration: pDur };
@@ -227,7 +255,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
         return t;
       });
 
-      // Local Parent Roll-up
       const child = updated.find(t => t.id === taskId);
       if (child && child.parent_id) {
         const siblings = updated.filter(t => t.parent_id === child.parent_id);
@@ -247,19 +274,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       return updated;
     });
     onInlineUpdate(taskId, field, value);
-  };
-
-  const calculateDailyTarget = (task) => {
-    if (task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
-    const totalTarget = Number(task.smart_target) || 0;
-    if (Number(task.progress_percent) >= 100 || totalTarget === 0) return 0;
-    const today = new Date(); const finish = new Date(task.end_date);
-    let remainingDays = 0; let cur = new Date(today);
-    while (cur <= finish) {
-      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) remainingDays++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    return remainingDays <= 0 ? totalTarget.toFixed(2) : (totalTarget / remainingDays).toFixed(2);
   };
 
   return (
@@ -286,9 +300,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             </div>
             
             <div className="flex items-center gap-2 ml-2">
-              <button onClick={handleSetBaseline} className="px-2 py-1 bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-400 rounded text-[10px] font-bold shadow-sm" title="Simpan Baseline Jadwal">📌 Set Baseline</button>
-              <button onClick={handleRecalculateCPM} className="px-2 py-1 bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-300 rounded text-[10px] font-bold shadow-sm" title="Hitung Ulang Jalur Kritis">⚙️ Recalc CPM</button>
-              
               <div className="flex bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
                 <button onClick={() => setZoomLevel('day')} className={`px-3 py-1 text-[10px] font-bold ${zoomLevel === 'day' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Hari</button>
                 <button onClick={() => setZoomLevel('week')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'week' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Minggu</button>
@@ -324,15 +335,18 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
       <div className="flex flex-1 overflow-hidden">
         <div ref={leftPanelRef} className="w-[1020px] border-r border-slate-300 overflow-y-hidden bg-white shrink-0">
-          <div className="min-w-full">
-            {displayTasks.map((t, idx) => {
-              const dailyTarget = calculateDailyTarget(t);
+          <div className="relative" style={{ height: displayTasks.length * ROW_HEIGHT }}>
+            {visibleTasks.map((t, idx) => {
+              const actualIndex = startIndex + idx;
+              const top = actualIndex * ROW_HEIGHT;
               const isSummary = t.summary === 'Yes';
               const isHovered = hoveredTaskId === t.id;
+              
               return (
                 <div key={t.id} onMouseEnter={() => setHoveredTaskId(t.id)} onMouseLeave={() => setHoveredTaskId(null)}
-                  className={`flex text-[11px] items-center px-2 border-b border-slate-100 h-[38px] transition-colors cursor-pointer
-                    ${isSummary ? 'bg-slate-50 font-bold' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${isHovered ? 'bg-blue-50/80' : 'hover:bg-blue-50/50'}`}>
+                  style={{ top, height: ROW_HEIGHT }}
+                  className={`absolute w-full flex text-[11px] items-center px-2 border-b border-slate-100 transition-colors cursor-pointer
+                    ${isSummary ? 'bg-slate-50 font-bold' : actualIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${isHovered ? 'bg-blue-50/80' : 'hover:bg-blue-50/50'}`}>
                   <span className="w-6 text-center">{t.task_mode === 'Manually Scheduled' ? '📌' : '📅'}</span>
                   <span className="w-6 text-center">{t.progress_percent === 100 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-slate-300">☐</span>}</span>
                   <span className="w-10 font-mono text-slate-500 text-center">{t.wbs_code}</span>
@@ -340,14 +354,14 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   <div className="w-20 px-1 border-r border-slate-100 bg-slate-50/50">
                     {!isSummary && (
                       <div className="flex items-center gap-1">
-                        <input type="number" defaultValue={t.volume || 0} onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))} className="w-10 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold" />
+                        <input type="number" defaultValue={t.volume || 0} onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))} className="w-10 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold" onFocus={(e) => e.target.select()} />
                         <span className="text-[9px] text-slate-500 font-medium truncate">{t.satuan_hsd}</span>
                       </div>
                     )}
                   </div>
                   <div className="w-10 text-center border-l border-slate-100">
                     {isSummary ? <span>{t.duration}d</span> : (
-                      <input type="number" key={`dur-${t.duration}`} defaultValue={t.duration} onBlur={(e) => handleLocalInlineUpdate(t.id, 'duration', Number(e.target.value))} className="w-8 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px]" />
+                      <input type="number" key={`dur-${t.duration}`} defaultValue={t.duration} onBlur={(e) => handleLocalInlineUpdate(t.id, 'duration', Number(e.target.value))} className="w-8 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px]" onFocus={(e) => e.target.select()} />
                     )}
                   </div>
                   <div className="w-[85px] text-center border-l border-slate-100">
@@ -379,18 +393,26 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   <span className="w-10 text-center font-bold text-slate-700 border-l border-slate-100">{t.progress_percent}%</span>
                   <span className="w-12 text-center font-bold text-indigo-700 border-l border-slate-100">{isSummary ? '-' : t.smart_target}</span>
                   <span className="w-10 text-center text-slate-500 border-l border-slate-100">{isSummary ? '-' : (t.sisa_hari_efektif || 0)}</span>
-                  <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : `${dailyTarget}`}</span>
+                  <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : `0`}</span>
                 </div>
               );
             })}
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
+        <div ref={rightPanelRef} className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
+            
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
-              {displayTasks.map((_, i) => <div key={i} className="w-full border-b border-slate-100" style={{ height: ROW_HEIGHT }}></div>)}
+              {Array.from({ length: Math.ceil(displayTasks.length / 50) }).map((_, i) => (
+                <div key={i} className="w-full flex flex-col" style={{ height: 50 * ROW_HEIGHT }}>
+                  {Array.from({ length: 50 }).map((_, j) => (
+                    <div key={j} className="w-full border-b border-slate-100" style={{ height: ROW_HEIGHT }}></div>
+                  ))}
+                </div>
+              ))}
             </div>
+
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => {
                 const dateStr = cd.date.toISOString().split('T')[0];
@@ -400,6 +422,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 return <div key={i} className={`${borderClass} h-full ${bgClass}`} style={{ width: pixelsPerDay }}></div>;
               })}
             </div>
+
             <div className="absolute top-0 bottom-0 border-l border-green-500 border-dashed z-10 pointer-events-none" style={{ left: getX(statusDate) }} title="Status Date"></div>
             <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
             
@@ -412,7 +435,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             </svg>
 
             <div className="absolute inset-0 z-20 pointer-events-none">
-              {displayTasks.map((t, idx) => {
+              {visibleTasks.map((t, idx) => {
+                const actualIndex = startIndex + idx;
                 const left = getX(t.start_date);
                 let width = t.duration * pixelsPerDay;
                 if (t.start_date && t.end_date) {
@@ -420,41 +444,22 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   if (endX >= left) width = (endX - left) + pixelsPerDay;
                 }
                 width = Math.max(8, width);
-                const top = idx * ROW_HEIGHT + 6; 
+                const top = actualIndex * ROW_HEIGHT + 6; 
                 const isHovered = hoveredTaskId === t.id;
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
                 const progress = Number(t.progress_percent) || 0;
-                
-                const bData = baselines[t.id];
-                const bLeft = bData?.baseline_start ? getX(bData.baseline_start) : 0;
-                let bWidth = 0;
-                if (bData?.baseline_start && bData?.baseline_end) {
-                  bWidth = getX(bData.baseline_end) - bLeft + pixelsPerDay;
-                }
 
                 if (t.duration === 0) return <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 5, top: top + 2 }}><div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div></div>;
                 if (isSummary) return <div key={t.id} className="absolute pointer-events-auto" style={{ left, width, top: top + 2 }}><div className="absolute top-0 w-full h-[4px] bg-slate-800"></div><div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div><div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div></div>;
 
                 return (
                   <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width, top }}>
-                    
-                    {bWidth > 0 && (
-                      <div className="absolute top-[20px] h-[6px] bg-slate-300 border border-slate-400 rounded-sm opacity-70" style={{ left: bLeft - left, width: bWidth }} title="Baseline"></div>
-                    )}
-
                     <div className={`h-[16px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
                       <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[8px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
                         {progress > 20 && `${progress}%`}
                       </div>
                     </div>
-
-                    {zoomLevel !== 'month' && (
-                      <div className="absolute top-[-2px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: width + 6 }}>
-                        {t.resource_names && <span className="text-slate-700 font-medium">{t.resource_names}</span>}
-                        <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}</span>
-                      </div>
-                    )}
                   </div>
                 );
               })}
