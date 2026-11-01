@@ -85,14 +85,25 @@ export default function TasksPage() {
     return Math.max(1, count);
   };
 
-  const addWorkingDays = (startStr, daysToAdd) => {
+    const addWorkingDays = (startStr, daysToAdd) => {
     if (!startStr) return '';
+    if (!workingDays || workingDays.length === 0) return startStr; // Failsafe
+    if (!daysToAdd || daysToAdd < 1) return startStr;
+
     let currentDate = new Date(startStr); let added = 0;
-    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) currentDate.setDate(currentDate.getDate() + 1);
+    
+    // Pastikan start date jatuh di hari kerja
+    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
     if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
+    
     while (added < (daysToAdd - 1)) {
       currentDate.setDate(currentDate.getDate() + 1);
-      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) added++;
+      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
+        added++;
+      }
     }
     return currentDate.toISOString().split('T')[0];
   };
@@ -233,7 +244,7 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Durasi (Hari)</label>
-                  <input required type="number" value={formData.duration} onChange={e => handleFormChange('duration', Number(e.target.value))} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
+                  <input required type="number" value={formData.duration} onChange={e => handleFormChange('duration', Number(e.target.value) || 0)} onBlur={() => handleFormBlur('duration')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Tipe Task</label>
@@ -247,11 +258,11 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Start Date</label>
-                  <input required type="date" value={formData.start_date || ''} onChange={e => handleFormChange('start_date', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="date" value={formData.start_date || ''} onChange={e => handleFormChange('start_date', e.target.value)} onBlur={() => handleFormBlur('start_date')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Finish Date</label>
-                  <input required type="date" value={formData.end_date || ''} onChange={e => handleFormChange('end_date', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="date" value={formData.end_date || ''} onChange={e => handleFormChange('end_date', e.target.value)} onBlur={() => handleFormBlur('end_date')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
 
@@ -287,4 +298,5 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
