@@ -1,232 +1,141 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-
-import AhspTemplateModal from '../../components/AhspTemplateModal';
-import AssignmentModal from '../../components/AssignmentModal';
-
 import { supabase } from '../../lib/supabase';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import AssignmentModal from '../../components/AssignmentModal';
+import { Plus, Trash2 } from 'lucide-react';
 
-export default function AHSPPage() {
-  const [templates, setTemplates] = useState([]);
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
+export default function AhspPage() {
+  const [ahspList, setAhspList] = useState([]);
+  const [selectedAhsp, setSelectedAhsp] = useState(null);
   const [details, setDetails] = useState([]);
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [overhead, setOverhead] = useState(15);
-  const [projectId, setProjectId] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const fetchTemplates = async () => {
-    try {
-      let { data: projects } = await supabase.from('projects').select('id').limit(1);
-      setProjectId(projects?.[0]?.id || null);
+  // State Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-      const { data, error } = await supabase.from('ahsp_templates').select('*');
-      if (error) throw error;
-      
-      setTemplates(data || []);
-      if (selectedTemplate) {
-        const updated = data.find(t => t.id === selectedTemplate.id);
-        if (updated) setSelectedTemplate(updated);
-      } else if (data?.length > 0) {
-        setSelectedTemplate(data[0]);
+  const fetchAhspList = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('ahsp_templates').select('*').order('name');
+    if (data) {
+      setAhspList(data);
+      if (data.length > 0 && !selectedAhsp) {
+        setSelectedAhsp(data[0]);
       }
-    } catch (err) { console.error(err); }
+    }
+    setLoading(false);
   };
 
-  const fetchDetails = async (templateId) => {
-    const { data } = await supabase.from('ahsp_details')
-      .select(`id, koefisien, master_hsd(*)`)
-      .eq('ahsp_template_id', templateId);
-    setDetails(data || []);
+  const fetchAhspDetails = async (ahspId) => {
+    if (!ahspId) return;
+    const { data } = await supabase
+      .from('ahsp_details')
+      .select('*, master_hsd(nama_item, satuan, harga_dasar, tipe)')
+      .eq('ahsp_template_id', ahspId);
+    if (data) setDetails(data);
   };
 
-  useEffect(() => { fetchTemplates(); }, []);
+  useEffect(() => { fetchAhspList(); }, []);
+  
   useEffect(() => {
-    if (selectedTemplate) {
-      fetchDetails(selectedTemplate.id);
-      setOverhead(selectedTemplate.overhead_percent || 15);
-    }
-  }, [selectedTemplate]);
+    if (selectedAhsp) fetchAhspDetails(selectedAhsp.id);
+  }, [selectedAhsp]);
 
-  const handleSaveTemplate = async (formData) => {
-    let error;
-    if (isEditMode && selectedTemplate) {
-      // Mode Edit: Hanya update data yang sedang dipilih
-      const res = await supabase.from('ahsp_templates').update(formData).eq('id', selectedTemplate.id);
-      error = res.error;
-    } else {
-      // Mode Tambah: Insert data baru
-      const res = await supabase.from('ahsp_templates').insert([{ ...formData, project_id: projectId }]);
-      error = res.error;
-    }
-
-    if (error) { alert('Gagal: ' + error.message); throw error; }
-    else { 
-      setIsTemplateModalOpen(false); 
-      setIsEditMode(false); 
-      fetchTemplates(); 
-    }
+  // Handle Refresh dari Modal
+  const handleRefreshDetails = () => {
+    if (selectedAhsp) fetchAhspDetails(selectedAhsp.id);
   };
 
-  const handleDeleteTemplate = async () => {
-    if (!selectedTemplate) return;
-    if (!confirm('Apakah Anda yakin ingin menghapus Katalog AHSP ini beserta komponennya?')) return;
-    
-    try {
-      // Hapus detail (komponen) terlebih dahulu
-      await supabase.from('ahsp_details').delete().eq('ahsp_template_id', selectedTemplate.id);
-      // Hapus template AHSP
-      const { error } = await supabase.from('ahsp_templates').delete().eq('id', selectedTemplate.id);
-      if (error) throw error;
-      
-      setSelectedTemplate(null);
-      fetchTemplates();
-    } catch (err) {
-      alert('Gagal menghapus AHSP: ' + err.message);
-    }
-  };
-
-  const handleDeleteComponent = async (detailId) => {
-    if (!confirm('Hapus komponen ini dari AHSP?')) return;
-    const { error } = await supabase.from('ahsp_details').delete().eq('id', detailId);
-    if (error) alert(error.message);
-    else fetchDetails(selectedTemplate.id);
-  };
-
-  const handleUpdateOverhead = async (val) => {
-    setOverhead(val);
-    if (selectedTemplate) {
-      await supabase.from('ahsp_templates').update({ overhead_percent: val }).eq('id', selectedTemplate.id);
-    }
-  };
-
-  const upah = details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'upah');
-  const bahan = details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'bahan');
-  const alat = details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'alat');
-
-  const calcTotal = (items) => items.reduce((sum, item) => sum + (item.koefisien * (item.master_hsd?.harga_dasar || 0)), 0);
-  const totalA = calcTotal(upah);
-  const totalB = calcTotal(bahan);
-  const totalC = calcTotal(alat);
-  const totalD = totalA + totalB + totalC;
-  const totalE = totalD * (overhead / 100);
-  const totalF = totalD + totalE;
-
-  const renderRow = (item, index) => {
-    const hargaSatuan = item.master_hsd?.harga_dasar || 0;
-    const jumlahHarga = item.koefisien * hargaSatuan;
-    return (
-      <tr key={item.id || index} className="border-b hover:bg-gray-50 group">
-        <td className="p-2 text-center text-sm">{index + 1}</td>
-        <td className="p-2 text-sm">{item.master_hsd?.nama_item}</td>
-        <td className="p-2 text-sm text-center">{item.master_hsd?.kode || '-'}</td>
-        <td className="p-2 text-sm text-center">{item.master_hsd?.unit}</td>
-        <td className="p-2 text-sm text-center">{item.koefisien}</td>
-        <td className="p-2 text-sm text-right">Rp {hargaSatuan.toLocaleString('id-ID')}</td>
-        <td className="p-2 text-sm text-right font-medium">Rp {jumlahHarga.toLocaleString('id-ID')}</td>
-        <td className="p-2 text-center">
-          <button onClick={() => handleDeleteComponent(item.id)} className="text-red-500 opacity-0 group-hover:opacity-100 transition text-xs font-bold">Hapus</button>
-        </td>
-      </tr>
-    );
-  };
+  if (loading) return <LoadingSpinner text="Memuat Katalog AHSP..." />;
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Katalog AHSP (Standar PUPR)</h1>
-        <button onClick={() => { setIsEditMode(false); setIsTemplateModalOpen(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Buat AHSP Baru</button>
-      </div>
+    <div className="p-6 bg-slate-50 min-h-screen flex gap-6">
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 h-fit">
-          <h2 className="font-bold mb-3 border-b pb-2">Daftar Katalog AHSP</h2>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2">
-            {templates.map(t => (
-              <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`w-full text-left p-3 rounded-lg border transition ${selectedTemplate?.id === t.id ? 'bg-blue-50 border-blue-300' : 'hover:bg-gray-50'}`}>
-                <div className="text-sm font-bold text-gray-800">{t.name}</div>
-                <div className="text-xs text-gray-500 mt-1">Satuan: {t.unit}</div>
-              </button>
-            ))}
-          </div>
+      {/* PANEL KIRI: DAFTAR AHSP */}
+      <div className="w-1/3 bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[calc(100vh-140px)]">
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h2 className="text-sm font-bold text-slate-800">Daftar Katalog AHSP</h2>
+          <button className="text-blue-600 hover:bg-blue-50 p-1 rounded"><Plus size={16} /></button>
         </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {ahspList.map(ahsp => (
+            <button
+              key={ahsp.id}
+              onClick={() => setSelectedAhsp(ahsp)}
+              className={`w-full text-left px-3 py-2 rounded-lg transition-colors border ${selectedAhsp?.id === ahsp.id ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-slate-50'}`}
+            >
+              <p className={`text-sm font-bold ${selectedAhsp?.id === ahsp.id ? 'text-blue-700' : 'text-slate-700'}`}>{ahsp.name}</p>
+              <p className="text-xs text-slate-500">Satuan: {ahsp.unit}</p>
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          {!selectedTemplate ? (
-            <div className="text-center text-gray-500 py-20">Pilih atau buat Katalog AHSP baru.</div>
-          ) : (
-            <div>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold">{selectedTemplate.name}</h2>
-                    <button onClick={() => { setIsEditMode(true); setIsTemplateModalOpen(true); }} className="text-xs bg-gray-200 text-gray-700 hover:bg-gray-300 px-2 py-1 rounded border border-gray-300 transition">
-                      ✏️ Edit
-                    </button>
-                    <button onClick={handleDeleteTemplate} className="text-xs bg-red-100 text-red-600 hover:bg-red-200 px-2 py-1 rounded border border-red-300 transition">
-                      🗑️ Hapus AHSP
-                    </button>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-1">Satuan: {selectedTemplate.unit}</p>
-                </div>
-                <button onClick={() => setIsDetailModalOpen(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">+ Tambah Komponen</button>
+      {/* PANEL KANAN: DETAIL KOMPONEN */}
+      <div className="w-2/3 bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)]">
+        {selectedAhsp ? (
+          <>
+            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">{selectedAhsp.name}</h2>
+                <p className="text-xs text-slate-500">Satuan: {selectedAhsp.unit}</p>
               </div>
-
-              <table className="w-full border-collapse border border-gray-300">
-                <thead className="bg-gray-100">
+              <button 
+                onClick={() => setIsModalOpen(true)} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2"
+              >
+                <Plus size={16} /> Tambah Komponen
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-auto p-4">
+              <table className="w-full text-sm text-left border-collapse">
+                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                   <tr>
-                    <th className="border border-gray-300 p-2 text-sm w-10">No</th>
-                    <th className="border border-gray-300 p-2 text-sm">Uraian</th>
-                    <th className="border border-gray-300 p-2 text-sm w-20">Kode</th>
-                    <th className="border border-gray-300 p-2 text-sm w-16">Satuan</th>
-                    <th className="border border-gray-300 p-2 text-sm w-20">Koefisien</th>
-                    <th className="border border-gray-300 p-2 text-sm w-32">Harga Satuan</th>
-                    <th className="border border-gray-300 p-2 text-sm w-32">Jumlah Harga</th>
-                    <th className="border border-gray-300 p-2 text-sm w-16">Aksi</th>
+                    <th className="p-2 border">No</th>
+                    <th className="p-2 border">Uraian</th>
+                    <th className="p-2 border">Kode</th>
+                    <th className="p-2 border text-center">Satuan</th>
+                    <th className="p-2 border text-center">Koefisien</th>
+                    <th className="p-2 border text-right">Harga Satuan</th>
+                    <th className="p-2 border text-right">Jumlah Harga</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="bg-gray-50 font-bold"><td className="border border-gray-300 p-2 text-sm" colSpan={8}>A. Tenaga Kerja</td></tr>
-                  {upah.map((item, i) => renderRow(item, i))}
-                  <tr className="bg-gray-50 font-semibold"><td className="border border-gray-300 p-2 text-sm text-right" colSpan={6}>Jumlah Harga Tenaga Kerja (A)</td><td className="border border-gray-300 p-2 text-sm text-right" colSpan={2}>Rp {totalA.toLocaleString('id-ID')}</td></tr>
-
-                  <tr className="bg-gray-50 font-bold"><td className="border border-gray-300 p-2 text-sm" colSpan={8}>B. Bahan</td></tr>
-                  {bahan.map((item, i) => renderRow(item, i))}
-                  <tr className="bg-gray-50 font-semibold"><td className="border border-gray-300 p-2 text-sm text-right" colSpan={6}>Jumlah Harga Bahan (B)</td><td className="border border-gray-300 p-2 text-sm text-right" colSpan={2}>Rp {totalB.toLocaleString('id-ID')}</td></tr>
-
-                  <tr className="bg-gray-50 font-bold"><td className="border border-gray-300 p-2 text-sm" colSpan={8}>C. Peralatan</td></tr>
-                  {alat.map((item, i) => renderRow(item, i))}
-                  <tr className="bg-gray-50 font-semibold"><td className="border border-gray-300 p-2 text-sm text-right" colSpan={6}>Jumlah Harga Peralatan (C)</td><td className="border border-gray-300 p-2 text-sm text-right" colSpan={2}>Rp {totalC.toLocaleString('id-ID')}</td></tr>
-
-                  <tr className="font-semibold"><td className="border border-gray-300 p-2 text-sm" colSpan={6}>D. Jumlah Harga (A+B+C)</td><td className="border border-gray-300 p-2 text-sm text-right" colSpan={2}>Rp {totalD.toLocaleString('id-ID')}</td></tr>
-                  <tr className="font-semibold">
-                    <td className="border border-gray-300 p-2 text-sm" colSpan={5}>E. Overhead + Profit</td>
-                    <td className="border border-gray-300 p-2 text-sm text-right flex items-center justify-end gap-1">
-                      <input type="number" value={overhead} onChange={(e) => handleUpdateOverhead(e.target.value)} className="w-16 border rounded p-1 text-right text-xs" /> %
-                    </td>
-                    <td className="border border-gray-300 p-2 text-sm text-right" colSpan={2}>Rp {totalE.toLocaleString('id-ID')}</td>
-                  </tr>
-                  <tr className="bg-blue-50 font-bold text-blue-900"><td className="border border-gray-300 p-2 text-sm" colSpan={6}>F. Harga Satuan Pekerjaan (D+E)</td><td className="border border-gray-300 p-2 text-sm text-right" colSpan={2}>Rp {totalF.toLocaleString('id-ID')}</td></tr>
+                  {details.length === 0 && (
+                    <tr><td colSpan={7} className="text-center p-6 text-slate-400 italic">Belum ada komponen.</td></tr>
+                  )}
+                  {details.map((d, idx) => {
+                    const hsd = d.master_hsd || {};
+                    const jumlah = (Number(d.koefisien) * Number(hsd.harga_dasar || 0));
+                    return (
+                      <tr key={d.id} className="hover:bg-slate-50">
+                        <td className="p-2 border text-center">{idx + 1}</td>
+                        <td className="p-2 border">{hsd.nama_item || '-'}</td>
+                        <td className="p-2 border text-xs text-slate-500">{hsd.tipe || '-'}</td>
+                        <td className="p-2 border text-center">{hsd.satuan || '-'}</td>
+                        <td className="p-2 border text-center">{d.koefisien}</td>
+                        <td className="p-2 border text-right">Rp {Number(hsd.harga_dasar || 0).toLocaleString('id-ID')}</td>
+                        <td className="p-2 border text-right font-bold">Rp {jumlah.toLocaleString('id-ID')}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-slate-400">Pilih AHSP di sebelah kiri</div>
+        )}
       </div>
 
-      <AhspTemplateModal 
-        isOpen={isTemplateModalOpen} 
-        onClose={() => { setIsTemplateModalOpen(false); setIsEditMode(false); }} 
-        onSave={handleSaveTemplate} 
-        initialData={selectedTemplate} 
-        isEdit={isEditMode}
+      {/* RENDER MODAL DENGAN PROPS YANG BENAR */}
+      <AssignmentModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        ahspId={selectedAhsp?.id} 
+        onRefresh={handleRefreshDetails} 
       />
-      <AssignmentModal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} ahspTemplate={selectedTemplate} onSaveSuccess={() => fetchDetails(selectedTemplate?.id)} />
     </div>
   );
 }
-
-
-
-
