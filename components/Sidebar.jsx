@@ -31,7 +31,7 @@ export default function Sidebar() {
           <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
             <span className="text-xs">P</span>
           </div>
-          ProManage <span className="text-xs bg-slate-800 px-2 py-0.5 rounded text-slate-400 ml-auto">ENT</span>
+          InfraControl <span className="text-xs bg-slate-800 px-2 py-0.5 rounded text-slate-400 ml-auto">PRO</span>
         </div>
       </div>
 
@@ -73,3 +73,4 @@ export default function Sidebar() {
     </div>
   );
 }
+

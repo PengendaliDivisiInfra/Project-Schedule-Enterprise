@@ -8,32 +8,29 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchTasks = async () => {
-      setLoading(true);
-      // Mengambil semua task tanpa filter aneh-aneh
-      const { data, error } = await supabase
-        .from('wbs_tasks')
-        .select('*, ahsp_templates(unit)')
-        .order('wbs_code');
-      
-      if (data) {
-        // Saring duplikat
-        const uniqueTasks = Array.from(new Map(data.map(item => [item.wbs_code, item])).values());
-        
-        // Format data
-        const formatted = uniqueTasks.map(t => ({
-          ...t,
-          satuan_hsd: t.ahsp_templates?.unit || 'unit',
-          volume: Number(t.volume) || 0,
-          cost: Number(t.cost) || 0
-        }));
-        setTasks(formatted);
-      }
-      setLoading(false);
-    };
-    fetchTasks();
-  }, []);
+  const fetchTasks = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
+    if (data) {
+      const uniqueTasks = Array.from(new Map(data.map(item => [item.wbs_code, item])).values());
+      setTasks(uniqueTasks.map(t => ({
+        ...t,
+        satuan_hsd: t.ahsp_templates?.unit || 'unit',
+        volume: Number(t.volume) || 0,
+        cost: Number(t.cost) || 0
+      })));
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchTasks(); }, []);
+
+  const handleDelete = async (id) => {
+    if (confirm("Hapus task ini beserta anak-anaknya?")) {
+      await supabase.from('wbs_tasks').delete().eq('id', id);
+      fetchTasks();
+    }
+  };
 
   if (loading) return <LoadingSpinner text="Memuat Tasks..." />;
 
@@ -64,7 +61,6 @@ export default function TasksPage() {
                 <th className="p-3">Durasi</th>
                 <th className="p-3">Start (ES)</th>
                 <th className="p-3">Finish (EF)</th>
-                <th className="p-3">Float</th>
                 <th className="p-3 text-center">Progres</th>
                 <th className="p-3 text-center">Aksi</th>
               </tr>
@@ -74,9 +70,7 @@ export default function TasksPage() {
                 const isSummary = t.summary === 'Yes';
                 return (
                   <tr key={t.id} className={`hover:bg-slate-50 ${isSummary ? 'bg-slate-50/50 font-bold' : ''} ${t.is_critical ? 'text-red-600' : 'text-slate-700'}`}>
-                    <td className="p-3">
-                      {isSummary ? '📁' : '📄'}
-                    </td>
+                    <td className="p-3">{isSummary ? '📁' : '📄'}</td>
                     <td className="p-3 text-xs text-slate-500">{isSummary ? '-' : t.mata_varian || '-'}</td>
                     <td className="p-3 font-mono">{t.wbs_code}</td>
                     <td className="p-3">{t.name}</td>
@@ -86,7 +80,6 @@ export default function TasksPage() {
                     <td className="p-3">{t.duration} d</td>
                     <td className="p-3">{t.start_date ? new Date(t.start_date).toLocaleDateString('id-ID') : '-'}</td>
                     <td className="p-3">{t.end_date ? new Date(t.end_date).toLocaleDateString('id-ID') : '-'}</td>
-                    <td className="p-3 text-center">{t.is_critical ? '0' : '-'}</td>
                     <td className="p-3">
                        <div className="w-full bg-slate-200 rounded-full h-2.5">
                           <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${t.progress_percent || 0}%` }}></div>
@@ -94,7 +87,8 @@ export default function TasksPage() {
                        <span className="text-xs text-center block mt-1">{t.progress_percent || 0}%</span>
                     </td>
                     <td className="p-3 text-center text-blue-600 font-medium text-xs whitespace-nowrap">
-                      <button className="hover:underline">Edit</button> | <button className="text-red-500 hover:underline">Hapus</button>
+                      <Link href={`/tasks/edit/${t.id}`} className="hover:underline">Edit</Link> | 
+                      <button onClick={() => handleDelete(t.id)} className="text-red-500 hover:underline ml-1">Hapus</button>
                     </td>
                   </tr>
                 );
