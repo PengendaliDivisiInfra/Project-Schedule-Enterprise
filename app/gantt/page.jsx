@@ -104,15 +104,17 @@ export default function GanttPage() {
   const handleInlineUpdate = async (taskId, field, value) => {
     isUpdatingRef.current = true; // Kunci WebSocket
     
-    // 1. Update state lokal secara optimis
-    let updatedTasks = tasks.map(t => t.id === taskId ? { ...t, [field]: value } : t);
+    // 1. Update state lokal secara optimis (hanya field yang diedit)
+    let tempTasks = tasks.map(t => t.id === taskId ? { ...t, [field]: value } : t);
     
-    // 2. Jalankan Scheduling Engine
-    updatedTasks = processProjectSchedule(updatedTasks, workingDays, exceptions);
-    setTasks(updatedTasks);
+    // 2. Jalankan Scheduling Engine (Kalkulasi ulang semua tanggal)
+    const calculatedTasks = processProjectSchedule(tempTasks, workingDays, exceptions);
+    
+    // 3. Set state dengan data hasil kalkulasi (Memaksa React Render)
+    setTasks([...calculatedTasks]); 
 
-    // 3. Cari tugas mana saja yang tanggalnya berubah (termasuk anak & induk)
-    const changedTasks = updatedTasks.filter(t => {
+    // 4. Cari semua tugas yang berubah (untuk disimpan ke DB)
+    const changedTasks = calculatedTasks.filter(t => {
       const original = tasks.find(o => o.id === t.id);
       return original && (
         original.start_date !== t.start_date || 
@@ -122,7 +124,7 @@ export default function GanttPage() {
       );
     });
 
-    // 4. Simpan SEMUA perubahan ke Database secara berurutan
+    // 5. Simpan SEMUA perubahan (Successor & Parent) ke Database
     if (changedTasks.length > 0) {
       for (const task of changedTasks) {
         await supabase.from('wbs_tasks').update({
@@ -133,8 +135,21 @@ export default function GanttPage() {
         }).eq('id', task.id);
       }
     }
-    
-    setTimeout(() => { isUpdatingRef.current = false; }, 1000);
+
+    // 6. VALIDASI FINAL: Tarik ulang data dari DB setelah 1 detik 
+    // (Memastikan UI & DB 100% sinkron, menghilangkan stale state)
+    setTimeout(async () => {
+      const { data } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
+      if (data) {
+        const uniqueTasks = Array.from(new Map(data.map(item => [item.wbs_code, item])).values());
+        const formattedTasks = uniqueTasks.map(t => ({
+          ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', 
+          volume: Number(t.volume) || 0, cost: Number(t.cost) || 0, duration: Number(t.duration) || 1
+        }));
+        setTasks(processProjectSchedule(formattedTasks, workingDays, exceptions));
+      }
+      isUpdatingRef.current = false; // Buka kunci WebSocket
+    }, 1000);
   };
 
   if (loading) return <LoadingSpinner text="Memuat Gantt Workspace..." />;
@@ -151,6 +166,7 @@ export default function GanttPage() {
     </div>
   );
 }
+
 
 
 
