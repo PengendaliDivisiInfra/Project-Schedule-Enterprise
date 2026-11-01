@@ -11,14 +11,27 @@ export default function GanttPage() {
   const [exceptions, setExceptions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
+    const fetchData = async () => {
     setLoading(true);
     
-    // 1. Ambil Kalender
+    // 1. Ambil Kalender DULU
     const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
+    
+    let currentWorkingDays = [1,2,3,4,5];
+    let currentExceptions = [];
+    
     if (projectData) {
-      if (projectData.working_days) setWorkingDays(projectData.working_days);
-      if (projectData.exceptions) setExceptions(projectData.exceptions);
+      if (projectData.working_days) {
+        // Pastikan tipe data angka
+        currentWorkingDays = Array.isArray(projectData.working_days) 
+          ? projectData.working_days.map(Number) 
+          : [1,2,3,4,5];
+        setWorkingDays(currentWorkingDays);
+      }
+      if (projectData.exceptions) {
+        currentExceptions = projectData.exceptions;
+        setExceptions(currentExceptions);
+      }
     }
 
     // 2. Ambil Tasks
@@ -28,20 +41,18 @@ export default function GanttPage() {
       .order('wbs_code');
       
     if (taskData) {
-      // A. ANTI-DUPLIKAT: Saring data berdasarkan wbs_code
       const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
 
-      // B. Hitung ulang durasi secara dinamis berdasarkan kalender
       const formattedTasks = uniqueTasks.map(t => {
         let calculatedDuration = Number(t.duration) || 1;
         
-        // Jika bukan summary dan punya tanggal, paksa hitung durasi
+        // Hitung ulang durasi berdasarkan kalender yang baru di-fetch
         if (t.summary !== 'Yes' && t.start_date && t.end_date) {
           let count = 0;
           let cur = new Date(t.start_date);
           const end = new Date(t.end_date);
           while (cur <= end) {
-            if (workingDays.includes(cur.getDay()) && !(exceptions || []).some(e => e.exception_date === cur.toISOString().split('T')[0])) {
+            if (currentWorkingDays.includes(cur.getDay()) && !currentExceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) {
               count++;
             }
             cur.setDate(cur.getDate() + 1);
@@ -54,8 +65,26 @@ export default function GanttPage() {
           satuan_hsd: t.ahsp_templates?.unit || 'unit',
           volume: Number(t.volume) || 0,
           cost: Number(t.cost) || 0,
-          duration: calculatedDuration
+          duration: calculatedDuration // <--- Durasi yang sudah dikalkulasi ulang
         };
+      });
+      setTasks(formattedTasks);
+    }
+
+    // 3. Ambil Relasi (SVG Lines)
+    if (taskData) {
+      const rels = [];
+      taskData.forEach(t => {
+        if (t.predecessors && t.summary !== 'Yes') {
+          const match = t.predecessors.match(/([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?/);
+          if (match) rels.push({ from: match[1], to: t.wbs_code, type: match[2] || 'FS', is_critical: t.is_critical });
+        }
+      });
+      setRelations(rels);
+    }
+
+    setLoading(false);
+  };
       });
       setTasks(formattedTasks);
     }
@@ -105,3 +134,4 @@ export default function GanttPage() {
     </div>
   );
 }
+

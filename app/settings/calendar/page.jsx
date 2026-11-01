@@ -25,7 +25,7 @@ export default function CalendarSettingsPage() {
     const { data, error } = await supabase.from('projects').select('id, working_days, exceptions').limit(1).maybeSingle();
     
     if (data) {
-      if (data.working_days) setWorkingDays(data.working_days);
+      if (data.working_days) setWorkingDays(Array.isArray(data.working_days) ? data.working_days.map(Number) : [1,2,3,4,5]);
       if (data.exceptions) setHolidays(data.exceptions);
     }
     setLoading(false);
@@ -197,3 +197,4 @@ export default function CalendarSettingsPage() {
     </div>
   );
 }
+

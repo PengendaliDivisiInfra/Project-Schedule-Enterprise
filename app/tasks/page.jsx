@@ -18,6 +18,20 @@ export default function TasksPage() {
   const [formData, setFormData] = useState({
     wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: ''
   });
+  
+  const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
+  const [exceptions, setExceptions] = useState([]);
+
+  useEffect(() => {
+    const fetchCalendar = async () => {
+      const { data } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
+      if (data) {
+        if (data.working_days) setWorkingDays(Array.isArray(data.working_days) ? data.working_days.map(Number) : [1,2,3,4,5]);
+        if (data.exceptions) setExceptions(data.exceptions);
+      }
+    };
+    fetchCalendar();
+  }, []);
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -61,34 +75,31 @@ export default function TasksPage() {
   };
 
   // HELPER: Kalkulasi Tanggal di dalam Form
-  const countDays = (start, end) => {
-    if (!start || !end) return 1;
-    const s = new Date(start); const e = new Date(end);
-    return Math.max(1, Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1);
-  };
-
-  const addDays = (start, days) => {
-    if (!start) return '';
-    const d = new Date(start);
-    d.setDate(d.getDate() + (Number(days) - 1));
-    return d.toISOString().split('T')[0];
-  };
-
-  const handleFormChange = (field, value) => {
-    let newData = { ...formData, [field]: value };
-
-    // LOGIKA SINKRONISASI
-    if (field === 'start_date') {
-      newData.end_date = addDays(value, newData.duration);
-    } else if (field === 'end_date') {
-      newData.duration = countDays(newData.start_date, value);
-    } else if (field === 'duration') {
-      if (newData.start_date) {
-        newData.end_date = addDays(newData.start_date, value);
-      }
+  const countWorkingDays = (startStr, endStr) => {
+    if (!startStr || !endStr) return 1;
+    let count = 0; let cur = new Date(startStr); const end = new Date(endStr);
+    while (cur <= end) {
+      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) count++;
+      cur.setDate(cur.getDate() + 1);
     }
-    setFormData(newData);
+    return Math.max(1, count);
   };
+
+  const addWorkingDays = (startStr, daysToAdd) => {
+    if (!startStr) return '';
+    let currentDate = new Date(startStr); let added = 0;
+    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) currentDate.setDate(currentDate.getDate() + 1);
+    if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
+    while (added < (daysToAdd - 1)) {
+      currentDate.setDate(currentDate.getDate() + 1);
+      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) added++;
+    }
+    return currentDate.toISOString().split('T')[0];
+  };
+
+  
+
+  
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -276,3 +287,4 @@ export default function TasksPage() {
     </div>
   );
 }
+
