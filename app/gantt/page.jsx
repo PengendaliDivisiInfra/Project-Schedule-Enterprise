@@ -74,7 +74,16 @@ export default function GanttPage() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+        const channel2 = supabase.channel('realtime-gantt-progress')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_progress' }, () => {
+        fetchData(); // Update bar chart progress jika ada input harian baru
+      })
+      .subscribe();
+
+    return () => { 
+      supabase.removeChannel(channel); 
+      supabase.removeChannel(channel2);
+    };
   }, []);
 
   const handleInlineUpdate = async (taskId, field, value) => {
@@ -95,3 +104,4 @@ export default function GanttPage() {
     </div>
   );
 }
+

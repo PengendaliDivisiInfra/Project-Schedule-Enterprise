@@ -1,17 +1,44 @@
 ﻿'use client';
+import { useEffect, useState } from 'react';
 import { Activity, DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
 export default function DashboardPage() {
+  const [totalProgress, setTotalProgress] = useState(0);
+
+  const fetchDashboardData = async () => {
+    // Simulasi kalkulasi progres sederhana (bisa dikembangkan jadi EVM penuh)
+    const { data } = await supabase.from('daily_progress').select('completed_volume');
+    if (data) {
+      const sum = data.reduce((acc, curr) => acc + Number(curr.completed_volume), 0);
+      // Anggap saja total progress adalah akumulasi volume (contoh kasar)
+      setTotalProgress(sum);
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+
+    // REAL-TIME LISTENER
+    const channel = supabase.channel('realtime-dashboard')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_progress' }, () => {
+        console.log('🔄 Dashboard mendeteksi progres baru, memperbarui grafik...');
+        fetchDashboardData();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Executive Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Executive Dashboard (Real-Time)</h1>
           <p className="text-sm text-slate-500">Ringkasan status proyek berdasarkan data aktual lapangan.</p>
         </div>
       </div>
 
-      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
           <div>
@@ -22,8 +49,8 @@ export default function DashboardPage() {
         </div>
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
           <div>
-            <p className="text-sm font-semibold text-slate-500 mb-1">Earned Value (EV)</p>
-            <p className="text-2xl font-bold text-slate-800">Rp 2.500.000</p>
+            <p className="text-sm font-semibold text-slate-500 mb-1">Akumulasi Progres</p>
+            <p className="text-2xl font-bold text-emerald-600">{totalProgress.toFixed(2)} <span className="text-xs font-normal text-slate-400">Vol</span></p>
           </div>
           <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><TrendingUp size={20} /></div>
         </div>
@@ -43,7 +70,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* PLACEHOLDER GRAFIK S-CURVE */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-96 flex flex-col items-center justify-center relative overflow-hidden">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#f1f5f9_1px,transparent_1px),linear-gradient(to_bottom,#f1f5f9_1px,transparent_1px)] bg-[size:40px_40px]"></div>
         <div className="z-10 text-center">

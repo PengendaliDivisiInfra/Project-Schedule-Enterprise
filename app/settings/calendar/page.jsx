@@ -17,6 +17,14 @@ export default function CalendarSettingsPage() {
 
   useEffect(() => {
     fetchCalendarSettings();
+
+        const channel = supabase.channel('realtime-calendar')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_exceptions' }, () => {
+        fetchCalendarSettings(); // Update kalender jika ada hari libur baru
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fetchCalendarSettings = async () => {
@@ -197,4 +205,5 @@ export default function CalendarSettingsPage() {
     </div>
   );
 }
+
 
