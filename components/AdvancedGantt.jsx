@@ -86,6 +86,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const getX = (dateStr) => {
     if (!dateStr) return 0;
     let targetDate = new Date(dateStr);
+    if (isNaN(targetDate.getTime())) return 0; // Failsafe jika tanggal invalid
     targetDate.setHours(0,0,0,0);
     let current = new Date(minDate);
     current.setHours(0,0,0,0);
@@ -100,7 +101,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
     displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
-      let width = t.duration * pixelsPerDay; if (rawLeft < 0) width = width + rawLeft;
+      let width = t.duration * pixelsPerDay;
       if (t.start_date && t.end_date) {
         const startX = getX(t.start_date);
         const endX = getX(t.end_date);
@@ -108,7 +109,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       }
       width = Math.max(8, width);
       const y = idx * ROW_HEIGHT;
-      taskRects[t.wbs_code] = { x, y, width, index: idx };
+      
+      // Simpan koordinat SVG (Mencegah x negatif)
+      taskRects[t.wbs_code] = { x: Math.max(0, x), y, width, index: idx };
     });
 
     relations.forEach(rel => {
@@ -300,7 +303,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             </div>
             
             <div className="flex items-center gap-2 ml-2">
-              {/* ZOOM DROPDOWN ENTERPRISE */}
               <div className="relative">
                 <select
                   value={zoomLevel}
@@ -311,7 +313,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   <option value="week">Skala: Minggu</option>
                   <option value="month">Skala: Bulan</option>
                 </select>
-                {/* Ikon Kaca Pembesar (Magnifying Glass) di kiri */}
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
                   <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -393,7 +394,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   <div className="w-12 px-1 border-l border-slate-100">
                     {!isSummary ? (
-                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-slate-800 font-bold placeholder:text-slate-400" />
+                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal" />
                     ) : (
                       <div className="text-center text-slate-300 text-[10px]">-</div>
                     )}
@@ -420,7 +421,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               {Array.from({ length: Math.ceil(displayTasks.length / 50) }).map((_, i) => (
                 <div key={i} className="w-full flex flex-col" style={{ height: 50 * ROW_HEIGHT }}>
                   {Array.from({ length: 50 }).map((_, j) => (
-                    <div key={j} className="w-full border-b border-slate-100" style={{ height: ROW_HEIGHT }}></div>
+                    <div key={j} className="w-full border-b border-slate-200" style={{ height: ROW_HEIGHT }}></div>
                   ))}
                 </div>
               ))}
@@ -450,13 +451,22 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             <div className="absolute inset-0 z-20 pointer-events-none">
               {visibleTasks.map((t, idx) => {
                 const actualIndex = startIndex + idx;
-                const rawLeft = getX(t.start_date); const left = Math.max(0, rawLeft);
-                let width = t.duration * pixelsPerDay; if (rawLeft < 0) width = width + rawLeft;
+                const rawLeft = getX(t.start_date);
+                const left = Math.max(0, rawLeft);
+                
+                let width = t.duration * pixelsPerDay;
                 if (t.start_date && t.end_date) {
                   const endX = getX(t.end_date);
-                  if (endX >= left) width = (endX - left) + pixelsPerDay;
+                  if (endX >= rawLeft) {
+                    width = (endX - rawLeft) + pixelsPerDay;
+                  }
+                }
+                // Jika bar mulai sebelum batas kiri layar (x negatif), sesuaikan lebarnya agar tidak overflow
+                if (rawLeft < 0) {
+                  width = width + rawLeft; 
                 }
                 width = Math.max(8, width);
+                
                 const top = actualIndex * ROW_HEIGHT + 6; 
                 const isHovered = hoveredTaskId === t.id;
                 const isSummary = t.summary === 'Yes';
@@ -483,5 +493,3 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
-
-
