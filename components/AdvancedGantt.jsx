@@ -133,15 +133,13 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       const points = [[sourceX, sourceY]];
       const paddingX = zoomLevel === 'day' ? 12 : 4;
 
-      if (rel.type === 'FS') {
-        if (targetX >= sourceX + paddingX) {
-          const midX = sourceX + (targetX - sourceX) / 2;
-          points.push([midX, sourceY]); points.push([midX, targetY]);
-        } else {
-          const midY = fromCenterY + (toCenterY - fromCenterY) / 2;
-          points.push([sourceX + paddingX, sourceY]); points.push([sourceX + paddingX, midY]);
-          points.push([targetX - paddingX, midY]); points.push([targetX - paddingX, targetY]);
-        }
+      // Jika target berada di kiri (mundur) atau terlalu dekat, rute memutar
+      if (targetX < sourceX + 20) {
+        const midY = fromCenterY + ROW_HEIGHT / 2;
+        points.push([sourceX, sourceY + 8]); 
+        points.push([sourceX, midY]); 
+        points.push([targetX - 10, midY]); 
+        points.push([targetX - 10, targetY]);
       } else {
         const midX = sourceX + (targetX - sourceX) / 2;
         points.push([midX, sourceY]); points.push([midX, targetY]);
@@ -395,7 +393,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   <div className="w-12 px-1 border-l border-slate-100">
                     {!isSummary ? (
-                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-slate-800 placeholder:text-slate-400 placeholder:font-normal" />
+                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-black font-semibold placeholder:text-slate-400 placeholder:font-normal" />
                     ) : (
                       <div className="text-center text-slate-300 text-[10px]">-</div>
                     )}
@@ -471,7 +469,10 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 const progress = Number(t.progress_percent) || 0;
 
                 if (t.duration === 0) return <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 5, top: top + 2 }}><div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div></div>;
-                if (isSummary) return <div key={t.id} className="absolute pointer-events-auto" style={{ left, width, top: top + 2 }}><div className="absolute top-0 w-full h-[4px] bg-slate-800"></div><div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div><div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div></div>;
+                if (isSummary) {
+                  if (!t.start_date || !t.end_date) return null; // Mencegah bar melayang
+                  return <div key={t.id} className="absolute pointer-events-auto" style={{ left, width, top: top + 2 }}><div className="absolute top-0 w-full h-[4px] bg-slate-800"></div><div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div><div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div></div>;
+                }
 
                 return (
                   <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width, top }}>
@@ -490,3 +491,4 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+

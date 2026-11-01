@@ -103,6 +103,12 @@ export default function GanttPage() {
   const handleInlineUpdate = async (taskId, field, value) => {
     isUpdatingRef.current = true; // Kunci WebSocket
     await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+    
+    // JIKA YANG DIUBAH ADALAH PREDECESSOR, PAKSA FETCH ULANG DATA
+    if (field === 'predecessors') {
+      await fetchData(true); // Fetch ulang seluruh data jadwal
+    }
+    
     setTimeout(() => { isUpdatingRef.current = false; }, 1000);
   };
 
@@ -120,6 +126,7 @@ export default function GanttPage() {
     </div>
   );
 }
+
 
 
 
