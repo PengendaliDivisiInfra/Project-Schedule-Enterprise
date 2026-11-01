@@ -103,11 +103,35 @@ export default function GanttPage() {
 
   const handleInlineUpdate = async (taskId, field, value) => {
     isUpdatingRef.current = true; // Kunci WebSocket
-    await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
     
-    // JIKA YANG DIUBAH ADALAH PREDECESSOR, PAKSA FETCH ULANG DATA
-    if (field === 'predecessors') {
-      await fetchData(true); // Fetch ulang seluruh data jadwal
+    // 1. Update state lokal secara optimis
+    let updatedTasks = tasks.map(t => t.id === taskId ? { ...t, [field]: value } : t);
+    
+    // 2. Jalankan Scheduling Engine
+    updatedTasks = processProjectSchedule(updatedTasks, workingDays, exceptions);
+    setTasks(updatedTasks);
+
+    // 3. Cari tugas mana saja yang tanggalnya berubah (termasuk anak & induk)
+    const changedTasks = updatedTasks.filter(t => {
+      const original = tasks.find(o => o.id === t.id);
+      return original && (
+        original.start_date !== t.start_date || 
+        original.end_date !== t.end_date || 
+        original.duration !== t.duration || 
+        original.predecessors !== t.predecessors
+      );
+    });
+
+    // 4. Simpan SEMUA perubahan ke Database secara berurutan
+    if (changedTasks.length > 0) {
+      for (const task of changedTasks) {
+        await supabase.from('wbs_tasks').update({
+          start_date: task.start_date,
+          end_date: task.end_date,
+          duration: task.duration,
+          predecessors: task.predecessors
+        }).eq('id', task.id);
+      }
     }
     
     setTimeout(() => { isUpdatingRef.current = false; }, 1000);
@@ -127,6 +151,7 @@ export default function GanttPage() {
     </div>
   );
 }
+
 
 
 
