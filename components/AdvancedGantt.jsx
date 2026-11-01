@@ -7,12 +7,18 @@ const ROW_HEIGHT = 38;
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
   const leftPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
+  const [localTasks, setLocalTasks] = useState(tasks);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
-  const [hoveredTaskId, setHoveredTaskId] = useState(null); // State untuk Dual Highlighting
+  const [hoveredTaskId, setHoveredTaskId] = useState(null);
+
+  // Sinkronisasi state lokal dengan database jika ada update dari luar
+  useEffect(() => {
+    setLocalTasks(tasks);
+  }, [tasks]); // State untuk Dual Highlighting
 
   const displayTasks = showCriticalOnly 
-    ? tasks.filter(t => t.is_critical || t.summary === 'Yes') 
-    : tasks;
+    ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
+    : localTasks;
 
   // 1. Generate Calendar Days
   let minDate = new Date();
@@ -181,6 +187,16 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     });
   };
 
+    const handleLocalInlineUpdate = (id, field, value) => {
+    // A. UPDATE UI SEKETIKA (Tanpa nunggu database)
+    setLocalTasks(prev => prev.map(t => {
+      if (t.id === id) return { ...t, [field]: value };
+      return t;
+    }));
+    // B. Kirim ke database via parent
+    onInlineUpdate(id, field, value);
+  };
+
   const calculateDailyTarget = (task) => {
     if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
     const totalTarget = Number(task.smart_target) || 0;
@@ -284,7 +300,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                         <input 
                           type="number" 
                           defaultValue={t.volume || 0} 
-                          onBlur={(e) => onInlineUpdate(t.id, 'volume', Number(e.target.value))}
+                          onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))}
                           className="w-10 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold"
                         />
                         <span className="text-[9px] text-slate-500 font-medium truncate">{t.satuan_hsd}</span>
@@ -293,7 +309,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   <div className="w-10 text-center border-l border-slate-100">
                     {isSummary ? <span>{t.duration}d</span> : (
-                      <input type="number" defaultValue={t.duration} onBlur={(e) => onInlineUpdate(t.id, 'duration', Number(e.target.value))} className="w-8 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px]" />
+                      <input type="number" defaultValue={t.duration} onBlur={(e) => handleLocalInlineUpdate(t.id, 'duration', Number(e.target.value))} className="w-8 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px]" />
                     )}
                   </div>
                   <div className="w-[85px] text-center border-l border-slate-100">
@@ -309,7 +325,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   <span className="w-12 text-center text-slate-500 border-l border-slate-100 truncate">{t.predecessors || '-'}</span>
                   <div className="w-16 px-1 border-l border-slate-100">
                     {!isSummary && (
-                      <input type="text" defaultValue={t.resource_names || ''} placeholder="..." onBlur={(e) => onInlineUpdate(t.id, 'resource_names', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-slate-300" />
+                      <input type="text" defaultValue={t.resource_names || ''} placeholder="..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'resource_names', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-slate-300" />
                     )}
                   </div>
                   <span className="w-10 text-center font-bold text-slate-700 border-l border-slate-100">{t.progress_percent}%</span>
@@ -428,5 +444,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
 
