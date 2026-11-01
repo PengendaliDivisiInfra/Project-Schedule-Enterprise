@@ -1,25 +1,20 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // State untuk Modal Form (Tambah/Edit)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
-  
-  // State untuk Dialog Konfirmasi Hapus
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  
-  // State untuk Notifikasi (Toast)
-  const [toast, setToast] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  // State Form Data
   const [formData, setFormData] = useState({
     wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: ''
   });
@@ -41,14 +36,12 @@ export default function TasksPage() {
 
   useEffect(() => { fetchTasks(); }, []);
 
-  // Fungsi Buka Modal Tambah
   const handleOpenAdd = () => {
     setEditingTask(null);
     setFormData({ wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: '' });
     setIsModalOpen(true);
   };
 
-  // Fungsi Buka Modal Edit
   const handleOpenEdit = (task) => {
     setEditingTask(task);
     setFormData({
@@ -64,12 +57,11 @@ export default function TasksPage() {
     setIsModalOpen(true);
   };
 
-  // Simpan Data (Tambah/Edit)
   const handleSave = async (e) => {
     e.preventDefault();
-    setIsSaving(true); // Mulai loading
+    setIsSaving(true);
     
-    // Simulasi delay kecil agar spinner terlihat (opsional, untuk UX)
+    // Simulasi delay kecil agar transisi spinner terlihat halus
     await new Promise(resolve => setTimeout(resolve, 500));
 
     if (editingTask) {
@@ -80,17 +72,13 @@ export default function TasksPage() {
       showToast('success', 'Task baru berhasil ditambahkan!');
     }
     
-    setIsSaving(false); // Hentikan loading
+    setIsSaving(false);
     setIsModalOpen(false);
     fetchTasks();
   };
 
-  // Buka Dialog Hapus
-  const handleDeleteClick = (task) => {
-    setDeleteTarget(task);
-  };
+  const handleDeleteClick = (task) => setDeleteTarget(task);
 
-  // Konfirmasi Hapus
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     await supabase.from('wbs_tasks').delete().eq('id', deleteTarget.id);
@@ -99,7 +87,6 @@ export default function TasksPage() {
     fetchTasks();
   };
 
-  // Helper Toast
   const showToast = (type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3000);
@@ -118,6 +105,7 @@ export default function TasksPage() {
       )}
 
       <div className="max-w-6xl mx-auto space-y-4">
+        
         {/* INLINE BANNER ALERT */}
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3 shadow-sm">
           <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
@@ -128,58 +116,59 @@ export default function TasksPage() {
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b border-slate-200">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Task Management (CPM Engine)</h1>
-            <p className="text-sm text-slate-500">Warna <span className="text-red-500 font-bold">Merah</span> menandakan Jalur Kritis.</p>
+          <div className="flex justify-between items-center p-4 border-b border-slate-200">
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">Task Management (CPM Engine)</h1>
+              <p className="text-sm text-slate-500">Warna <span className="text-red-500 font-bold">Merah</span> menandakan Jalur Kritis.</p>
+            </div>
+            <button onClick={handleOpenAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-colors">
+              + Tambah Task
+            </button>
           </div>
-          <button onClick={handleOpenAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow">
-            + Tambah Task
-          </button>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-              <tr>
-                <th className="p-3">Hierarki</th>
-                <th className="p-3">Mata Varian</th>
-                <th className="p-3">WBS</th>
-                <th className="p-3">Nama Task</th>
-                <th className="p-3">Volume</th>
-                <th className="p-3">Total Biaya</th>
-                <th className="p-3">Durasi</th>
-                <th className="p-3 text-center">Progres</th>
-                <th className="p-3 text-center">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {tasks.map((t) => {
-                const isSummary = t.summary === 'Yes';
-                return (
-                  <tr key={t.id} className={`hover:bg-slate-50 ${isSummary ? 'bg-slate-50/50 font-bold' : ''} ${t.is_critical ? 'text-red-600' : 'text-slate-700'}`}>
-                    <td className="p-3">{isSummary ? '📁' : '📄'}</td>
-                    <td className="p-3 text-xs text-slate-500">{isSummary ? '-' : t.mata_varian || '-'}</td>
-                    <td className="p-3 font-mono">{t.wbs_code}</td>
-                    <td className="p-3">{t.name}</td>
-                    <td className="p-3">{isSummary ? '-' : `${t.volume} ${t.satuan_hsd}`}</td>
-                    <td className="p-3 font-semibold">{isSummary ? '-' : `Rp ${Number(t.cost).toLocaleString('id-ID')}`}</td>
-                    <td className="p-3">{t.duration} d</td>
-                    <td className="p-3">
-                       <div className="w-full bg-slate-200 rounded-full h-2.5">
-                          <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${t.progress_percent || 0}%` }}></div>
-                       </div>
-                       <span className="text-xs text-center block mt-1">{t.progress_percent || 0}%</span>
-                    </td>
-                    <td className="p-3 text-center text-blue-600 font-medium text-xs whitespace-nowrap">
-                      <button onClick={() => handleOpenEdit(t)} className="hover:underline">Edit</button> | 
-                      <button onClick={() => handleDeleteClick(t)} className="text-red-500 hover:underline ml-1">Hapus</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="p-3">Hierarki</th>
+                  <th className="p-3">Mata Varian</th>
+                  <th className="p-3">WBS</th>
+                  <th className="p-3">Nama Task</th>
+                  <th className="p-3">Volume</th>
+                  <th className="p-3">Total Biaya</th>
+                  <th className="p-3">Durasi</th>
+                  <th className="p-3 text-center">Progres</th>
+                  <th className="p-3 text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {tasks.map((t) => {
+                  const isSummary = t.summary === 'Yes';
+                  return (
+                    <tr key={t.id} className={`hover:bg-slate-50 ${isSummary ? 'bg-slate-50/50 font-bold' : ''} ${t.is_critical ? 'text-red-600' : 'text-slate-700'}`}>
+                      <td className="p-3">{isSummary ? '📁' : '📄'}</td>
+                      <td className="p-3 text-xs text-slate-500">{isSummary ? '-' : t.mata_varian || '-'}</td>
+                      <td className="p-3 font-mono">{t.wbs_code}</td>
+                      <td className="p-3">{t.name}</td>
+                      <td className="p-3">{isSummary ? '-' : `${t.volume} ${t.satuan_hsd}`}</td>
+                      <td className="p-3 font-semibold">{isSummary ? '-' : `Rp ${Number(t.cost).toLocaleString('id-ID')}`}</td>
+                      <td className="p-3">{t.duration} d</td>
+                      <td className="p-3">
+                        <div className="w-full bg-slate-200 rounded-full h-2.5">
+                            <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${t.progress_percent || 0}%` }}></div>
+                        </div>
+                        <span className="text-xs text-center block mt-1">{t.progress_percent || 0}%</span>
+                      </td>
+                      <td className="p-3 text-center text-blue-600 font-medium text-xs whitespace-nowrap">
+                        <button onClick={() => handleOpenEdit(t)} className="hover:underline">Edit</button> | 
+                        <button onClick={() => handleDeleteClick(t)} className="text-red-500 hover:underline ml-1">Hapus</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -274,4 +263,3 @@ export default function TasksPage() {
     </div>
   );
 }
-
