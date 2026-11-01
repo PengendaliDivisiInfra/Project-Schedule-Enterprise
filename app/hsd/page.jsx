@@ -75,6 +75,21 @@ export default function HsdPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
+              {hsdList.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-10 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                        <svg className="w-8 h-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                        </svg>
+                      </div>
+                      <p className="font-bold text-slate-700">Belum Ada Data HSD</p>
+                      <p className="text-sm text-slate-400 mt-1">Silakan tambahkan data baru atau jalankan SQL sample data.</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {hsdList.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50 text-slate-700">
                   <td className="p-3">
@@ -139,3 +154,4 @@ export default function HsdPage() {
     </div>
   );
 }
+
