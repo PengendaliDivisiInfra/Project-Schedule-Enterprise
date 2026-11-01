@@ -1,38 +1,37 @@
-﻿# Project Handoff Document - ProManage Construction
+﻿# Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** 🟢 Production Ready (V9 - Dynamic Auto-Scheduled CPM)
+**Status Proyek:** 🟢 Production Ready (V10 - Enterprise Grade)
 **Terakhir Diperbarui:** 01 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Current Status)
-Sistem telah mencapai tahap *Enterprise Grade* dengan mesin penjadwalan otomatis (Auto-Scheduled CPM) yang berjalan di sisi Database (Supabase PostgreSQL) dan UI yang sangat responsif (Optimistic UI).
+Sistem telah mencapai tahap **Enterprise Grade** dengan implementasi *Scheduling Engine* otomatis yang terintegrasi langsung dengan Database (Supabase PostgreSQL) dan antarmuka pengguna (UI/UX) modern yang setara dengan aplikasi berbayar.
 
 ### Fitur Unggulan yang Telah Selesai:
-- **Dynamic Auto-Schedule CPM Engine (Database Trigger):** 
-  - Sinkronisasi otomatis antara Durasi, Start Date, dan Finish Date.
-  - Penghitungan otomatis yang melompati hari libur (Weekend & Hari Libur Nasional).
-  - *Cascading Update:* Jika tanggal suatu tugas berubah, tugas *Successor* (yang bergantung padanya) akan otomatis bergeser tanggalnya secara berantai.
-  - *Roll-up Summary Task:* Tugas Induk (Parent) otomatis menyesuaikan tanggal dari anak-anaknya dan tidak bisa diedit manual.
-- **Optimistic UI (Real-time Gantt Chart):** Pergeseran tanggal dan durasi terasa instan di UI tanpa perlu me-refresh halaman, karena UI memperbarui memori lokal sebelum mengirim data ke database.
-- **Interactive Gantt Chart:** 
-  - Bar chart otomatis meregang/menyusut mengikuti Durasi & Tanggal.
-  - Visualisasi hari Sabtu/Minggu (abu-abu) dan Hari Libur Nasional (merah pudar).
-  - Input tanggal Start dikunci secara otomatis jika tugas memiliki Predecessor.
-- **Kalender Kerja Fleksibel:** Pengaturan 5 hari kerja, 6 hari kerja, atau *Full Day* (7 hari) yang langsung memengaruhi kalkulasi UI Gantt dan Database Trigger.
-- **Sinkronisasi Laporan:** Laporan Harian dan Mingguan otomatis menarik data (Nama Proyek, Kontraktor, Nilai Kontrak, dll) dari halaman Database Proyek.
+- **UI/UX Enterprise (V10 Update):**
+  - **Modals & Dialogs:** Form Tambah/Edit Task dan Konfirmasi Hapus menggunakan *floating modals* dengan efek *glassmorphism* (blur) dan animasi *scale-in*.
+  - **Toast Notifications:** Notifikasi elegan (hijau/merah) di pojok kanan atas sebagai pengganti `alert()` browser.
+  - **Collapsible Sidebar:** Tombol *toggle* melayang untuk mode fokus penuh.
+  - **Rebranding:** Nama aplikasi resmi diubah menjadi **InfraControl PRO**.
+- **Auto-Scheduling & CPM Engine (Database Level):**
+  - **Cascading Update (SQL Triggers):** Pergeseran tanggal otomatis untuk *Successor* (FS, SS, FF, SF) yang melompati *weekend/hari libur*.
+  - **Summary Roll-up:** Tanggal *Parent* otomatis dihitung dari *Child* dan dikunci (read-only).
+  - **Dynamic Work Calendar:** Penjadwalan (Frontend & Backend) membaca konfigurasi `working_days` (bisa 5 hari atau 7 hari/Full Day).
+  - **Baseline & CPM:** Tersedia tombol "Set Baseline" (menyimpan snapshot jadwal) dan "Recalc CPM" (menghitung ulang jalur kritis dan mewarnai bar menjadi merah).
+- **Modul Lainnya:** Gantt Chart Interaktif (Zoom Day/Week/Month), EVM & S-Curve Akurat, Laporan Harian/Mingguan Standar PUPR, AHSP, HSD, Procurement/BoQ.
 
 ## 2. Isu yang Diketahui (Known Issues)
-- **Warning GoTrueClient:** Peringatan kuning di *console* browser akibat *React StrictMode*. **Aman untuk diabaikan**.
-- **Kalkulasi Backward Pass (Float & Jalur Kritis):** Saat ini perhitungan jalur kritis (warna merah) masih menggunakan status *default* dari database. Untuk kalkulasi *Total Float* (Backward Pass) secara akurat, disarankan menambahkan tombol "Recalculate CPM" yang memanggil Stored Procedure di masa mendatang.
+- **Autentikasi (Login/Register):** Belum diimplementasikan (masih berjalan sebagai *single user / admin mode*).
+- **Multi-Project:** Saat ini sistem mengasumsikan hanya ada 1 Proyek aktif di dalam database (mengambil data `LIMIT 1` dari tabel projects).
 
 ## 3. Panduan Developer Selanjutnya (Next Steps)
-1. **Recalculate CPM Button:** Implementasikan fungsi SQL `WITH RECURSIVE` untuk menghitung *Backward Pass* (Late Start, Late Finish, Total Float) guna mewarnai Jalur Kritis secara akurat.
-2. **Autentikasi (Login/Register):** Implementasikan Supabase Auth (RLS) sebelum aplikasi digunakan oleh banyak user.
-3. **Lag / Lead (FS+2, SS-1):** Tambahkan logika parsing di `process_cpm_schedule` untuk mendeteksi jeda waktu (Lag) pada Predecessor.
+1. **Supabase Auth (RLS):** Implementasikan halaman Login dan aktifkan *Row Level Security* agar aplikasi siap digunakan oleh banyak *Project Manager*.
+2. **Multi-Project Support:** Tambahkan fitur untuk membuat dan memilih Proyek yang berbeda (mengubah query `LIMIT 1` menjadi filter `project_id`).
+3. **Web Worker Optimization:** Jika tugas mencapai puluhan ribu baris, pindahkan algoritma UI (seperti render SVG) ke *Web Worker*.
 
 ## 4. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
 - **Supabase Dashboard:** [Link Supabase]
-- **Repository GitHub:** https://github.com/PengendaliDivisiInfra/Project-Schedule-Enterprise
+- **Repository GitHub:** [Link GitHub]
