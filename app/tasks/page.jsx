@@ -22,13 +22,14 @@ export default function TasksPage() {
     wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: ''
   });
 
-  const fetchTasks = async () => {
+  const fetchTasks = async (silent = false) => {
+    if (!silent) setLoading(true);
     const { data } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
     if (data) {
       const uniqueTasks = Array.from(new Map(data.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks.map(t => ({ ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0 })));
     }
-    setLoading(false);
+    if (!silent) setLoading(false);
   };
 
   const fetchCalendar = async () => {
@@ -118,27 +119,25 @@ export default function TasksPage() {
   const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    isSavingRef.current = true; // Kunci WebSocket
+    isSavingRef.current = true; // Kunci WebSocket (Anti-Revert)
 
-    // 1. OPTIMISTIC UI (Update layar seketika)
+    // 1. Kirim ke Database
     if (editingTask) {
-      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...formData } : t));
-    }
-
-    // 2. Kirim ke Database di latar belakang
-    if (editingTask) {
-      await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
-      showToast('success', 'Task berhasil diperbarui!');
+      const { error } = await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
+      if (!error) showToast('success', 'Task berhasil diperbarui!');
     } else {
-      await supabase.from('wbs_tasks').insert([formData]);
-      showToast('success', 'Task baru berhasil ditambahkan!');
+      const { error } = await supabase.from('wbs_tasks').insert([formData]);
+      if (!error) showToast('success', 'Task baru berhasil ditambahkan!');
     }
     
+    // 2. INSTANT FETCH: Segera tarik data terbaru (tanpa loading screen) agar UI langsung berubah
+    await fetchTasks(true); 
+
     setIsSaving(false);
     setIsModalOpen(false);
     
-    // Beri jeda 1 detik sebelum WebSocket diizinkan jalan lagi
-    setTimeout(() => { isSavingRef.current = false; }, 2000);
+    // Buka kunci WebSocket setelah 1 detik
+    setTimeout(() => { isSavingRef.current = false; }, 1000);
   };
 
   const handleDeleteConfirm = async () => {
@@ -310,6 +309,7 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
 
 
