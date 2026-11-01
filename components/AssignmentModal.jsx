@@ -13,7 +13,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
   const [newHsd, setNewHsd] = useState({
     tipe: 'Bahan',
     nama_item: '',
-    satuan: '',
+    satuan: 'Unit',
     harga_dasar: ''
   });
 
@@ -24,7 +24,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       setMode('existing');
       setSelectedHsdId('');
       setKoefisien('');
-      setNewHsd({ tipe: 'Bahan', nama_item: '', satuan: '', harga_dasar: '' });
+      setNewHsd({ tipe: 'Bahan', nama_item: '', satuan: 'Unit', harga_dasar: '' });
       
       const fetchHsd = async () => {
         const { data } = await supabase.from('master_hsd').select('*').order('tipe');
@@ -181,6 +181,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
+
 
 
 
