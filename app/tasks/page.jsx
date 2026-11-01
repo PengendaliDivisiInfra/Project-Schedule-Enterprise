@@ -44,12 +44,15 @@ export default function TasksPage() {
 
   const handleOpenEdit = (task) => {
     setEditingTask(task);
+    // BUG FIX: Potong string tanggal agar sesuai format HTML input (YYYY-MM-DD)
+    const formatDate = (dateStr) => dateStr ? dateStr.split('T')[0] : '';
+    
     setFormData({
       wbs_code: task.wbs_code,
       name: task.name,
       duration: task.duration,
-      start_date: task.start_date || '',
-      end_date: task.end_date || '',
+      start_date: formatDate(task.start_date),
+      end_date: formatDate(task.end_date),
       volume: task.volume || 0,
       summary: task.summary || 'No',
       predecessors: task.predecessors || ''
@@ -57,11 +60,39 @@ export default function TasksPage() {
     setIsModalOpen(true);
   };
 
+  // HELPER: Kalkulasi Tanggal di dalam Form
+  const countDays = (start, end) => {
+    if (!start || !end) return 1;
+    const s = new Date(start); const e = new Date(end);
+    return Math.max(1, Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1);
+  };
+
+  const addDays = (start, days) => {
+    if (!start) return '';
+    const d = new Date(start);
+    d.setDate(d.getDate() + (Number(days) - 1));
+    return d.toISOString().split('T')[0];
+  };
+
+  const handleFormChange = (field, value) => {
+    let newData = { ...formData, [field]: value };
+
+    // LOGIKA SINKRONISASI
+    if (field === 'start_date') {
+      newData.end_date = addDays(value, newData.duration);
+    } else if (field === 'end_date') {
+      newData.duration = countDays(newData.start_date, value);
+    } else if (field === 'duration') {
+      if (newData.start_date) {
+        newData.end_date = addDays(newData.start_date, value);
+      }
+    }
+    setFormData(newData);
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    
-    // Simulasi delay kecil agar transisi spinner terlihat halus
     await new Promise(resolve => setTimeout(resolve, 500));
 
     if (editingTask) {
@@ -96,8 +127,6 @@ export default function TasksPage() {
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen relative overflow-hidden">
-      
-      {/* TOAST NOTIFICATION */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-lg shadow-xl text-white font-bold animate-fade-in-up ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.message}
@@ -105,8 +134,6 @@ export default function TasksPage() {
       )}
 
       <div className="max-w-6xl mx-auto space-y-4">
-        
-        {/* INLINE BANNER ALERT */}
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3 shadow-sm">
           <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
           <div>
@@ -172,7 +199,6 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* MODAL FORM (TAMBAH / EDIT) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
@@ -185,7 +211,7 @@ export default function TasksPage() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-1">
                   <label className="block text-xs font-bold text-slate-600 mb-1">WBS Code</label>
-                  <input required type="text" value={formData.wbs_code} onChange={e => setFormData({...formData, wbs_code: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="text" value={formData.wbs_code} onChange={e => setFormData({...formData, wbs_code: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-slate-600 mb-1">Nama Pekerjaan</label>
@@ -196,7 +222,7 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Durasi (Hari)</label>
-                  <input required type="number" value={formData.duration} onChange={e => setFormData({...formData, duration: Number(e.target.value)})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="number" value={formData.duration} onChange={e => handleFormChange('duration', Number(e.target.value))} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Tipe Task</label>
@@ -210,28 +236,18 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Start Date</label>
-                  <input required type="date" value={formData.start_date || ''} onChange={e => setFormData({...formData, start_date: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="date" value={formData.start_date || ''} onChange={e => handleFormChange('start_date', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Finish Date</label>
-                  <input required type="date" value={formData.end_date || ''} onChange={e => setFormData({...formData, end_date: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="date" value={formData.end_date || ''} onChange={e => handleFormChange('end_date', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
-                <button 
-                  type="submit" 
-                  disabled={isSaving}
-                  className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2
-                    ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}
-                  `}
-                >
-                  {isSaving ? (
-                    <><Loader2 size={16} className="animate-spin" /> Menyimpan...</>
-                  ) : (
-                    'Simpan Task'
-                  )}
+                <button type="submit" disabled={isSaving} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                  {isSaving ? <><Loader2 size={16} className="animate-spin" /> Menyimpan...</> : 'Simpan Task'}
                 </button>
               </div>
             </form>
@@ -239,14 +255,11 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* DIALOG KONFIRMASI HAPUS */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
             <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-              <svg className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+              <svg className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </div>
             <h3 className="text-lg font-bold text-slate-900 mb-2">Hapus Task Ini?</h3>
             <p className="text-sm text-slate-500 mb-6">
