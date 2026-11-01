@@ -1,230 +1,197 @@
 ﻿'use client';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
-import { Calendar, Clock, Plus, Trash2, ShieldAlert, Check } from 'lucide-react';
+import LoadingSpinner from '../../../components/LoadingSpinner';
 
-export default function CalendarConfiguration() {
-  const [calendarId, setCalendarId] = useState(null);
-  const [workingDays, setWorkingDays] = useState([1, 2, 3, 4, 5]); 
-  const [holidays, setHolidays] = useState([]);
-  const [newHolidayDate, setNewHolidayDate] = useState('');
-  const [newHolidayName, setNewHolidayName] = useState('');
+export default function CalendarSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const daysOfWeek = [
-    { value: 0, label: 'Minggu' },
-    { value: 1, label: 'Senin' },
-    { value: 2, label: 'Selasa' },
-    { value: 3, label: 'Rabu' },
-    { value: 4, label: 'Kamis' },
-    { value: 5, label: 'Jumat' },
-    { value: 6, label: 'Sabtu' }
-  ];
+  
+  // State Hari Kerja (0=Minggu, 1=Senin, dst)
+  const [workingDays, setWorkingDays] = useState([1, 2, 3, 4, 5]);
+  
+  // State Hari Libur
+  const [holidays, setHolidays] = useState([]);
+  const [newHolidayDate, setNewHolidayDate] = useState('');
+  const [newHolidayDesc, setNewHolidayDesc] = useState('');
 
   useEffect(() => {
-    async function loadCalendar() {
-      try {
-        let { data: projects } = await supabase.from('projects').select('id').limit(1);
-        let projectId = projects?.[0]?.id;
-        if (!projectId) return;
-
-        // Ambil Kalender
-        let { data: cal } = await supabase.from('project_calendars').select('*').eq('project_id', projectId).limit(1).single();
-        
-        if (!cal) {
-          // Buat baru jika belum ada
-          const { data: newCal } = await supabase.from('project_calendars').insert([{ project_id: projectId }]).select().single();
-          cal = newCal;
-        }
-
-        if (cal) {
-          setCalendarId(cal.id);
-          setWorkingDays(cal.working_days);
-          
-          // Ambil Hari Libur
-          let { data: exc } = await supabase.from('calendar_exceptions').select('*').eq('calendar_id', cal.id).order('exception_date');
-          setHolidays(exc || []);
-        }
-      } catch (err) { console.error(err); } finally { setLoading(false); }
-    }
-    loadCalendar();
+    fetchCalendarSettings();
   }, []);
 
-  const handleDayToggle = (dayValue) => {
-    if (workingDays.includes(dayValue)) {
-      setWorkingDays(workingDays.filter(d => d !== dayValue));
-    } else {
-      setWorkingDays([...workingDays, dayValue].sort());
+  const fetchCalendarSettings = async () => {
+    setLoading(true);
+    // Mengambil data dari tabel projects (Asumsi: setting kalender disimpan di tabel projects)
+    const { data, error } = await supabase.from('projects').select('id, working_days, exceptions').limit(1).maybeSingle();
+    
+    if (data) {
+      if (data.working_days) setWorkingDays(data.working_days);
+      if (data.exceptions) setHolidays(data.exceptions);
     }
+    setLoading(false);
   };
 
-  const handleAddHoliday = async (e) => {
-    e.preventDefault();
-    if (!newHolidayDate || !newHolidayName || !calendarId) return;
+  const toggleDay = (dayIndex) => {
+    setWorkingDays(prev => 
+      prev.includes(dayIndex) 
+        ? prev.filter(d => d !== dayIndex) 
+        : [...prev, dayIndex].sort()
+    );
+  };
 
-    const { data, error } = await supabase.from('calendar_exceptions').insert([{
-      calendar_id: calendarId,
-      exception_date: newHolidayDate,
-      description: newHolidayName
-    }]).select().single();
-
-    if (!error) {
-      setHolidays([...holidays, data].sort((a, b) => a.exception_date.localeCompare(b.exception_date)));
-      setNewHolidayDate('');
-      setNewHolidayName('');
+  const handleAddHoliday = () => {
+    if (!newHolidayDate) return alert("Pilih tanggal libur terlebih dahulu!");
+    const newException = { exception_date: newHolidayDate, description: newHolidayDesc || 'Hari Libur' };
+    
+    // Cek duplikasi
+    if (holidays.some(h => h.exception_date === newHolidayDate)) {
+      return alert("Tanggal tersebut sudah ada di daftar libur.");
     }
+
+    setHolidays(prev => [...prev, newException].sort((a, b) => new Date(a.exception_date) - new Date(b.exception_date)));
+    setNewHolidayDate('');
+    setNewHolidayDesc('');
   };
 
-  const handleDeleteHoliday = async (id) => {
-    await supabase.from('calendar_exceptions').delete().eq('id', id);
-    setHolidays(holidays.filter(h => h.id !== id));
+  const handleRemoveHoliday = (dateToRemove) => {
+    setHolidays(prev => prev.filter(h => h.exception_date !== dateToRemove));
   };
 
-  const handleSaveCalendar = async () => {
-    if (!calendarId) return;
+  const handleSave = async () => {
     setSaving(true);
-    await supabase.from('project_calendars').update({ working_days: workingDays }).eq('id', calendarId);
+    // Menyimpan ke tabel projects. Pastikan kolom working_days dan exceptions bertipe JSONB di Supabase.
+    const { error } = await supabase
+      .from('projects')
+      .update({ 
+        working_days: workingDays,
+        exceptions: holidays
+      })
+      .neq('id', '00000000-0000-0000-0000-000000000000'); // Update semua baris proyek (biasanya cuma 1)
+
     setSaving(false);
-    alert('Kalender Kerja Berhasil Disimpan! Silakan cek Gantt Workspace.');
-    window.location.reload();
+    if (error) {
+      alert("Gagal menyimpan kalender: " + error.message);
+    } else {
+      alert("✅ Kalender Kerja berhasil disimpan!");
+    }
   };
 
-  if (loading) return <div className="p-10 text-center">Memuat Kalender...</div>;
+  const daysMap = [
+    { label: 'Minggu', val: 0 },
+    { label: 'Senin', val: 1 },
+    { label: 'Selasa', val: 2 },
+    { label: 'Rabu', val: 3 },
+    { label: 'Kamis', val: 4 },
+    { label: 'Jumat', val: 5 },
+    { label: 'Sabtu', val: 6 },
+  ];
+
+  if (loading) return <LoadingSpinner text="Memuat pengaturan kalender..." />;
 
   return (
-    <div className="max-w-6xl mx-auto p-6 bg-slate-50 min-h-screen">
-      <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-indigo-600" />
-            Konfigurasi Kalender Kerja Proyek
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Atur hari kerja mingguan dan hari libur nasional untuk menggerakkan CPM Engine secara otomatis.
-          </p>
-        </div>
-        <button 
-          onClick={handleSaveCalendar} 
-          disabled={saving}
-          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-md shadow transition-colors flex items-center gap-2 disabled:opacity-50"
-        >
-          <Check className="w-4 h-4" /> {saving ? 'Menyimpan...' : 'Simpan Kalender'}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 bg-white p-5 rounded-xl border border-slate-200 shadow-sm h-fit">
-          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
-            <Clock className="w-4 h-4 text-slate-500" />
-            Hari Kerja Mingguan
-          </h2>
-          <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-            Pilih hari apa saja dalam seminggu di mana aktivitas pekerjaan lapangan legal dilaksanakan.
-          </p>
-
-          <div className="space-y-2">
-            {daysOfWeek.map((day) => {
-              const isActive = workingDays.includes(day.value);
-              return (
-                <button
-                  key={day.value}
-                  type="button"
-                  onClick={() => handleDayToggle(day.value)}
-                  className={`w-full flex items-center justify-between p-3 rounded-lg border text-xs font-medium transition-all ${
-                    isActive
-                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <span>{day.label}</span>
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center border ${
-                    isActive ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 bg-white'
-                  }`}>
-                    {isActive && <Check className="w-3 h-3 stroke-[3]" />}
-                  </div>
-                </button>
-              );
-            })}
+    <div className="p-6 bg-slate-50 min-h-screen">
+      <div className="max-w-4xl mx-auto space-y-6">
+        
+        {/* Header */}
+        <div className="flex justify-between items-center bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">📅 Konfigurasi Kalender Kerja Proyek</h1>
+            <p className="text-sm text-slate-500">Atur hari kerja mingguan dan hari libur nasional untuk menggerakkan CPM Engine secara otomatis.</p>
           </div>
+          <button 
+            onClick={handleSave} 
+            disabled={saving}
+            className={`px-6 py-2 rounded-lg font-bold text-white shadow transition-colors ${saving ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+          >
+            {saving ? 'Menyimpan...' : '💾 Simpan Kalender'}
+          </button>
         </div>
 
-        <div className="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <h2 className="text-sm font-bold text-slate-700 flex items-center gap-2 mb-4">
-            <ShieldAlert className="w-4 h-4 text-slate-500" />
-            Pengecualian Hari Libur (Holidays)
-          </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          {/* Hari Kerja Mingguan */}
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+            <h2 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+              <span className="text-indigo-500">🕒</span> Hari Kerja Mingguan
+            </h2>
+            <p className="text-xs text-slate-500 mb-4">Pilih hari apa saja dalam seminggu di mana aktivitas pekerjaan lapangan legal dilaksanakan.</p>
+            
+            <div className="space-y-2">
+              {daysMap.map(day => (
+                <label 
+                  key={day.val} 
+                  className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${workingDays.includes(day.val) ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                >
+                  <span className={`text-sm ${workingDays.includes(day.val) ? 'font-bold text-indigo-700' : 'text-slate-600'}`}>{day.label}</span>
+                  <input 
+                    type="checkbox" 
+                    checked={workingDays.includes(day.val)}
+                    onChange={() => toggleDay(day.val)}
+                    className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
 
-          <form onSubmit={handleAddHoliday} className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4">
-            <div className="sm:col-span-1">
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Tanggal Libur</label>
-              <input
-                type="date"
+          {/* Hari Libur / Exceptions */}
+          <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+            <h2 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+              <span className="text-red-500">🚫</span> Pengecualian Hari Libur (Holidays)
+            </h2>
+            
+            <div className="flex gap-2 mb-4">
+              <input 
+                type="date" 
                 value={newHolidayDate}
                 onChange={(e) => setNewHolidayDate(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                className="border border-slate-300 rounded p-2 text-sm flex-1 focus:ring-2 focus:ring-indigo-500 outline-none"
               />
-            </div>
-            <div className="sm:col-span-1">
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Nama Keterangan</label>
-              <input
-                type="text"
-                placeholder="Misal: Libur Idul Fitri"
-                value={newHolidayName}
-                onChange={(e) => setNewHolidayName(e.target.value)}
-                className="w-full p-2 border border-slate-300 rounded text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+              <input 
+                type="text" 
+                placeholder="Keterangan (Opsional)"
+                value={newHolidayDesc}
+                onChange={(e) => setNewHolidayDesc(e.target.value)}
+                className="border border-slate-300 rounded p-2 text-sm flex-1 focus:ring-2 focus:ring-indigo-500 outline-none"
               />
-            </div>
-            <div className="sm:col-span-1 flex items-end">
-              <button
-                type="submit"
-                className="w-full p-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-semibold rounded shadow transition-colors flex items-center justify-center gap-1"
+              <button 
+                onClick={handleAddHoliday}
+                className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded font-bold text-sm shadow"
               >
-                <Plus className="w-4 h-4" /> Tambah Hari
+                Tambah
               </button>
             </div>
-          </form>
 
-          <div className="border border-slate-200 rounded-lg overflow-hidden flex-1">
-            <table className="w-full border-collapse text-left text-xs text-slate-600">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
-                <tr>
-                  <th className="p-3 w-1/3">Tanggal</th>
-                  <th className="p-3">Keterangan Hari Libur</th>
-                  <th className="p-3 w-16 text-center">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {holidays.length === 0 ? (
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                   <tr>
-                    <td colSpan="3" className="p-4 text-center text-slate-400 italic">
-                      Belum ada pengecualian hari libur yang ditambahkan.
-                    </td>
+                    <th className="p-3">Tanggal</th>
+                    <th className="p-3">Keterangan</th>
+                    <th className="p-3 w-16 text-center">Aksi</th>
                   </tr>
-                ) : (
-                  holidays.map((h) => (
-                    <tr key={h.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 font-medium text-slate-700">
-                        {new Date(h.exception_date).toLocaleDateString('id-ID', {
-                          day: 'numeric', month: 'long', year: 'numeric'
-                        })}
-                      </td>
-                      <td className="p-3 text-slate-600">{h.description}</td>
-                      <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteHoliday(h.id)}
-                          className="p-1 text-slate-400 hover:text-red-500 rounded transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {holidays.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="p-6 text-center text-slate-400 italic">Belum ada pengecualian hari libur.</td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    holidays.map((h, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="p-3 font-medium text-slate-700">{new Date(h.exception_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'})}</td>
+                        <td className="p-3 text-slate-500">{h.description}</td>
+                        <td className="p-3 text-center">
+                          <button onClick={() => handleRemoveHoliday(h.exception_date)} className="text-red-500 hover:text-red-700 font-bold p-1">🗑️</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
+
         </div>
       </div>
     </div>

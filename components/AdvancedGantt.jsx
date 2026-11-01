@@ -176,7 +176,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     let currentDate = new Date(startStr);
     let added = 0;
 
-    if (daysToAdd <= 1) return startStr;
+    // Pastikan start date bukan weekend. Jika iya, maju ke hari kerja.
+    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
 
     while (added < (daysToAdd - 1)) {
       currentDate.setDate(currentDate.getDate() + 1);
@@ -209,12 +214,10 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     let newDuration = task.duration;
 
     if (field === 'start_date') {
-      // JIKA UBAH START: Pastikan Start jatuh di hari kerja
       startStr = snapToWorkingDay(startStr, workingDays, exceptions);
       newDuration = Number(task.duration) || 1;
       endStr = addWorkingDays(startStr, newDuration, workingDays, exceptions);
     } else if (field === 'end_date') {
-      // JIKA UBAH END: Pastikan End jatuh di hari kerja
       endStr = snapToWorkingDay(endStr, workingDays, exceptions);
       newDuration = countWorkingDays(startStr, endStr, workingDays, exceptions);
     }
@@ -237,9 +240,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     setLocalTasks(prev => prev.map(t => {
       if (t.id === taskId) {
         let updatedTask = { ...t, [field]: value };
-        if (field === 'duration' && updatedTask.start_date) {
-          const newEndDate = addWorkingDays(updatedTask.start_date, Number(value), workingDays, exceptions);
+        
+        if (field === 'duration') {
+          let startStr = snapToWorkingDay(updatedTask.start_date, workingDays, exceptions);
+          const newEndDate = addWorkingDays(startStr, Number(value), workingDays, exceptions);
+          
+          updatedTask.start_date = startStr;
           updatedTask.end_date = newEndDate;
+          
+          onInlineUpdate(taskId, 'start_date', startStr);
           onInlineUpdate(taskId, 'end_date', newEndDate);
         }
         return updatedTask;
@@ -417,8 +426,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 const dateStr = cd.date.toISOString().split('T')[0];
                 const isHoliday = exceptions.some(e => e.exception_date === dateStr);
                 let bgClass = '';
-                if (isHoliday) bgClass = 'bg-red-50/50'; // Warna hari libur
-                else if (cd.isWeekend) bgClass = 'bg-slate-100'; // Warna weekend
+                if (isHoliday) bgClass = 'bg-red-50/50';
+                else if (cd.isWeekend) bgClass = 'bg-slate-100';
                 return <div key={i} className={`border-r border-slate-200 h-full ${bgClass}`} style={{ width: DAY_WIDTH }}></div>;
               })}
             </div>
