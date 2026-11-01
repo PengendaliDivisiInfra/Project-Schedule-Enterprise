@@ -399,7 +399,14 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             </div>
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => (
-                <div key={i} className={`border-r border-slate-100 h-full ${cd.isWeekend ? 'bg-slate-50' : ''}`} style={{ width: DAY_WIDTH }}></div>
+                {(() => {
+                  const dateStr = cd.date.toISOString().split('T')[0];
+                  const isHoliday = exceptions.some(e => e.exception_date === dateStr);
+                  let bgClass = '';
+                  if (isHoliday) bgClass = 'bg-red-50/50'; // Warna khusus hari libur nasional
+                  else if (cd.isWeekend) bgClass = 'bg-slate-100'; // Warna weekend
+                  return <div key={i} className={`border-r border-slate-200 h-full ${bgClass}`} style={{ width: DAY_WIDTH }}></div>;
+                })()}
               ))}
             </div>
 
@@ -493,6 +500,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
 
 
