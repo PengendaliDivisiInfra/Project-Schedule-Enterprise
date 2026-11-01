@@ -37,8 +37,7 @@ export default function ProjectsPage() {
         }).eq('id', project.id);
         if (error) throw error;
       }
-      alert('Info Proyek berhasil disimpan!');
-    } catch (err) {
+      } catch (err) {
       alert('Gagal menyimpan: ' + err.message);
     } finally {
       setSaving(false);
@@ -119,3 +118,4 @@ export default function ProjectsPage() {
     </div>
   );
 }
+
