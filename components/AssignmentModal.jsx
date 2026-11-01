@@ -11,7 +11,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
   const [koefisien, setKoefisien] = useState('');
   
   const [newHsd, setNewHsd] = useState({
-    resource_type: 'Bahan',
+    tipe: 'Bahan',
     nama_item: '',
     unit: '',
     harga_dasar: ''
@@ -24,10 +24,10 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       setMode('existing');
       setSelectedHsdId('');
       setKoefisien('');
-      setNewHsd({ resource_type: 'Bahan', nama_item: '', unit: '', harga_dasar: '' });
+      setNewHsd({ tipe: 'Bahan', nama_item: '', unit: '', harga_dasar: '' });
       
       const fetchHsd = async () => {
-        const { data } = await supabase.from('master_hsd').select('*').order('resource_type');
+        const { data } = await supabase.from('master_hsd').select('*').order('tipe');
         setMasterHsd(data || []);
       };
       fetchHsd();
@@ -64,7 +64,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
             .from('master_hsd')
             .insert([{
               project_id: ahspTemplate.project_id,
-              resource_type: newHsd.resource_type,
+              tipe: newHsd.tipe,
               nama_item: newHsd.nama_item,
               unit: newHsd.unit,
               harga_dasar: Number(newHsd.harga_dasar)
@@ -98,8 +98,8 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
   };
 
   const groupedHsd = masterHsd.reduce((acc, curr) => {
-    if (!acc[curr.resource_type]) acc[curr.resource_type] = [];
-    acc[curr.resource_type].push(curr);
+    if (!acc[curr.tipe]) acc[curr.tipe] = [];
+    acc[curr.tipe].push(curr);
     return acc;
   }, {});
 
@@ -140,7 +140,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Jenis Komponen</label>
-                  <select required value={newHsd.resource_type} onChange={e => setNewHsd({...newHsd, resource_type: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
+                  <select required value={newHsd.tipe} onChange={e => setNewHsd({...newHsd, tipe: e.target.value})} className="w-full border rounded-lg p-2 text-sm">
                     <option value="Bahan">Bahan / Material</option>
                     <option value="Upah">Tenaga Kerja / Upah</option>
                     <option value="Alat">Peralatan / Sewa Alat</option>
@@ -181,6 +181,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
+
 
 
 

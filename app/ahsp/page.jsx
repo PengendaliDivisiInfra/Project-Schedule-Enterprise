@@ -101,9 +101,9 @@ export default function AHSPPage() {
     }
   };
 
-  const upah = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'upah');
-  const bahan = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'bahan');
-  const alat = details.filter(d => d.master_hsd?.resource_type?.toLowerCase() === 'alat');
+  const upah = details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'upah');
+  const bahan = details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'bahan');
+  const alat = details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'alat');
 
   const calcTotal = (items) => items.reduce((sum, item) => sum + (item.koefisien * (item.master_hsd?.harga_dasar || 0)), 0);
   const totalA = calcTotal(upah);
@@ -226,6 +226,7 @@ export default function AHSPPage() {
     </div>
   );
 }
+
 
 
 
