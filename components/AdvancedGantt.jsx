@@ -4,7 +4,7 @@
 import { useRef, useEffect, useState } from 'react';
 
 const ROW_HEIGHT = 38;
-const BUFFER_SIZE = 10; // Jumlah baris ekstra di atas/bawah layar
+const BUFFER_SIZE = 10;
 
 export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate, onRefresh }) {
   const leftPanelRef = useRef(null);
@@ -15,7 +15,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const [localTasks, setLocalTasks] = useState(tasks);
   const [zoomLevel, setZoomLevel] = useState('day');
   
-  // VIRTUAL SCROLLING STATES
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
 
@@ -23,7 +22,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     setLocalTasks(tasks);
   }, [tasks]);
 
-  // Deteksi tinggi layar untuk virtual scrolling
   useEffect(() => {
     const handleResize = () => {
       if (rightPanelRef.current) setViewportHeight(rightPanelRef.current.clientHeight);
@@ -37,12 +35,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
     : localTasks;
 
-  // --- LOGIKA VIRTUAL SCROLLING ---
+  // --- VIRTUAL SCROLLING LOGIC ---
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_SIZE);
   const endIndex = Math.min(displayTasks.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + BUFFER_SIZE);
   const visibleTasks = displayTasks.slice(startIndex, endIndex);
 
-  // 1. Generate Calendar Days
+  // Generate Calendar Days
   let minDate = new Date();
   let maxDate = new Date();
   displayTasks.forEach(t => {
@@ -86,7 +84,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const getX = (dateStr) => {
     if (!dateStr) return 0;
     let targetDate = new Date(dateStr);
-    if (isNaN(targetDate.getTime())) return 0; // Failsafe jika tanggal invalid
+    if (isNaN(targetDate.getTime())) return 0;
     targetDate.setHours(0,0,0,0);
     let current = new Date(minDate);
     current.setHours(0,0,0,0);
@@ -94,7 +92,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return daysDiff * pixelsPerDay;
   };
 
-  // 2. Hitung SVG Paths (Hanya render yang berpotensi terlihat)
+  // Hitung SVG Paths (Garis Panah)
   useEffect(() => {
     const paths = [];
     const taskRects = {};
@@ -110,7 +108,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       width = Math.max(8, width);
       const y = idx * ROW_HEIGHT;
       
-      // Simpan koordinat SVG (Mencegah x negatif)
+      // x: Math.max(0, x) mencegah garis error jika tanggal negatif
       taskRects[t.wbs_code] = { x: Math.max(0, x), y, width, index: idx };
     });
 
@@ -119,7 +117,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       const to = taskRects[rel.to];
       if (!from || !to) return;
 
-      // VIRTUAL SCROLL CHECK: Hanya hitung path jika salah satu node ada di area pandang + buffer
+      // Cek apakah garis terlihat di layar (dengan buffer)
       if (from.index < startIndex - BUFFER_SIZE && to.index < startIndex - BUFFER_SIZE) return;
       if (from.index > endIndex + BUFFER_SIZE && to.index > endIndex + BUFFER_SIZE) return;
 
@@ -159,12 +157,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     setSvgPaths(paths);
   }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay]);
 
+  // Fungsi Scroll Sinkronisasi
   const handleScroll = (e) => {
     const newScrollTop = e.currentTarget.scrollTop;
     setScrollTop(newScrollTop);
-    if (leftPanelRef.current) {
-      leftPanelRef.current.scrollTop = newScrollTop;
-    }
+    // Panel kiri akan mengikuti via CSS transform, tidak perlu set scrollTop manual
   };
 
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
@@ -348,13 +345,17 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        <div ref={leftPanelRef} className="w-[1020px] border-r border-slate-300 overflow-y-hidden bg-white shrink-0">
-          <div className="relative" style={{ height: displayTasks.length * ROW_HEIGHT }}>
-            {visibleTasks.map((t, idx) => {
-              const actualIndex = startIndex + idx;
+        {/* PANEL KIRI (Menggunakan transform untuk scroll sinkron) */}
+        <div ref={leftPanelRef} className="w-[1020px] border-r border-slate-300 overflow-hidden bg-white shrink-0 relative">
+          <div className="relative" style={{ height: displayTasks.length * ROW_HEIGHT, transform: `translateY(-${scrollTop}px)` }}>
+            {displayTasks.map((t, idx) => {
+              const actualIndex = idx; // index absolut untuk semua tasks
               const top = actualIndex * ROW_HEIGHT;
               const isSummary = t.summary === 'Yes';
               const isHovered = hoveredTaskId === t.id;
+
+              // Render hanya jika dalam viewport
+              if (actualIndex < startIndex - BUFFER_SIZE || actualIndex > endIndex + BUFFER_SIZE) return null;
               
               return (
                 <div key={t.id} onMouseEnter={() => setHoveredTaskId(t.id)} onMouseLeave={() => setHoveredTaskId(null)}
@@ -414,16 +415,13 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
           </div>
         </div>
 
+        {/* PANEL KANAN (Timeline) */}
         <div ref={rightPanelRef} className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
             
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
-              {Array.from({ length: Math.ceil(displayTasks.length / 50) }).map((_, i) => (
-                <div key={i} className="w-full flex flex-col" style={{ height: 50 * ROW_HEIGHT }}>
-                  {Array.from({ length: 50 }).map((_, j) => (
-                    <div key={j} className="w-full border-b border-slate-200" style={{ height: ROW_HEIGHT }}></div>
-                  ))}
-                </div>
+              {displayTasks.map((_, i) => (
+                <div key={i} className="w-full border-b border-slate-200" style={{ height: ROW_HEIGHT }}></div>
               ))}
             </div>
 
@@ -461,7 +459,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                     width = (endX - rawLeft) + pixelsPerDay;
                   }
                 }
-                // Jika bar mulai sebelum batas kiri layar (x negatif), sesuaikan lebarnya agar tidak overflow
                 if (rawLeft < 0) {
                   width = width + rawLeft; 
                 }
