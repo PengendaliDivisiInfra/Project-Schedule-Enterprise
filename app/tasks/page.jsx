@@ -10,6 +10,7 @@ export default function TasksPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('general');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast, setToast] = useState(null);
   const isSavingRef = useRef(false);
@@ -230,13 +231,19 @@ export default function TasksPage() {
 
       {/* MODAL FORM */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex justify-end bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white h-full w-full max-w-md shadow-2xl overflow-y-auto animate-slide-in-right flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-bold text-slate-800">{editingTask ? '✏️ Edit Task' : '📄 Tambah Task Baru'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+        <div className="fixed inset-0 z-[100] flex justify-end bg-transparent pointer-events-none animate-fade-in">
+          <div className="bg-white h-full w-full max-w-md shadow-[-10px_0_30px_rgba(0,0,0,0.1)] border-l border-slate-200 overflow-y-auto animate-slide-in-right flex flex-col pointer-events-auto">
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-white sticky top-0 z-10">
+              <h2 className="text-lg font-bold text-slate-800">{editingTask ? '✏️ Detail Task' : '📄 Tambah Task Baru'}</h2>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold bg-slate-100 w-8 h-8 rounded-full flex items-center justify-center">&times;</button>
             </div>
-            <form onSubmit={handleSave} className="p-6 space-y-4">
+
+            {/* TABS NAVIGATION */}
+            <div className="flex border-b border-slate-200 bg-slate-50">
+              <button type="button" onClick={() => setActiveTab('general')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'general' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>General</button>
+              <button type="button" onClick={() => setActiveTab('history')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>History Log</button>
+            </div>
+            <form onSubmit={handleSave} className={`p-6 space-y-4 ${activeTab === 'general' ? 'block' : 'hidden'}`}>
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-1">
                   <label className="block text-xs font-bold text-slate-600 mb-1">WBS Code</label>
@@ -303,6 +310,7 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
 
 
