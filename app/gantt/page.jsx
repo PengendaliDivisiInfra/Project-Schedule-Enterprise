@@ -12,9 +12,7 @@ export default function GanttPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
-    
-    // 1. Ambil Data Kalender Terlebih Dahulu
+    // Jangan set loading(true) jika ini adalah background sync agar UI tidak berkedip
     const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
     
     let currentWorkingDays = [1,2,3,4,5];
@@ -22,9 +20,7 @@ export default function GanttPage() {
     
     if (projectData) {
       if (projectData.working_days) {
-        currentWorkingDays = Array.isArray(projectData.working_days) 
-          ? projectData.working_days.map(Number) 
-          : [1,2,3,4,5];
+        currentWorkingDays = Array.isArray(projectData.working_days) ? projectData.working_days.map(Number) : [1,2,3,4,5];
         setWorkingDays(currentWorkingDays);
       }
       if (projectData.exceptions) {
@@ -33,44 +29,27 @@ export default function GanttPage() {
       }
     }
 
-    // 2. Ambil Data Tasks
-    const { data: taskData } = await supabase
-      .from('wbs_tasks')
-      .select('*, ahsp_templates(unit)')
-      .order('wbs_code');
+    const { data: taskData } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
       
     if (taskData) {
       const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
-
       const formattedTasks = uniqueTasks.map(t => {
         let calculatedDuration = Number(t.duration) || 1;
-        
-        // SINKRONISASI: Hitung ulang durasi berdasarkan kalender yang baru di-fetch
         if (t.summary !== 'Yes' && t.start_date && t.end_date) {
           let count = 0;
           let cur = new Date(t.start_date);
           const end = new Date(t.end_date);
           while (cur <= end) {
-            if (currentWorkingDays.includes(cur.getDay()) && !currentExceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) {
-              count++;
-            }
+            if (currentWorkingDays.includes(cur.getDay()) && !currentExceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) count++;
             cur.setDate(cur.getDate() + 1);
           }
           calculatedDuration = Math.max(1, count);
         }
-
-        return {
-          ...t,
-          satuan_hsd: t.ahsp_templates?.unit || 'unit',
-          volume: Number(t.volume) || 0,
-          cost: Number(t.cost) || 0,
-          duration: calculatedDuration
-        };
+        return { ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0, duration: calculatedDuration };
       });
       setTasks(formattedTasks);
     }
 
-    // 3. Ambil Data Relasi (Garis SVG)
     if (taskData) {
       const rels = [];
       taskData.forEach(t => {
@@ -81,17 +60,25 @@ export default function GanttPage() {
       });
       setRelations(rels);
     }
-
     setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
+
+    // LOGIKA REAL-TIME SUPABASE
+    const channel = supabase.channel('realtime-wbs-gantt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, (payload) => {
+        console.log('🔄 Data berubah dari layar lain, sinkronisasi Gantt...', payload);
+        fetchData(); // Ambil data terbaru secara otomatis
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const handleInlineUpdate = async (taskId, field, value) => {
-    const { error } = await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
-    if (error) console.error("Gagal simpan ke database:", error);
+    await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
   };
 
   if (loading) return <LoadingSpinner text="Memuat Gantt Workspace..." />;
@@ -101,20 +88,9 @@ export default function GanttPage() {
       <div className="max-w-[1600px] mx-auto">
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-slate-800">Interactive Gantt Workspace</h1>
-          <p className="text-sm text-slate-500">
-            Kalender: {workingDays.length === 7 ? '7 Hari (Full Day)' : '5 Hari/Minggu'} | Status Date: {new Date().toLocaleDateString('id-ID')}
-          </p>
+          <p className="text-sm text-slate-500">Kalender: {workingDays.length === 7 ? '7 Hari (Full Day)' : '5 Hari/Minggu'} | Status Date: {new Date().toLocaleDateString('id-ID')}</p>
         </div>
-
-        <ClientGanttWrapper 
-          tasks={tasks} 
-          relations={relations}
-          workingDays={workingDays}
-          exceptions={exceptions}
-          statusDate={new Date().toISOString().split('T')[0]}
-          onInlineUpdate={handleInlineUpdate}
-          onRefresh={fetchData}
-        />
+        <ClientGanttWrapper tasks={tasks} relations={relations} workingDays={workingDays} exceptions={exceptions} statusDate={new Date().toISOString().split('T')[0]} onInlineUpdate={handleInlineUpdate} onRefresh={fetchData} />
       </div>
     </div>
   );

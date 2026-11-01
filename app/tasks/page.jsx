@@ -7,48 +7,50 @@ import { Loader2, AlertTriangle } from 'lucide-react';
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
-  
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast, setToast] = useState(null);
-
-  const [formData, setFormData] = useState({
-    wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: ''
-  });
   
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
 
-  useEffect(() => {
-    const fetchCalendar = async () => {
-      const { data } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
-      if (data) {
-        if (data.working_days) setWorkingDays(Array.isArray(data.working_days) ? data.working_days.map(Number) : [1,2,3,4,5]);
-        if (data.exceptions) setExceptions(data.exceptions);
-      }
-    };
-    fetchCalendar();
-  }, []);
+  const [formData, setFormData] = useState({
+    wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: ''
+  });
 
   const fetchTasks = async () => {
-    setLoading(true);
     const { data } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
     if (data) {
       const uniqueTasks = Array.from(new Map(data.map(item => [item.wbs_code, item])).values());
-      setTasks(uniqueTasks.map(t => ({
-        ...t,
-        satuan_hsd: t.ahsp_templates?.unit || 'unit',
-        volume: Number(t.volume) || 0,
-        cost: Number(t.cost) || 0
-      })));
+      setTasks(uniqueTasks.map(t => ({ ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0 })));
     }
     setLoading(false);
   };
 
-  useEffect(() => { fetchTasks(); }, []);
+  const fetchCalendar = async () => {
+    const { data } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
+    if (data) {
+      if (data.working_days) setWorkingDays(Array.isArray(data.working_days) ? data.working_days.map(Number) : [1,2,3,4,5]);
+      if (data.exceptions) setExceptions(data.exceptions);
+    }
+  };
+
+  useEffect(() => {
+    fetchTasks();
+    fetchCalendar();
+
+    // LOGIKA REAL-TIME SUPABASE
+    const channel = supabase.channel('realtime-wbs-tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, (payload) => {
+        console.log('🔄 Sinkronisasi data Task...', payload);
+        fetchTasks(); // Ambil data terbaru secara otomatis
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const handleOpenAdd = () => {
     setEditingTask(null);
@@ -58,23 +60,15 @@ export default function TasksPage() {
 
   const handleOpenEdit = (task) => {
     setEditingTask(task);
-    // BUG FIX: Potong string tanggal agar sesuai format HTML input (YYYY-MM-DD)
     const formatDate = (dateStr) => dateStr ? dateStr.split('T')[0] : '';
-    
     setFormData({
-      wbs_code: task.wbs_code,
-      name: task.name,
-      duration: task.duration,
-      start_date: formatDate(task.start_date),
-      end_date: formatDate(task.end_date),
-      volume: task.volume || 0,
-      summary: task.summary || 'No',
-      predecessors: task.predecessors || ''
+      wbs_code: task.wbs_code, name: task.name, duration: task.duration,
+      start_date: formatDate(task.start_date), end_date: formatDate(task.end_date),
+      volume: task.volume || 0, summary: task.summary || 'No', predecessors: task.predecessors || ''
     });
     setIsModalOpen(true);
   };
 
-  // HELPER: Kalkulasi Tanggal di dalam Form
   const countWorkingDays = (startStr, endStr) => {
     if (!startStr || !endStr) return 1;
     let count = 0; let cur = new Date(startStr); const end = new Date(endStr);
@@ -85,37 +79,35 @@ export default function TasksPage() {
     return Math.max(1, count);
   };
 
-    const addWorkingDays = (startStr, daysToAdd) => {
-    if (!startStr) return '';
-    if (!workingDays || workingDays.length === 0) return startStr; // Failsafe
-    if (!daysToAdd || daysToAdd < 1) return startStr;
-
+  const addWorkingDays = (startStr, daysToAdd) => {
+    if (!startStr || !daysToAdd || daysToAdd < 1) return '';
+    if (!workingDays || workingDays.length === 0) return startStr;
     let currentDate = new Date(startStr); let added = 0;
-    
-    // Pastikan start date jatuh di hari kerja
-    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-    
+    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) currentDate.setDate(currentDate.getDate() + 1);
     if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
-    
     while (added < (daysToAdd - 1)) {
       currentDate.setDate(currentDate.getDate() + 1);
-      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
-        added++;
-      }
+      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) added++;
     }
     return currentDate.toISOString().split('T')[0];
   };
 
-  
+  const handleFormChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
 
-  
+  const handleFormBlur = (field) => {
+    let newData = { ...formData };
+    if (field === 'duration' || field === 'start_date') {
+      if (newData.start_date && newData.duration > 0) newData.end_date = addWorkingDays(newData.start_date, newData.duration);
+    } else if (field === 'end_date') {
+      if (newData.start_date && newData.end_date) newData.duration = countWorkingDays(newData.start_date, newData.end_date);
+    }
+    setFormData(newData);
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300)); // UX Delay
 
     if (editingTask) {
       await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
@@ -124,20 +116,15 @@ export default function TasksPage() {
       await supabase.from('wbs_tasks').insert([formData]);
       showToast('success', 'Task baru berhasil ditambahkan!');
     }
-    
     setIsSaving(false);
     setIsModalOpen(false);
-    fetchTasks();
   };
-
-  const handleDeleteClick = (task) => setDeleteTarget(task);
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     await supabase.from('wbs_tasks').delete().eq('id', deleteTarget.id);
     setDeleteTarget(null);
     showToast('danger', 'Task berhasil dihapus.');
-    fetchTasks();
   };
 
   const showToast = (type, message) => {
@@ -145,7 +132,7 @@ export default function TasksPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  if (loading) return <LoadingSpinner text="Memuat Tasks..." />;
+  if (loading && tasks.length === 0) return <LoadingSpinner text="Memuat Tasks..." />;
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen relative overflow-hidden">
@@ -210,7 +197,7 @@ export default function TasksPage() {
                       </td>
                       <td className="p-3 text-center text-blue-600 font-medium text-xs whitespace-nowrap">
                         <button onClick={() => handleOpenEdit(t)} className="hover:underline">Edit</button> | 
-                        <button onClick={() => handleDeleteClick(t)} className="text-red-500 hover:underline ml-1">Hapus</button>
+                        <button onClick={() => setDeleteTarget(t)} className="text-red-500 hover:underline ml-1">Hapus</button>
                       </td>
                     </tr>
                   );
@@ -221,6 +208,7 @@ export default function TasksPage() {
         </div>
       </div>
 
+      {/* MODAL FORM */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
@@ -228,19 +216,17 @@ export default function TasksPage() {
               <h2 className="text-lg font-bold text-slate-800">{editingTask ? '✏️ Edit Task' : '📄 Tambah Task Baru'}</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
             </div>
-            
             <form onSubmit={handleSave} className="p-6 space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div className="col-span-1">
                   <label className="block text-xs font-bold text-slate-600 mb-1">WBS Code</label>
-                  <input required type="text" value={formData.wbs_code} onChange={e => setFormData({...formData, wbs_code: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
+                  <input required type="text" value={formData.wbs_code} onChange={e => handleFormChange('wbs_code', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
                 </div>
                 <div className="col-span-2">
                   <label className="block text-xs font-bold text-slate-600 mb-1">Nama Pekerjaan</label>
-                  <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input required type="text" value={formData.name} onChange={e => handleFormChange('name', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Durasi (Hari)</label>
@@ -248,13 +234,12 @@ export default function TasksPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Tipe Task</label>
-                  <select value={formData.summary} onChange={e => setFormData({...formData, summary: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                  <select value={formData.summary} onChange={e => handleFormChange('summary', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                     <option value="No">Detail Task</option>
                     <option value="Yes">Summary Task</option>
                   </select>
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Start Date</label>
@@ -265,7 +250,6 @@ export default function TasksPage() {
                   <input required type="date" value={formData.end_date || ''} onChange={e => handleFormChange('end_date', e.target.value)} onBlur={() => handleFormBlur('end_date')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
               </div>
-
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
                 <button type="submit" disabled={isSaving} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
@@ -277,6 +261,7 @@ export default function TasksPage() {
         </div>
       )}
 
+      {/* DIALOG HAPUS */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
@@ -298,5 +283,3 @@ export default function TasksPage() {
     </div>
   );
 }
-
-
