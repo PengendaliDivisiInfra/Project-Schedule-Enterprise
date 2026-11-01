@@ -1,4 +1,5 @@
 ﻿import './globals.css';
+import 'nprogress/nprogress.css';
 import ClientLayout from '../components/ClientLayout';
 
 export const metadata = {

@@ -3,8 +3,8 @@ import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import CommandPalette from './CommandPalette';
+import TopLoader from './TopLoader';
 import { supabase } from '../lib/supabase';
-import { AppProgressBar as ProgressBar } from 'next-nprogress-bar';
 
 export default function ClientLayout({ children }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -31,14 +31,8 @@ export default function ClientLayout({ children }) {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
-      {/* ENTERPRISE TOP LOADER */}
-      <ProgressBar
-        height="3px"
-        color="#2563eb" // Blue-600
-        options={{ showSpinner: false }}
-        shallowRouting
-      />
-
+      <TopLoader />
+      
       <Sidebar 
         isCollapsed={isSidebarCollapsed} 
         toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 

@@ -44,16 +44,18 @@ export default function TasksPage() {
 
     // LOGIKA REAL-TIME SUPABASE
     const channel = supabase.channel('realtime-wbs-tasks')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, (payload) => {
-        // JIKA SEDANG PROSES SIMPAN, ABAIKAN WEBSOCKET (Mencegah data revert)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wbs_tasks' }, (payload) => {
         if (isSavingRef.current) return;
-        
-        // DEBOUNCE: Beri jeda 500ms untuk mencegah spamming
-        if (window.realtimeTimer) clearTimeout(window.realtimeTimer);
-        window.realtimeTimer = setTimeout(() => {
-          console.log('🔄 Sinkronisasi data Task...');
-          fetchTasks();
-        }, 500);
+        // UPDATE STATE LOKAL SECARA LANGSUNG (Jauh lebih cepat dari fetchTasks)
+        setTasks(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wbs_tasks' }, (payload) => {
+        if (isSavingRef.current) return;
+        fetchTasks(); // Hanya fetch jika ada data baru
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'wbs_tasks' }, (payload) => {
+        if (isSavingRef.current) return;
+        setTasks(prev => prev.filter(t => t.id !== payload.old.id));
       })
       .subscribe();
 
@@ -135,7 +137,7 @@ export default function TasksPage() {
     setIsModalOpen(false);
     
     // Beri jeda 1 detik sebelum WebSocket diizinkan jalan lagi
-    setTimeout(() => { isSavingRef.current = false; }, 1000);
+    setTimeout(() => { isSavingRef.current = false; }, 2000);
   };
 
   const handleDeleteConfirm = async () => {
@@ -301,4 +303,5 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
