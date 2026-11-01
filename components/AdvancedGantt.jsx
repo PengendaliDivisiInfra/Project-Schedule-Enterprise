@@ -325,8 +325,10 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   {/* KOLOM PREDECESSOR SEKARANG BISA DIEDIT DENGAN FORMAT 1.1FS+2 */}
                   <div className="w-12 px-1 border-l border-slate-100">
-                    {!isSummary && (
+                    {!isSummary ? (
                       <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-indigo-600 placeholder:text-slate-300 placeholder:font-normal" />
+                    ) : (
+                      <div className="text-center text-slate-300 text-[10px]">-</div>
                     )}
                   </div>
                   <div className="w-16 px-1 border-l border-slate-100">
@@ -426,5 +428,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
 

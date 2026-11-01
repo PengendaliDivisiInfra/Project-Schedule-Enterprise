@@ -14,44 +14,59 @@ export default function GanttPage() {
   const fetchData = async () => {
     setLoading(true);
     
-    // 1. Ambil data kalender dari tabel projects
+    // 1. Ambil Kalender
     const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
     if (projectData) {
       if (projectData.working_days) setWorkingDays(projectData.working_days);
       if (projectData.exceptions) setExceptions(projectData.exceptions);
     }
 
-    // 2. Ambil data tasks
-    const { data: taskData, error: taskError } = await supabase
+    // 2. Ambil Tasks
+    const { data: taskData } = await supabase
       .from('wbs_tasks')
       .select('*, ahsp_templates(unit)')
       .order('wbs_code');
       
     if (taskData) {
-      const formattedTasks = taskData.map(t => ({
-        ...t,
-        satuan_hsd: t.ahsp_templates?.unit || 'unit',
-        volume: Number(t.volume) || 0,
-        cost: Number(t.cost) || 0
-      }));
+      // A. ANTI-DUPLIKAT: Saring data berdasarkan wbs_code
+      const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
+
+      // B. Hitung ulang durasi secara dinamis berdasarkan kalender
+      const formattedTasks = uniqueTasks.map(t => {
+        let calculatedDuration = Number(t.duration) || 1;
+        
+        // Jika bukan summary dan punya tanggal, paksa hitung durasi
+        if (t.summary !== 'Yes' && t.start_date && t.end_date) {
+          let count = 0;
+          let cur = new Date(t.start_date);
+          const end = new Date(t.end_date);
+          while (cur <= end) {
+            if (workingDays.includes(cur.getDay()) && !(exceptions || []).some(e => e.exception_date === cur.toISOString().split('T')[0])) {
+              count++;
+            }
+            cur.setDate(cur.getDate() + 1);
+          }
+          calculatedDuration = Math.max(1, count);
+        }
+
+        return {
+          ...t,
+          satuan_hsd: t.ahsp_templates?.unit || 'unit',
+          volume: Number(t.volume) || 0,
+          cost: Number(t.cost) || 0,
+          duration: calculatedDuration
+        };
+      });
       setTasks(formattedTasks);
     }
 
-    // 3. Ambil relasi (Predecessors) untuk SVG Lines
+    // 3. Ambil Relasi (SVG Lines)
     if (taskData) {
       const rels = [];
       taskData.forEach(t => {
-        if (t.predecessors) {
-          // Parse string predecessor (misal: "1.1FS+2")
+        if (t.predecessors && t.summary !== 'Yes') {
           const match = t.predecessors.match(/([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?/);
-          if (match) {
-            rels.push({
-              from: match[1],
-              to: t.wbs_code,
-              type: match[2] || 'FS',
-              is_critical: t.is_critical
-            });
-          }
+          if (match) rels.push({ from: match[1], to: t.wbs_code, type: match[2] || 'FS', is_critical: t.is_critical });
         }
       });
       setRelations(rels);
@@ -60,26 +75,11 @@ export default function GanttPage() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  // Fungsi ini dipanggil saat user mengedit Durasi/Tanggal di Gantt
   const handleInlineUpdate = async (taskId, field, value) => {
-    // Optimistic UI sudah ditangani di AdvancedGantt.jsx
-    // Tugas kita di sini adalah menyimpannya ke database Supabase
-    const { error } = await supabase
-      .from('wbs_tasks')
-      .update({ [field]: value })
-      .eq('id', taskId);
-
-    if (error) {
-      console.error("Gagal menyimpan ke database:", error);
-      alert("Gagal menyimpan: " + error.message);
-    } else {
-      // Opsional: Fetch ulang data dari DB untuk memastikan data tersimpan
-      // Tapi kita tidak melakukannya di sini agar UI tidak berkedip (re-render).
-    }
+    const { error } = await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+    if (error) console.error("Gagal simpan:", error);
   };
 
   if (loading) return <LoadingSpinner text="Memuat Gantt Workspace..." />;
