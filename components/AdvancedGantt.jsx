@@ -1,30 +1,62 @@
 ﻿'use client';
 import { useRef, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 const ROW_HEIGHT = 38;
 
-export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate }) {
+export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate, onRefresh }) {
   const leftPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
   const [showCriticalOnly, setShowCriticalOnly] = useState(false);
   const [hoveredTaskId, setHoveredTaskId] = useState(null);
   const [localTasks, setLocalTasks] = useState(tasks);
+  const [zoomLevel, setZoomLevel] = useState('day');
   
-  // STATE BARU: Zoom Level
-  const [zoomLevel, setZoomLevel] = useState('day'); // 'day' | 'week' | 'month'
+  // STATE UNTUK BASELINE
+  const [baselines, setBaselines] = useState({});
 
-  // Sinkronisasi awal dihapus untuk mencegah UI revert saat proses save
+  useEffect(() => {
+    setLocalTasks(tasks);
+    fetchBaselines();
+  }, [tasks]);
+
+  const fetchBaselines = async () => {
+    const { data } = await supabase.from('task_baselines').select('*');
+    if (data) {
+      const bMap = {};
+      data.forEach(b => { bMap[b.task_id] = b; });
+      setBaselines(bMap);
+    }
+  };
+
+  const handleSetBaseline = async () => {
+    if (!confirm("Apakah Anda yakin ingin mengunci jadwal saat ini sebagai Baseline?")) return;
+    await supabase.rpc('set_project_baseline');
+    alert("✅ Baseline berhasil disimpan!");
+    fetchBaselines();
+  };
+
+  const handleRecalculateCPM = async () => {
+    await supabase.rpc('calculate_cpm');
+    alert("✅ Jalur Kritis (CPM) berhasil dihitung ulang!");
+    if (onRefresh) onRefresh();
+  };
 
   const displayTasks = showCriticalOnly
     ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
     : localTasks;
 
-  // 1. Generate Calendar Days (Base: Selalu harian untuk kalkulasi)
+  // 1. Generate Calendar Days
   let minDate = new Date();
   let maxDate = new Date();
   displayTasks.forEach(t => {
     if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
     if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
+    // Sertakan baseline dalam kalkulasi lebar chart
+    if (baselines[t.id]?.baseline_start) {
+      const bs = new Date(baselines[t.id].baseline_start);
+      if (bs < minDate) minDate = bs;
+    }
   });
   minDate.setDate(minDate.getDate() - 7);
   maxDate.setDate(maxDate.getDate() + 14);
@@ -38,11 +70,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     cur.setDate(cur.getDate() + 1);
   }
 
-  // 2. Kalkulasi Lebar Berdasarkan Zoom
   const pixelsPerDay = zoomLevel === 'day' ? 36 : zoomLevel === 'week' ? 16 : 4;
   const totalWidth = calendarDays.length * pixelsPerDay;
 
-  // Helper: Cari Nomor Minggu
   const getWeekNumber = (d) => {
     const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -50,17 +80,10 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
   };
 
-  // 3. Grouping Header Atas (Tahun/Bulan)
   const topGroups = [];
   let currentGroup = null;
   calendarDays.forEach((cd) => {
-    let groupName = '';
-    if (zoomLevel === 'month') {
-      groupName = cd.date.getFullYear().toString();
-    } else {
-      groupName = cd.date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
-    }
-
+    let groupName = zoomLevel === 'month' ? cd.date.getFullYear().toString() : cd.date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
     if (!currentGroup || currentGroup.name !== groupName) {
       currentGroup = { name: groupName, span: 1 };
       topGroups.push(currentGroup);
@@ -69,7 +92,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     }
   });
 
-  // 4. Hitung Posisi X
   const getX = (dateStr) => {
     if (!dateStr) return 0;
     let targetDate = new Date(dateStr);
@@ -80,11 +102,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return daysDiff * pixelsPerDay;
   };
 
-  // 5. Hitung SVG Path
   useEffect(() => {
     const paths = [];
     const taskRects = {};
-
     displayTasks.forEach((t, idx) => {
       const x = getX(t.start_date);
       const width = t.duration * pixelsPerDay;
@@ -96,70 +116,38 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       const from = taskRects[rel.from];
       const to = taskRects[rel.to];
       if (!from || !to) return;
-      let sourceX, sourceY, targetX, targetY;
-      const fromCenterY = from.y + (ROW_HEIGHT / 2);
-      const toCenterY = to.y + (ROW_HEIGHT / 2);
-
-      if (rel.type === 'FS') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; }
-      else if (rel.type === 'SS') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; }
-      else if (rel.type === 'FF') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
-      else if (rel.type === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
-
+      let sourceX = from.x + from.width; let sourceY = from.y + (ROW_HEIGHT / 2);
+      let targetX = to.x; let targetY = to.y + (ROW_HEIGHT / 2);
       const points = [[sourceX, sourceY]];
       const paddingX = zoomLevel === 'day' ? 12 : 4;
-
-      if (rel.type === 'FS') {
-        if (targetX >= sourceX + paddingX) {
-          const midX = sourceX + (targetX - sourceX) / 2;
-          points.push([midX, sourceY]); points.push([midX, targetY]);
-        } else {
-          const midY = fromCenterY + (toCenterY - fromCenterY) / 2;
-          points.push([sourceX + paddingX, sourceY]); points.push([sourceX + paddingX, midY]);
-          points.push([targetX - paddingX, midY]); points.push([targetX - paddingX, targetY]);
-        }
-      } else {
+      if (targetX >= sourceX + paddingX) {
         const midX = sourceX + (targetX - sourceX) / 2;
         points.push([midX, sourceY]); points.push([midX, targetY]);
+      } else {
+        const midY = sourceY + (targetY - sourceY) / 2;
+        points.push([sourceX + paddingX, sourceY]); points.push([sourceX + paddingX, midY]);
+        points.push([targetX - paddingX, midY]); points.push([targetX - paddingX, targetY]);
       }
       points.push([targetX, targetY]);
-
       let d = `M ${points[0][0]} ${points[0][1]}`;
       for (let i = 1; i < points.length; i++) d += ` L ${points[i][0]} ${points[i][1]}`;
-
       paths.push({ d, is_critical: rel.is_critical });
     });
-
     setSvgPaths(paths);
-  }, [displayTasks, relations, zoomLevel]);
+  }, [displayTasks, relations, zoomLevel, baselines]);
 
-  const handleScroll = (e) => {
-    if (leftPanelRef.current) {
-      leftPanelRef.current.scrollTop = e.target.scrollTop;
-    }
-  };
-
+  const handleScroll = (e) => { if (leftPanelRef.current) leftPanelRef.current.scrollTop = e.target.scrollTop; };
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
-
   const formatDateForInput = (dateString) => {
     if (!dateString) return '';
-    try {
-      const d = new Date(dateString);
-      return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0];
-    } catch (e) { return ''; }
+    try { const d = new Date(dateString); return isNaN(d.getTime()) ? '' : d.toISOString().split('T')[0]; } catch (e) { return ''; }
   };
 
   const countWorkingDays = (startStr, endStr, workingDays, exceptions) => {
     if (!startStr || !endStr) return 1;
-    const start = new Date(startStr);
-    const end = new Date(endStr);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1;
-
-    let count = 0;
-    let cur = new Date(start);
+    let count = 0; let cur = new Date(startStr); const end = new Date(endStr);
     while (cur <= end) {
-      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) {
-        count++;
-      }
+      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) count++;
       cur.setDate(cur.getDate() + 1);
     }
     return Math.max(1, count);
@@ -167,22 +155,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
   const addWorkingDays = (startStr, daysToAdd, workingDays, exceptions) => {
     if (!startStr) return '';
-    let currentDate = new Date(startStr);
-    let added = 0;
-
-    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) {
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
+    let currentDate = new Date(startStr); let added = 0;
+    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) currentDate.setDate(currentDate.getDate() + 1);
     if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
-
     while (added < (daysToAdd - 1)) {
       currentDate.setDate(currentDate.getDate() + 1);
-      const dayOfWeek = currentDate.getDay();
-      const dateStr = currentDate.toISOString().split('T')[0];
-      if (workingDays.includes(dayOfWeek) && !exceptions.some(e => e.exception_date === dateStr)) {
-        added++;
-      }
+      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) added++;
     }
     return currentDate.toISOString().split('T')[0];
   };
@@ -190,13 +168,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const snapToWorkingDay = (dateStr, workingDays, exceptions) => {
     if (!dateStr) return '';
     let d = new Date(dateStr);
-    let isWorking = workingDays.includes(d.getDay()) && !exceptions.some(e => e.exception_date === dateStr);
-    
-    while (!isWorking) {
-      d.setDate(d.getDate() + 1);
-      const newDateStr = d.toISOString().split('T')[0];
-      isWorking = workingDays.includes(d.getDay()) && !exceptions.some(e => e.exception_date === newDateStr);
-    }
+    while (!workingDays.includes(d.getDay()) || exceptions.some(e => e.exception_date === d.toISOString().split('T')[0])) d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
   };
 
@@ -204,7 +176,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     let startStr = field === 'start_date' ? newValue : task.start_date;
     let endStr = field === 'end_date' ? newValue : task.end_date;
     let newDuration = task.duration;
-
     if (field === 'start_date') {
       startStr = snapToWorkingDay(startStr, workingDays, exceptions);
       newDuration = Number(task.duration) || 1;
@@ -213,37 +184,22 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       endStr = snapToWorkingDay(endStr, workingDays, exceptions);
       newDuration = countWorkingDays(startStr, endStr, workingDays, exceptions);
     }
-
-    setLocalTasks(prev => prev.map(t => {
-      if (t.id === task.id) {
-        return { ...t, start_date: startStr, end_date: endStr, duration: newDuration };
-      }
-      return t;
-    }));
-
-    onInlineUpdate(task.id, 'start_date', startStr);
-    onInlineUpdate(task.id, 'end_date', endStr);
-    if (newDuration !== task.duration) {
-      onInlineUpdate(task.id, 'duration', newDuration);
-    }
+    setLocalTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: startStr, end_date: endStr, duration: newDuration } : t));
+    onInlineUpdate(task.id, 'start_date', startStr); onInlineUpdate(task.id, 'end_date', endStr);
+    if (newDuration !== task.duration) onInlineUpdate(task.id, 'duration', newDuration);
   };
 
   const handleLocalInlineUpdate = (taskId, field, value) => {
     setLocalTasks(prev => prev.map(t => {
       if (t.id === taskId) {
-        let updatedTask = { ...t, [field]: value };
-        
+        let updated = { ...t, [field]: value };
         if (field === 'duration') {
-          let startStr = snapToWorkingDay(updatedTask.start_date, workingDays, exceptions);
+          let startStr = snapToWorkingDay(updated.start_date, workingDays, exceptions);
           const newEndDate = addWorkingDays(startStr, Number(value), workingDays, exceptions);
-          
-          updatedTask.start_date = startStr;
-          updatedTask.end_date = newEndDate;
-          
-          onInlineUpdate(taskId, 'start_date', startStr);
-          onInlineUpdate(taskId, 'end_date', newEndDate);
+          updated.start_date = startStr; updated.end_date = newEndDate;
+          onInlineUpdate(taskId, 'start_date', startStr); onInlineUpdate(taskId, 'end_date', newEndDate);
         }
-        return updatedTask;
+        return updated;
       }
       return t;
     }));
@@ -251,34 +207,31 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   };
 
   const calculateDailyTarget = (task) => {
-    if (task.target_per_hari !== undefined && task.target_per_hari !== null && task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
+    if (task.target_per_hari > 0) return Number(task.target_per_hari).toFixed(2);
     const totalTarget = Number(task.smart_target) || 0;
-    const progress = Number(task.progress_percent) || 0;
-    if (progress >= 100) return 0;
-    if (totalTarget === 0) return 0;
+    if (Number(task.progress_percent) >= 100 || totalTarget === 0) return 0;
     const today = new Date(); const finish = new Date(task.end_date);
     let remainingDays = 0; let cur = new Date(today);
     while (cur <= finish) {
       if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) remainingDays++;
       cur.setDate(cur.getDate() + 1);
     }
-    if (remainingDays <= 0) return totalTarget.toFixed(2);
-    return (totalTarget / remainingDays).toFixed(2);
+    return remainingDays <= 0 ? totalTarget.toFixed(2) : (totalTarget / remainingDays).toFixed(2);
   };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
-      {/* HEADER UTAMA */}
+      {/* HEADER */}
       <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 z-20">
         <div className="w-[1020px] border-r border-slate-300 flex flex-col shrink-0">
           <div className="flex justify-between items-center px-2 py-2 border-b border-slate-200 bg-slate-100">
             <div className="flex text-[11px] font-semibold text-slate-600 items-center">
-              <span className="w-6 text-center" title="Task Mode">📌</span>
-              <span className="w-6 text-center" title="Complete">✓</span>
+              <span className="w-6 text-center" title="Mode">📌</span>
+              <span className="w-6 text-center" title="Done">✓</span>
               <span className="w-10 text-center" title="ID">ID</span>
               <span className="w-44 pl-1 border-l border-slate-300">Task Name</span>
-              <span className="w-20 text-center border-l border-slate-300 text-slate-800">Volume</span>
+              <span className="w-20 text-center border-l border-slate-300">Volume</span>
               <span className="w-10 text-center border-l border-slate-300">Dur</span>
               <span className="w-[85px] text-center border-l border-slate-300">Start</span>
               <span className="w-[85px] text-center border-l border-slate-300">Finish</span>
@@ -290,52 +243,33 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               <span className="w-12 text-center border-l border-slate-300">T/hr</span>
             </div>
             
-            {/* KONTROL ZOOM & FILTER */}
             <div className="flex items-center gap-2 ml-2">
+              <button onClick={handleSetBaseline} className="px-2 py-1 bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-400 rounded text-[10px] font-bold shadow-sm" title="Simpan Baseline Jadwal">📌 Set Baseline</button>
+              <button onClick={handleRecalculateCPM} className="px-2 py-1 bg-orange-100 text-orange-700 hover:bg-orange-200 border border-orange-300 rounded text-[10px] font-bold shadow-sm" title="Hitung Ulang Jalur Kritis">⚙️ Recalc CPM</button>
+              
               <div className="flex bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
                 <button onClick={() => setZoomLevel('day')} className={`px-3 py-1 text-[10px] font-bold ${zoomLevel === 'day' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Hari</button>
                 <button onClick={() => setZoomLevel('week')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'week' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Minggu</button>
                 <button onClick={() => setZoomLevel('month')} className={`px-3 py-1 text-[10px] font-bold border-l border-slate-300 ${zoomLevel === 'month' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>Bulan</button>
               </div>
-              
-              <button 
-                onClick={() => setShowCriticalOnly(!showCriticalOnly)}
-                className={`text-[10px] px-2 py-1 rounded font-bold border transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
-              >
-                {showCriticalOnly ? 'Critical' : 'All'}
-              </button>
+              <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[10px] px-2 py-1 rounded font-bold border ${showCriticalOnly ? 'bg-red-500 text-white' : 'bg-white text-slate-600'}`}>{showCriticalOnly ? 'Critical' : 'All'}</button>
             </div>
           </div>
           <div className="h-[24px] bg-slate-50"></div>
         </div>
         
-        {/* HEADER TIMELINE KANAN */}
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex border-b border-slate-200 bg-slate-100" style={{ width: totalWidth }}>
             {topGroups.map((mg, i) => (
-              <div key={i} className="text-center text-[10px] font-bold text-slate-600 border-r border-slate-300 py-1 truncate" style={{ width: mg.span * pixelsPerDay }}>
-                {mg.name}
-              </div>
+              <div key={i} className="text-center text-[10px] font-bold text-slate-600 border-r border-slate-300 py-1 truncate" style={{ width: mg.span * pixelsPerDay }}>{mg.name}</div>
             ))}
           </div>
           <div className="flex bg-slate-50" style={{ width: totalWidth }}>
             {calendarDays.map((cd, i) => {
-              let showLabel = false;
-              let label = '';
-              if (zoomLevel === 'day') {
-                showLabel = true;
-                label = cd.date.getDate();
-              } else if (zoomLevel === 'week') {
-                if (cd.date.getDay() === 1) { // Senin
-                  showLabel = true;
-                  label = `W${getWeekNumber(cd.date)}`;
-                }
-              } else if (zoomLevel === 'month') {
-                if (cd.date.getDate() === 1) {
-                  showLabel = true;
-                  label = cd.date.toLocaleDateString('id-ID', { month: 'short' });
-                }
-              }
+              let showLabel = false; let label = '';
+              if (zoomLevel === 'day') { showLabel = true; label = cd.date.getDate(); }
+              else if (zoomLevel === 'week' && cd.date.getDay() === 1) { showLabel = true; label = `W${getWeekNumber(cd.date)}`; }
+              else if (zoomLevel === 'month' && cd.date.getDate() === 1) { showLabel = true; label = cd.date.toLocaleDateString('id-ID', { month: 'short' }); }
               return (
                 <div key={i} className={`text-center text-[10px] border-r border-slate-200 font-medium py-1 ${cd.isWeekend && zoomLevel === 'day' ? 'bg-slate-200 text-slate-500' : 'text-slate-700'}`} style={{ width: pixelsPerDay }}>
                   {showLabel ? label : ''}
@@ -348,8 +282,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
       {/* BODY */}
       <div className="flex flex-1 overflow-hidden">
-        
-        {/* KOLOM KIRI (Entry Table) */}
         <div ref={leftPanelRef} className="w-[1020px] border-r border-slate-300 overflow-y-hidden bg-white shrink-0">
           <div className="min-w-full">
             {displayTasks.map((t, idx) => {
@@ -357,34 +289,17 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
               const isSummary = t.summary === 'Yes';
               const isHovered = hoveredTaskId === t.id;
               return (
-                <div 
-                  key={t.id} 
-                  onMouseEnter={() => setHoveredTaskId(t.id)}
-                  onMouseLeave={() => setHoveredTaskId(null)}
+                <div key={t.id} onMouseEnter={() => setHoveredTaskId(t.id)} onMouseLeave={() => setHoveredTaskId(null)}
                   className={`flex text-[11px] items-center px-2 border-b border-slate-100 h-[38px] transition-colors cursor-pointer
-                    ${isSummary ? 'bg-slate-50 font-bold' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}
-                    ${isHovered ? 'bg-blue-50/80' : 'hover:bg-blue-50/50'}
-                  `}
-                >
-                  <span className="w-6 text-center">
-                    {t.task_mode === 'Manually Scheduled' ? <span title="Manually Scheduled">📌</span> : <span className="text-blue-500" title="Auto Scheduled">📅</span>}
-                  </span>
-                  <span className="w-6 text-center">
-                    {t.progress_percent === 100 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-slate-300">☐</span>}
-                  </span>
+                    ${isSummary ? 'bg-slate-50 font-bold' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${isHovered ? 'bg-blue-50/80' : 'hover:bg-blue-50/50'}`}>
+                  <span className="w-6 text-center">{t.task_mode === 'Manually Scheduled' ? '📌' : '📅'}</span>
+                  <span className="w-6 text-center">{t.progress_percent === 100 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-slate-300">☐</span>}</span>
                   <span className="w-10 font-mono text-slate-500 text-center">{t.wbs_code}</span>
-                  <span className={`w-44 truncate pl-1 ${isSummary ? 'text-black' : 'text-slate-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
-                    {isSummary ? '📁 ' : '📄 '} {t.name}
-                  </span>
+                  <span className={`w-44 truncate pl-1 ${isSummary ? 'text-black' : 'text-slate-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>{isSummary ? '📁 ' : '📄 '} {t.name}</span>
                   <div className="w-20 px-1 border-r border-slate-100 bg-slate-50/50">
                     {!isSummary && (
                       <div className="flex items-center gap-1">
-                        <input 
-                          type="number" 
-                          defaultValue={t.volume || 0} 
-                          onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))}
-                          className="w-10 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold"
-                        />
+                        <input type="number" defaultValue={t.volume || 0} onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))} className="w-10 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold" />
                         <span className="text-[9px] text-slate-500 font-medium truncate">{t.satuan_hsd}</span>
                       </div>
                     )}
@@ -399,15 +314,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                       const hasPredecessor = t.predecessors && t.predecessors.trim() !== '';
                       const isLocked = isSummary || hasPredecessor;
                       return (
-                        <input 
-                          type="date" 
-                          key={`start-${t.start_date}`} 
-                          defaultValue={formatDateForInput(t.start_date)} 
-                          onBlur={(e) => handleDateChange(t, 'start_date', e.target.value)} 
-                          disabled={isLocked} 
-                          title={hasPredecessor ? "Terkunci oleh Predecessor (Auto-Scheduled)" : ""}
-                          className={`w-[75px] border border-transparent focus:border-blue-500 rounded text-center bg-transparent text-[10px] ${isLocked ? 'text-slate-500 cursor-not-allowed bg-slate-100' : 'hover:border-slate-300'}`} 
-                        />
+                        <input type="date" key={`start-${t.start_date}`} defaultValue={formatDateForInput(t.start_date)} onBlur={(e) => handleDateChange(t, 'start_date', e.target.value)} disabled={isLocked} title={hasPredecessor ? "Terkunci oleh Predecessor" : ""} className={`w-[75px] border border-transparent focus:border-blue-500 rounded text-center bg-transparent text-[10px] ${isLocked ? 'text-slate-500 cursor-not-allowed bg-slate-100' : 'hover:border-slate-300'}`} />
                       );
                     })()}
                   </div>
@@ -416,7 +323,12 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                       <input type="date" key={`end-${t.end_date}`} defaultValue={formatDateForInput(t.end_date)} onBlur={(e) => handleDateChange(t, 'end_date', e.target.value)} className="w-[75px] border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px]" />
                     )}
                   </div>
-                  <span className="w-12 text-center text-slate-500 border-l border-slate-100 truncate">{t.predecessors || '-'}</span>
+                  {/* KOLOM PREDECESSOR SEKARANG BISA DIEDIT DENGAN FORMAT 1.1FS+2 */}
+                  <div className="w-12 px-1 border-l border-slate-100">
+                    {!isSummary && (
+                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-indigo-600 placeholder:text-slate-300 placeholder:font-normal" />
+                    )}
+                  </div>
                   <div className="w-16 px-1 border-l border-slate-100">
                     {!isSummary && (
                       <input type="text" defaultValue={t.resource_names || ''} placeholder="..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'resource_names', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-slate-300" />
@@ -432,111 +344,77 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
           </div>
         </div>
 
-        {/* KOLOM KANAN (Timeline) */}
+        {/* TIMELINE KANAN */}
         <div className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
-            
-            {/* Layer 1: Grid & Shading */}
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
-              {displayTasks.map((_, i) => (
-                <div key={i} className="w-full border-b border-slate-100" style={{ height: ROW_HEIGHT }}></div>
-              ))}
+              {displayTasks.map((_, i) => <div key={i} className="w-full border-b border-slate-100" style={{ height: ROW_HEIGHT }}></div>)}
             </div>
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => {
                 const dateStr = cd.date.toISOString().split('T')[0];
                 const isHoliday = exceptions.some(e => e.exception_date === dateStr);
-                
-                let bgClass = '';
-                if (isHoliday) bgClass = 'bg-red-50/50';
-                else if (zoomLevel === 'day' && cd.isWeekend) bgClass = 'bg-slate-50';
-
-                let borderClass = 'border-r border-slate-100';
-                if (zoomLevel === 'week' && cd.date.getDay() === 1) borderClass = 'border-r border-slate-300';
-                if (zoomLevel === 'month' && cd.date.getDate() === 1) borderClass = 'border-r border-slate-400';
-
+                let bgClass = isHoliday ? 'bg-red-50/50' : (zoomLevel === 'day' && cd.isWeekend) ? 'bg-slate-50' : '';
+                let borderClass = (zoomLevel === 'week' && cd.date.getDay() === 1) ? 'border-r border-slate-300' : (zoomLevel === 'month' && cd.date.getDate() === 1) ? 'border-r border-slate-400' : 'border-r border-slate-100';
                 return <div key={i} className={`${borderClass} h-full ${bgClass}`} style={{ width: pixelsPerDay }}></div>;
               })}
             </div>
-
-            {/* Layer 2: Status Date Lines */}
             <div className="absolute top-0 bottom-0 border-l border-green-500 border-dashed z-10 pointer-events-none" style={{ left: getX(statusDate) }} title="Status Date"></div>
             <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
-
-            {/* Layer 3: SVG Dependency Lines */}
+            
             <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={displayTasks.length * ROW_HEIGHT}>
               <defs>
-                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-                  <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#64748b" />
-                </marker>
-                <marker id="arrow-critical" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">
-                  <path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#ef4444" />
-                </marker>
+                <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#64748b" /></marker>
+                <marker id="arrow-critical" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1.5 L 6 5 L 0 8.5 z" fill="#ef4444" /></marker>
               </defs>
-              {svgPaths.map((p, i) => (
-                <path key={i} d={p.d} fill="none" stroke={p.is_critical ? "#ef4444" : "#64748b"} strokeWidth={1.5} markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} />
-              ))}
+              {svgPaths.map((p, i) => <path key={i} d={p.d} fill="none" stroke={p.is_critical ? "#ef4444" : "#64748b"} strokeWidth={1.5} markerEnd={p.is_critical ? "url(#arrow-critical)" : "url(#arrow)"} />)}
             </svg>
 
-            {/* Layer 4: Task Bars & Labels */}
             <div className="absolute inset-0 z-20 pointer-events-none">
               {displayTasks.map((t, idx) => {
                 const left = getX(t.start_date);
                 let width = t.duration * pixelsPerDay;
                 if (t.start_date && t.end_date) {
-                  const startX = getX(t.start_date);
                   const endX = getX(t.end_date);
-                  if (endX >= startX) {
-                    width = (endX - startX) + pixelsPerDay;
-                  }
+                  if (endX >= left) width = (endX - left) + pixelsPerDay;
                 }
-                width = Math.max(8, width); // Minimum width for visibility
-                
-                const top = idx * ROW_HEIGHT + 8;
+                width = Math.max(8, width);
+                const top = idx * ROW_HEIGHT + 6; // Sedikit digeser ke atas untuk memberi ruang baseline
                 const isHovered = hoveredTaskId === t.id;
-
                 const isSummary = t.summary === 'Yes';
                 const isCritical = t.is_critical;
                 const progress = Number(t.progress_percent) || 0;
-                const dailyTarget = calculateDailyTarget(t);
-
-                if (t.duration === 0) {
-                  return (
-                    <div key={t.id} className={`absolute pointer-events-auto flex items-center ${isHovered ? 'bg-blue-100/50' : ''}`} style={{ left: left - 5, top: top - 1 }}>
-                      <div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div>
-                    </div>
-                  );
+                
+                // Ambil data baseline
+                const bData = baselines[t.id];
+                const bLeft = bData?.baseline_start ? getX(bData.baseline_start) : 0;
+                let bWidth = 0;
+                if (bData?.baseline_start && bData?.baseline_end) {
+                  bWidth = getX(bData.baseline_end) - bLeft + pixelsPerDay;
                 }
 
-                if (isSummary) {
-                  return (
-                    <div key={t.id} className={`absolute pointer-events-auto group ${isHovered ? 'bg-blue-100/30' : ''}`} style={{ left, width, top }}>
-                      <div className="absolute top-0 w-full h-[4px] bg-slate-800"></div>
-                      <div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div>
-                      <div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div>
-                    </div>
-                  );
-                }
+                if (t.duration === 0) return <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 5, top: top + 2 }}><div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div></div>;
+                if (isSummary) return <div key={t.id} className="absolute pointer-events-auto" style={{ left, width, top: top + 2 }}><div className="absolute top-0 w-full h-[4px] bg-slate-800"></div><div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div><div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div></div>;
 
                 return (
-                  <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width: Math.max(8, width), top }}>
-                    <div className={`h-[18px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
-                      <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[9px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
+                  <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width, top }}>
+                    
+                    {/* BASELINE BAR (Warna Abu-abu di bawah bar utama) */}
+                    {bWidth > 0 && (
+                      <div className="absolute top-[20px] h-[6px] bg-slate-300 border border-slate-400 rounded-sm opacity-70" style={{ left: bLeft - left, width: bWidth }} title="Baseline"></div>
+                    )}
+
+                    <div className={`h-[16px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
+                      <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[8px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
                         {progress > 20 && `${progress}%`}
                       </div>
                     </div>
 
-                    {/* Tampilkan Label HANYA jika Zoom bukan 'month' agar tidak terlalu padat */}
                     {zoomLevel !== 'month' && (
-                      <>
-                        <span className="absolute top-[4px] text-[9px] font-semibold text-slate-500 text-right w-10 whitespace-nowrap" style={{ left: -44 }}>{fmtDate(t.start_date)}</span>
-                        <div className="absolute top-[3px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: Math.max(8, width) + 6 }}>
-                          {t.resource_names && <span className="text-slate-700 font-medium">{t.resource_names}</span>}
-                          <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">
-                            Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}
-                          </span>
-                        </div>
-                      </>
+                      <div className="absolute top-[-2px] flex items-center gap-1 text-[10px] whitespace-nowrap" style={{ left: width + 6 }}>
+                        {t.resource_names && <span className="text-slate-700 font-medium">{t.resource_names}</span>}
+                        <span className="text-slate-800 font-bold bg-slate-100 px-1 py-0.5 rounded border border-slate-200">Vol: {Number(t.volume) || 0} {t.satuan_hsd || ''}</span>
+                      </div>
                     )}
                   </div>
                 );
@@ -548,4 +426,3 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
-
