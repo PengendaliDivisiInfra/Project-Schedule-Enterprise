@@ -1,5 +1,4 @@
-﻿/* eslint-disable @next/next/no-img-element */
-'use client';
+﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
@@ -98,5 +97,6 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     </aside>
   );
 }
+
 
 
