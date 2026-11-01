@@ -230,8 +230,8 @@ export default function TasksPage() {
 
       {/* MODAL FORM */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-scale-in">
+        <div className="fixed inset-0 z-[100] flex justify-end bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white h-full w-full max-w-md shadow-2xl overflow-y-auto animate-slide-in-right flex flex-col">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h2 className="text-lg font-bold text-slate-800">{editingTask ? '✏️ Edit Task' : '📄 Tambah Task Baru'}</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
@@ -303,5 +303,6 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
 

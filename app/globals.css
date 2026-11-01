@@ -45,3 +45,10 @@ aside {
 .animate-scale-in { animation: scaleIn 0.2s ease-out forwards; }
 .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
 .animate-fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }
+
+/* DRAWER ANIMATION */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in-right { animation: slideInRight 0.3s ease-out forwards; }

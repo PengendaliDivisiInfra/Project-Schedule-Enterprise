@@ -2,7 +2,7 @@
 import { Menu, Search, Bell, ChevronDown, UserCircle } from 'lucide-react';
 import { useState } from 'react';
 
-export default function Header({ toggleSidebar, currentUser, openSearch }) {
+export default function Header({ toggleSidebar, currentUser, openSearch, onlineUsers = [] }) {
   const [showProfile, setShowProfile] = useState(false);
 
   const roleColors = {
@@ -36,6 +36,14 @@ export default function Header({ toggleSidebar, currentUser, openSearch }) {
           <kbd className="hidden sm:inline-block bg-white border border-slate-300 text-slate-500 text-[10px] font-mono px-1.5 py-0.5 rounded shadow-sm">Ctrl K</kbd>
         </button>
 
+                {/* LIVE COLLABORATION AVATARS */}
+        <div className="hidden md:flex items-center -space-x-2 mr-4">
+          {onlineUsers.map((u, i) => (
+            <div key={i} title={u.full_name} className="w-8 h-8 rounded-full bg-indigo-500 border-2 border-white flex items-center justify-center text-xs text-white font-bold shadow-sm relative z-10 hover:z-20 transition-transform hover:scale-110 cursor-pointer">
+              {u.full_name?.charAt(0) || 'U'}
+            </div>
+          ))}
+        </div>
         <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full relative">
           <Bell size={20} />
           <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
@@ -74,3 +82,4 @@ export default function Header({ toggleSidebar, currentUser, openSearch }) {
     </header>
   );
 }
+
