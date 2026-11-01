@@ -12,7 +12,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
   
   const [newHsd, setNewHsd] = useState({
     resource_type: 'Bahan',
-    item_name: '',
+    nama_item: '',
     unit: '',
     harga_dasar: ''
   });
@@ -24,7 +24,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       setMode('existing');
       setSelectedHsdId('');
       setKoefisien('');
-      setNewHsd({ resource_type: 'Bahan', item_name: '', unit: '', harga_dasar: '' });
+      setNewHsd({ resource_type: 'Bahan', nama_item: '', unit: '', harga_dasar: '' });
       
       const fetchHsd = async () => {
         const { data } = await supabase.from('master_hsd').select('*').order('resource_type');
@@ -49,7 +49,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
           .from('master_hsd')
           .select('id')
           .eq('project_id', ahspTemplate.project_id)
-          .eq('item_name', newHsd.item_name)
+          .eq('nama_item', newHsd.nama_item)
           .eq('unit', newHsd.unit)
           .limit(1)
           .maybeSingle();
@@ -65,7 +65,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
             .insert([{
               project_id: ahspTemplate.project_id,
               resource_type: newHsd.resource_type,
-              item_name: newHsd.item_name,
+              nama_item: newHsd.nama_item,
               unit: newHsd.unit,
               harga_dasar: Number(newHsd.harga_dasar)
             }])
@@ -128,7 +128,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
                   <optgroup key={type} label={type.toUpperCase()}>
                     {items.map(item => (
                       <option key={item.id} value={item.id}>
-                        {item.item_name} ({item.unit}) - Rp {item.harga_dasar?.toLocaleString('id-ID')}
+                        {item.nama_item} ({item.unit}) - Rp {item.harga_dasar?.toLocaleString('id-ID')}
                       </option>
                     ))}
                   </optgroup>
@@ -148,7 +148,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Nama Item</label>
-                  <input type="text" required placeholder="Contoh: Semen Portland" value={newHsd.item_name} onChange={e => setNewHsd({...newHsd, item_name: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+                  <input type="text" required placeholder="Contoh: Semen Portland" value={newHsd.nama_item} onChange={e => setNewHsd({...newHsd, nama_item: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
                 </div>
               </div>
 
@@ -181,6 +181,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
+
 
 
 

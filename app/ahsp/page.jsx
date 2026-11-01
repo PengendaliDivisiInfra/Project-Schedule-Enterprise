@@ -119,7 +119,7 @@ export default function AHSPPage() {
     return (
       <tr key={item.id || index} className="border-b hover:bg-gray-50 group">
         <td className="p-2 text-center text-sm">{index + 1}</td>
-        <td className="p-2 text-sm">{item.master_hsd?.item_name}</td>
+        <td className="p-2 text-sm">{item.master_hsd?.nama_item}</td>
         <td className="p-2 text-sm text-center">{item.master_hsd?.kode || '-'}</td>
         <td className="p-2 text-sm text-center">{item.master_hsd?.unit}</td>
         <td className="p-2 text-sm text-center">{item.koefisien}</td>
@@ -226,5 +226,6 @@ export default function AHSPPage() {
     </div>
   );
 }
+
 
 
