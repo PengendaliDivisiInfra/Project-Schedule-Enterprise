@@ -3,52 +3,68 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AssignmentModal from '../../components/AssignmentModal';
-import { Plus, Box } from 'lucide-react';
+import { Plus, Printer, FileText } from 'lucide-react';
 
 export default function AhspPage() {
   const [ahspList, setAhspList] = useState([]);
+  const [selectedAhspId, setSelectedAhspId] = useState('');
   const [selectedAhsp, setSelectedAhsp] = useState(null);
   const [details, setDetails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // State untuk Overhead (Default 15%)
+  const [overheadPct, setOverheadPct] = useState(15);
 
   // 1. Fetch Daftar Induk AHSP
   const fetchAhspList = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('ahsp_templates').select('*').order('name');
-    if (data) {
+    const { data } = await supabase.from('ahsp_templates').select('*').order('name');
+    if (data && data.length > 0) {
       setAhspList(data);
-      // Pilih otomatis item pertama jika belum ada yang dipilih
-      if (data.length > 0 && !selectedAhsp) {
+      if (!selectedAhspId) {
+        setSelectedAhspId(data[0].id);
         setSelectedAhsp(data[0]);
       }
     }
     setLoading(false);
   };
 
-  // 2. Fetch Detail Komponen (Menggunakan Join Eksplisit)
+  // 2. Fetch Detail Komponen (Fetch terpisah agar anti-gagal)
   const fetchAhspDetails = useCallback(async (ahspId) => {
     if (!ahspId) return;
     
-    // PERBAIKAN: Menggunakan 'master_hsd!hsd_id' untuk memberitahu Supabase relasi yang tepat
-    const { data, error } = await supabase
+    // A. Ambil data detail
+    const { data: detailData, error: detailError } = await supabase
       .from('ahsp_details')
-      .select(`
-        id, 
-        koefisien, 
-        master_hsd!hsd_id (
-          nama_item, 
-          satuan, 
-          harga_dasar, 
-          tipe
-        )
-      `)
+      .select('*')
       .eq('ahsp_template_id', ahspId);
       
-    if (error) {
-      console.error("Gagal mengambil detail:", error);
-    } else if (data) {
-      setDetails(data);
+    if (detailError) {
+      console.error("Error detail:", detailError);
+      return;
+    }
+
+    if (detailData) {
+      // B. Ambil data HSD berdasarkan ID yang ada
+      const hsdIds = detailData.map(d => d.hsd_id).filter(id => id);
+      let hsdData = [];
+      
+      if (hsdIds.length > 0) {
+        const { data: hsdRes } = await supabase
+          .from('master_hsd')
+          .select('*')
+          .in('id', hsdIds);
+        hsdData = hsdRes || [];
+      }
+
+      // C. Gabungkan data
+      const merged = detailData.map(d => ({
+        ...d,
+        master_hsd: hsdData.find(h => h.id === d.hsd_id) || {}
+      }));
+      
+      setDetails(merged);
     }
   }, []);
 
@@ -57,125 +73,201 @@ export default function AhspPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedAhsp) {
-      fetchAhspDetails(selectedAhsp.id);
+    if (selectedAhspId) {
+      const ahsp = ahspList.find(a => a.id === selectedAhspId);
+      setSelectedAhsp(ahsp);
+      fetchAhspDetails(selectedAhspId);
     }
-  }, [selectedAhsp, fetchAhspDetails]);
+  }, [selectedAhspId, ahspList, fetchAhspDetails]);
 
-  // 3. Fungsi Refresh dipanggil setelah Modal Simpan
-  const handleRefresh = async () => {
-    if (selectedAhsp) {
-      // Beri jeda 500ms agar transaksi insert di database selesai sepenuhnya
-      setTimeout(async () => {
-        await fetchAhspDetails(selectedAhsp.id);
-      }, 500);
+  // 3. Handle Refresh dari Modal
+  const handleRefresh = () => {
+    if (selectedAhspId) {
+      fetchAhspDetails(selectedAhspId);
     }
   };
+
+  // --- KALKULASI TOTAL PUPR ---
+  const getTotalByType = (typeString) => {
+    return details
+      .filter(d => d.master_hsd?.tipe?.toLowerCase() === typeString.toLowerCase())
+      .reduce((sum, d) => sum + (Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)), 0);
+  };
+
+  const totalUpah = getTotalByType('Upah');
+  const totalBahan = getTotalByType('Bahan');
+  const totalAlat = getTotalByType('Alat');
+  
+  const totalD = totalUpah + totalBahan + totalAlat;
+  const totalE = totalD * (overheadPct / 100);
+  const totalF = totalD + totalE;
 
   if (loading) return <LoadingSpinner text="Memuat Katalog AHSP..." />;
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen flex gap-6">
+    <div className="p-6 bg-slate-100 min-h-screen flex flex-col items-center">
       
-      {/* PANEL KIRI: DAFTAR AHSP */}
-      <div className="w-1/3 bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden flex flex-col h-[calc(100vh-140px)]">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h2 className="text-sm font-bold text-slate-800">Daftar Katalog AHSP</h2>
-          <button className="text-blue-600 hover:bg-blue-50 p-1 rounded" title="Tambah AHSP Baru"><Plus size={16} /></button>
+      {/* KONTROL ATAS */}
+      <div className="w-full max-w-5xl flex justify-between items-end mb-4 print:hidden bg-white p-4 rounded-lg shadow-sm border border-slate-200">
+        <div className="flex flex-col gap-1 w-1/2">
+          <label className="text-xs font-bold text-slate-600">Pilih Template AHSP:</label>
+          <select 
+            value={selectedAhspId} 
+            onChange={(e) => setSelectedAhspId(e.target.value)}
+            className="border border-slate-300 p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none w-full max-w-md"
+          >
+            {ahspList.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.kode_ahsp ? `[${a.kode_ahsp}] ` : ''} {a.name} ({a.unit})
+              </option>
+            ))}
+          </select>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {ahspList.length === 0 && (
-            <div className="text-center p-6 text-sm text-slate-400 italic">Belum ada data AHSP.</div>
-          )}
-          {ahspList.map(ahsp => (
-            <button
-              key={ahsp.id}
-              onClick={() => setSelectedAhsp(ahsp)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors border ${selectedAhsp?.id === ahsp.id ? 'bg-blue-50 border-blue-200' : 'border-transparent hover:bg-slate-50'}`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <Box size={14} className={selectedAhsp?.id === ahsp.id ? 'text-blue-600' : 'text-slate-400'} />
-                <p className={`text-sm font-bold ${selectedAhsp?.id === ahsp.id ? 'text-blue-700' : 'text-slate-700'}`}>
-                  {ahsp.name}
-                </p>
-              </div>
-              <div className="flex justify-between items-center text-xs text-slate-500">
-                <span>{ahsp.kode_ahsp || 'Tanpa Kode'}</span>
-                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">{ahsp.unit}</span>
-              </div>
-            </button>
-          ))}
+        <div className="flex gap-2">
+          <button onClick={() => setIsModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2">
+            <Plus size={16} /> Tambah Komponen
+          </button>
+          <button onClick={() => window.print()} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2">
+            <Printer size={16} /> Cetak
+          </button>
         </div>
       </div>
 
-      {/* PANEL KANAN: DETAIL KOMPONEN */}
-      <div className="w-2/3 bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)]">
+      {/* KERTAS DOKUMEN PUPR */}
+      <div className="bg-white w-full max-w-5xl shadow-xl border border-slate-300 p-8 print:shadow-none print:border-none print:p-0">
+        
         {selectedAhsp ? (
           <>
-            <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <div>
-                <h2 className="text-lg font-bold text-slate-800">
-                  {selectedAhsp.kode_ahsp ? `[${selectedAhsp.kode_ahsp}] ` : ''} 
-                  {selectedAhsp.name}
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">Satuan Pekerjaan: {selectedAhsp.unit}</p>
-              </div>
-              <button 
-                onClick={() => setIsModalOpen(true)} 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2"
-              >
-                <Plus size={16} /> Tambah Komponen
-              </button>
+            {/* HEADER DOKUMEN */}
+            <div className="mb-6">
+              <h1 className="text-xl font-bold text-black border-b-2 border-black pb-2 mb-2">
+                {selectedAhsp.kode_ahsp ? `${selectedAhsp.kode_ahsp} ` : ''} {selectedAhsp.name}
+              </h1>
+              <p className="text-sm font-semibold text-slate-700">Satuan: {selectedAhsp.unit}</p>
             </div>
-            
-            <div className="flex-1 overflow-auto p-4">
-              <table className="w-full text-sm text-left border-collapse">
-                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="p-2 border">No</th>
-                    <th className="p-2 border">Uraian Komponen</th>
-                    <th className="p-2 border">Kode / Tipe</th>
-                    <th className="p-2 border text-center">Satuan</th>
-                    <th className="p-2 border text-center">Koefisien</th>
-                    <th className="p-2 border text-right">Harga Satuan</th>
-                    <th className="p-2 border text-right">Jumlah Harga</th>
+
+            {/* TABEL PUPR */}
+            <table className="w-full border-collapse border border-black text-[11px] text-black mb-8">
+              <thead>
+                <tr className="bg-gray-200">
+                  <th className="border border-black p-1 w-10">No</th>
+                  <th className="border border-black p-1 text-left">Uraian</th>
+                  <th className="border border-black p-1 w-20">Kode</th>
+                  <th className="border border-black p-1 w-16">Satuan</th>
+                  <th className="border border-black p-1 w-20">Koefisien</th>
+                  <th className="border border-black p-1 w-32 text-right">Harga Satuan (Rp)</th>
+                  <th className="border border-black p-1 w-32 text-right">Jumlah Harga (Rp)</th>
+                </tr>
+                <tr className="bg-gray-100">
+                  <th className="border border-black p-1">1</th>
+                  <th className="border border-black p-1">2</th>
+                  <th className="border border-black p-1">3</th>
+                  <th className="border border-black p-1">4</th>
+                  <th className="border border-black p-1">5</th>
+                  <th className="border border-black p-1">6</th>
+                  <th className="border border-black p-1">7</th>
+                </tr>
+              </thead>
+              <tbody>
+                
+                {/* A. TENAGA KERJA */}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1 text-center">A</td>
+                  <td className="border border-black p-1" colSpan={6}>TENAGA KERJA</td>
+                </tr>
+                {details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'upah').map((d, i) => (
+                  <tr key={d.id}>
+                    <td className="border border-black p-1 text-center">{i+1}</td>
+                    <td className="border border-black p-1">{d.master_hsd?.nama_item}</td>
+                    <td className="border border-black p-1 text-center">{d.master_hsd?.kode || '-'}</td>
+                    <td className="border border-black p-1 text-center">{d.master_hsd?.satuan}</td>
+                    <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
+                    <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
+                    <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {details.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center p-8 text-slate-400 italic">
-                        Belum ada komponen. Silakan klik "Tambah Komponen".
-                      </td>
-                    </tr>
-                  )}
-                  {details.map((d, idx) => {
-                    const hsd = d.master_hsd || {};
-                    const harga = Number(hsd.harga_dasar) || 0;
-                    const kof = Number(d.koefisien) || 0;
-                    const jumlah = kof * harga;
-                    
-                    return (
-                      <tr key={d.id} className="hover:bg-slate-50">
-                        <td className="p-2 border text-center">{idx + 1}</td>
-                        <td className="p-2 border font-medium text-slate-700">{hsd.nama_item || '-'}</td>
-                        <td className="p-2 border text-xs text-slate-500">{hsd.tipe || '-'}</td>
-                        <td className="p-2 border text-center">{hsd.satuan || '-'}</td>
-                        <td className="p-2 border text-center">{kof}</td>
-                        <td className="p-2 border text-right">Rp {harga.toLocaleString('id-ID')}</td>
-                        <td className="p-2 border text-right font-bold text-slate-800">Rp {jumlah.toLocaleString('id-ID')}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                ))}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1" colSpan={6} align="right">Jumlah Harga Tenaga Kerja (A)</td>
+                  <td className="border border-black p-1 text-right">{totalUpah.toLocaleString('id-ID')}</td>
+                </tr>
+
+                {/* B. BAHAN */}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1 text-center">B</td>
+                  <td className="border border-black p-1" colSpan={6}>BAHAN</td>
+                </tr>
+                {details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'bahan').map((d, i) => (
+                  <tr key={d.id}>
+                    <td className="border border-black p-1 text-center">{i+1}</td>
+                    <td className="border border-black p-1">{d.master_hsd?.nama_item}</td>
+                    <td className="border border-black p-1 text-center">{d.master_hsd?.kode || '-'}</td>
+                    <td className="border border-black p-1 text-center">{d.master_hsd?.satuan}</td>
+                    <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
+                    <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
+                    <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1" colSpan={6} align="right">Jumlah Harga Bahan (B)</td>
+                  <td className="border border-black p-1 text-right">{totalBahan.toLocaleString('id-ID')}</td>
+                </tr>
+
+                {/* C. PERALATAN */}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1 text-center">C</td>
+                  <td className="border border-black p-1" colSpan={6}>PERALATAN</td>
+                </tr>
+                {details.filter(d => d.master_hsd?.tipe?.toLowerCase() === 'alat').map((d, i) => (
+                  <tr key={d.id}>
+                    <td className="border border-black p-1 text-center">{i+1}</td>
+                    <td className="border border-black p-1">{d.master_hsd?.nama_item}</td>
+                    <td className="border border-black p-1 text-center">{d.master_hsd?.kode || '-'}</td>
+                    <td className="border border-black p-1 text-center">{d.master_hsd?.satuan}</td>
+                    <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
+                    <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
+                    <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1" colSpan={6} align="right">Jumlah Harga Peralatan (C)</td>
+                  <td className="border border-black p-1 text-right">{totalAlat.toLocaleString('id-ID')}</td>
+                </tr>
+
+                {/* D. JUMLAH TOTAL */}
+                <tr className="font-bold bg-gray-100">
+                  <td className="border border-black p-1 text-center">D</td>
+                  <td className="border border-black p-1" colSpan={5}>Jumlah Harga Tenaga Kerja, Bahan dan Peralatan (A+B+C)</td>
+                  <td className="border border-black p-1 text-right">{totalD.toLocaleString('id-ID')}</td>
+                </tr>
+
+                {/* E. OVERHEAD & PROFIT */}
+                <tr className="font-bold bg-gray-50">
+                  <td className="border border-black p-1 text-center">E</td>
+                  <td className="border border-black p-1" colSpan={5}>
+                    Overhead + Profit 
+                    <input 
+                      type="number" 
+                      value={overheadPct} 
+                      onChange={(e) => setOverheadPct(Number(e.target.value))}
+                      className="w-12 mx-2 border border-slate-400 rounded text-center text-black print:hidden"
+                    />
+                    <span className="print:inline hidden">({overheadPct}%)</span> x D
+                  </td>
+                  <td className="border border-black p-1 text-right">{totalE.toLocaleString('id-ID')}</td>
+                </tr>
+
+                {/* F. HARGA SATUAN PEKERJAAN */}
+                <tr className="font-bold bg-gray-200 text-sm">
+                  <td className="border border-black p-2 text-center">F</td>
+                  <td className="border border-black p-2" colSpan={5}>Harga Satuan Pekerjaan (D+E)</td>
+                  <td className="border border-black p-2 text-right">{totalF.toLocaleString('id-ID')}</td>
+                </tr>
+
+              </tbody>
+            </table>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-            <Box size={48} className="mb-4 text-slate-300" />
-            <p>Pilih salah satu AHSP di sebelah kiri untuk melihat detail.</p>
-          </div>
+          <div className="text-center text-slate-500 py-10">Pilih AHSP terlebih dahulu.</div>
         )}
       </div>
 
@@ -183,7 +275,7 @@ export default function AhspPage() {
       <AssignmentModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
-        ahspId={selectedAhsp?.id} 
+        ahspId={selectedAhspId} 
         onRefresh={handleRefresh} 
       />
     </div>
