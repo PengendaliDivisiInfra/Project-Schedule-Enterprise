@@ -4,6 +4,7 @@ import Sidebar from './Sidebar';
 import Header from './Header';
 import CommandPalette from './CommandPalette';
 import { supabase } from '../lib/supabase';
+import { AppProgressBar as ProgressBar } from 'next-nprogress-bar';
 
 export default function ClientLayout({ children }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -18,7 +19,6 @@ export default function ClientLayout({ children }) {
     };
     fetchUser();
 
-    // Global Keyboard Shortcut (Ctrl+K / Cmd+K)
     const down = (e) => {
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -31,6 +31,14 @@ export default function ClientLayout({ children }) {
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+      {/* ENTERPRISE TOP LOADER */}
+      <ProgressBar
+        height="3px"
+        color="#2563eb" // Blue-600
+        options={{ showSpinner: false }}
+        shallowRouting
+      />
+
       <Sidebar 
         isCollapsed={isSidebarCollapsed} 
         toggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
@@ -47,7 +55,6 @@ export default function ClientLayout({ children }) {
         </main>
       </div>
 
-      {/* Global Command Palette */}
       <CommandPalette 
         isOpen={isSearchOpen} 
         setIsOpen={setIsSearchOpen} 

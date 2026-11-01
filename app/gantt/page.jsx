@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -10,6 +10,7 @@ export default function GanttPage() {
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isUpdatingRef = useRef(false);
 
   const fetchData = async () => {
     // Jangan set loading(true) jika ini adalah background sync agar UI tidak berkedip
@@ -69,8 +70,13 @@ export default function GanttPage() {
     // LOGIKA REAL-TIME SUPABASE
     const channel = supabase.channel('realtime-wbs-gantt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, (payload) => {
-        console.log('🔄 Data berubah dari layar lain, sinkronisasi Gantt...', payload);
-        fetchData(); // Ambil data terbaru secara otomatis
+        if (isUpdatingRef.current) return;
+        
+        if (window.ganttTimer) clearTimeout(window.ganttTimer);
+        window.ganttTimer = setTimeout(() => {
+          console.log('🔄 Sinkronisasi Gantt...');
+          fetchData();
+        }, 500);
       })
       .subscribe();
 
@@ -87,7 +93,9 @@ export default function GanttPage() {
   }, []);
 
   const handleInlineUpdate = async (taskId, field, value) => {
+    isUpdatingRef.current = true; // Kunci WebSocket
     await supabase.from('wbs_tasks').update({ [field]: value }).eq('id', taskId);
+    setTimeout(() => { isUpdatingRef.current = false; }, 1000);
   };
 
   if (loading) return <LoadingSpinner text="Memuat Gantt Workspace..." />;
@@ -104,4 +112,5 @@ export default function GanttPage() {
     </div>
   );
 }
+
 

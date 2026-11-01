@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { Loader2, AlertTriangle } from 'lucide-react';
@@ -12,6 +12,7 @@ export default function TasksPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast, setToast] = useState(null);
+  const isSavingRef = useRef(false);
   
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
@@ -44,8 +45,15 @@ export default function TasksPage() {
     // LOGIKA REAL-TIME SUPABASE
     const channel = supabase.channel('realtime-wbs-tasks')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, (payload) => {
-        console.log('🔄 Sinkronisasi data Task...', payload);
-        fetchTasks(); // Ambil data terbaru secara otomatis
+        // JIKA SEDANG PROSES SIMPAN, ABAIKAN WEBSOCKET (Mencegah data revert)
+        if (isSavingRef.current) return;
+        
+        // DEBOUNCE: Beri jeda 500ms untuk mencegah spamming
+        if (window.realtimeTimer) clearTimeout(window.realtimeTimer);
+        window.realtimeTimer = setTimeout(() => {
+          console.log('🔄 Sinkronisasi data Task...');
+          fetchTasks();
+        }, 500);
       })
       .subscribe();
 
@@ -107,8 +115,14 @@ export default function TasksPage() {
   const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 300)); // UX Delay
+    isSavingRef.current = true; // Kunci WebSocket
 
+    // 1. OPTIMISTIC UI (Update layar seketika)
+    if (editingTask) {
+      setTasks(prev => prev.map(t => t.id === editingTask.id ? { ...t, ...formData } : t));
+    }
+
+    // 2. Kirim ke Database di latar belakang
     if (editingTask) {
       await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
       showToast('success', 'Task berhasil diperbarui!');
@@ -116,8 +130,12 @@ export default function TasksPage() {
       await supabase.from('wbs_tasks').insert([formData]);
       showToast('success', 'Task baru berhasil ditambahkan!');
     }
+    
     setIsSaving(false);
     setIsModalOpen(false);
+    
+    // Beri jeda 1 detik sebelum WebSocket diizinkan jalan lagi
+    setTimeout(() => { isSavingRef.current = false; }, 1000);
   };
 
   const handleDeleteConfirm = async () => {
@@ -283,3 +301,4 @@ export default function TasksPage() {
     </div>
   );
 }
+
