@@ -189,18 +189,34 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return currentDate.toISOString().split('T')[0];
   };
 
+  // HELPER BARU: Cari hari kerja berikutnya jika input jatuh di weekend/libur
+  const snapToWorkingDay = (dateStr, workingDays, exceptions) => {
+    if (!dateStr) return '';
+    let d = new Date(dateStr);
+    let isWorking = workingDays.includes(d.getDay()) && !exceptions.some(e => e.exception_date === dateStr);
+    
+    while (!isWorking) {
+      d.setDate(d.getDate() + 1); // Maju 1 hari
+      const newDateStr = d.toISOString().split('T')[0];
+      isWorking = workingDays.includes(d.getDay()) && !exceptions.some(e => e.exception_date === newDateStr);
+    }
+    return d.toISOString().split('T')[0];
+  };
+
   const handleDateChange = (task, field, newValue) => {
     let startStr = field === 'start_date' ? newValue : task.start_date;
     let endStr = field === 'end_date' ? newValue : task.end_date;
     let newDuration = task.duration;
 
-    if (startStr && endStr) {
-      if (field === 'start_date') {
-        newDuration = Number(task.duration) || 1;
-        endStr = addWorkingDays(startStr, newDuration, workingDays, exceptions);
-      } else if (field === 'end_date') {
-        newDuration = countWorkingDays(startStr, endStr, workingDays, exceptions);
-      }
+    if (field === 'start_date') {
+      // JIKA UBAH START: Pastikan Start jatuh di hari kerja
+      startStr = snapToWorkingDay(startStr, workingDays, exceptions);
+      newDuration = Number(task.duration) || 1;
+      endStr = addWorkingDays(startStr, newDuration, workingDays, exceptions);
+    } else if (field === 'end_date') {
+      // JIKA UBAH END: Pastikan End jatuh di hari kerja
+      endStr = snapToWorkingDay(endStr, workingDays, exceptions);
+      newDuration = countWorkingDays(startStr, endStr, workingDays, exceptions);
     }
 
     setLocalTasks(prev => prev.map(t => {
@@ -210,7 +226,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       return t;
     }));
 
-    onInlineUpdate(task.id, field, newValue);
+    onInlineUpdate(task.id, 'start_date', startStr);
+    onInlineUpdate(task.id, 'end_date', endStr);
     if (newDuration !== task.duration) {
       onInlineUpdate(task.id, 'duration', newDuration);
     }
