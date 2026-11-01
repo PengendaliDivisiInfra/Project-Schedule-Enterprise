@@ -42,13 +42,8 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     <aside className={`bg-[#0F172A] text-slate-300 flex flex-col shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
       {/* Brand Logo */}
       <div className="h-[64px] flex items-center px-4 border-b border-slate-800 shrink-0">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
-          <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 24C4 24 10 10 16 10C22 10 28 24 28 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M16 10V24" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
-            <path d="M8 24L24 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3"/>
-            <path d="M24 24L8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3"/>
-          </svg>
+        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 overflow-hidden p-0.5">
+          <img src="/logo-infrastruktur.jpeg" alt="InfraControl Logo" className="w-full h-full object-cover rounded-lg" />
         </div>
         {!isCollapsed && (
           <div className="ml-3 flex items-center animate-fade-in">
@@ -102,3 +97,4 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     </aside>
   );
 }
+

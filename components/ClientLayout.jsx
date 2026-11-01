@@ -8,14 +8,25 @@ import { supabase } from '../lib/supabase';
 
 export default function ClientLayout({ children }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  
+  // State User dengan Failsafe Default
+  const [currentUser, setCurrentUser] = useState({ full_name: 'Admin User', role: 'owner' });
 
   useEffect(() => {
     const fetchUser = async () => {
-      const { data } = await supabase.from('profiles').select('*').limit(1).single();
-      if (data) setCurrentUser(data);
-      else setCurrentUser({ full_name: 'Admin User', role: 'owner' });
+      try {
+        // Gunakan maybeSingle() agar tidak error 406 jika tabel kosong
+        const { data, error } = await supabase.from('profiles').select('*').limit(1).maybeSingle();
+        
+        if (data && !error) {
+          setCurrentUser(data);
+        } else {
+          console.warn("Profil tidak ditemukan atau error, menggunakan default Admin.");
+        }
+      } catch (err) {
+        console.error("Gagal fetch profile:", err);
+      }
     };
     fetchUser();
 
