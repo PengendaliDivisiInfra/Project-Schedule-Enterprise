@@ -13,7 +13,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
   const [newHsd, setNewHsd] = useState({
     tipe: 'Bahan',
     nama_item: '',
-    unit: '',
+    satuan: '',
     harga_dasar: ''
   });
 
@@ -24,7 +24,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
       setMode('existing');
       setSelectedHsdId('');
       setKoefisien('');
-      setNewHsd({ tipe: 'Bahan', nama_item: '', unit: '', harga_dasar: '' });
+      setNewHsd({ tipe: 'Bahan', nama_item: '', satuan: '', harga_dasar: '' });
       
       const fetchHsd = async () => {
         const { data } = await supabase.from('master_hsd').select('*').order('tipe');
@@ -50,7 +50,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
           .select('id')
           .eq('project_id', ahspTemplate.project_id)
           .eq('nama_item', newHsd.nama_item)
-          .eq('unit', newHsd.unit)
+          .eq('satuan', newHsd.unit)
           .limit(1)
           .maybeSingle();
 
@@ -66,7 +66,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
               project_id: ahspTemplate.project_id,
               tipe: newHsd.tipe,
               nama_item: newHsd.nama_item,
-              unit: newHsd.unit,
+              satuan: newHsd.unit,
               harga_dasar: Number(newHsd.harga_dasar)
             }])
             .select()
@@ -155,7 +155,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Satuan</label>
-                  <input type="text" required placeholder="Zak / m3" value={newHsd.unit} onChange={e => setNewHsd({...newHsd, unit: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
+                  <input type="text" required placeholder="Zak / m3" value={newHsd.unit} onChange={e => setNewHsd({...newHsd, satuan: e.target.value})} className="w-full border rounded-lg p-2 text-sm" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Harga Satuan (Rp)</label>
@@ -181,6 +181,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspTemplate, onSaveS
     </div>
   );
 }
+
 
 
 
