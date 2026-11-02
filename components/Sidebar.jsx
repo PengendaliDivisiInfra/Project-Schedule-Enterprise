@@ -1,10 +1,10 @@
-﻿'use client';
+'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ChevronLeft, ChevronRight, Layers // Tambah Layers
+  Settings, ShieldCheck, ChevronLeft, ChevronRight, Layers , Printer // Tambah Layers
 } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
@@ -24,6 +24,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     { group: 'Pelaporan', items: [
       { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin'] },
       { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin'] },
+      { name: 'Master Project Report', path: '/reports/master', icon: Printer, roles: ['owner', 'admin'] },
     ]},
     { group: 'Manajemen Biaya', items: [
       { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin'] },
@@ -40,7 +41,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   ];
 
   return (
-    <aside className={`bg-[#0F172A] text-slate-300 flex flex-col shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
+    <aside className={`print:hidden bg-[#0F172A] text-slate-300 flex flex-col shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
       {/* Brand Logo */}
       <div className="h-[64px] flex items-center px-4 border-b border-slate-800 shrink-0">
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 overflow-hidden p-0.5">
