@@ -1,10 +1,11 @@
-'use client';
+﻿'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
 import { updateProjectScheduleSecure } from '../../../lib/scheduler';
 import { calculateEVM } from '../../../lib/evm';
 import { Printer, ArrowLeft, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import PrintSetupModal from '../../../components/PrintSetupModal';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,8 @@ export default function MasterReportPage() {
   const [materialsPlan, setMaterialsPlan] = useState([]);
   const [health, setHealth] = useState({ totalCost: 0, targetPct: 0, actualPct: 0, varian: 0 });
   const [loading, setLoading] = useState(true);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printSettings, setPrintSettings] = useState(null);
 
   const [signatures, setSignatures] = useState({
     pm: { title: 'Dibuat oleh,', role: 'Project Manager', name: '' },
@@ -128,7 +131,7 @@ export default function MasterReportPage() {
             <button onClick={() => { router.refresh(); fetchData(); }} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm text-sm">
                 <RefreshCw className="w-4 h-4" /> Sync Data
             </button>
-            <button onClick={() => window.print()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-md text-sm">
+            <button onClick={() => setIsPrintModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-md text-sm">
                 <Printer className="w-4 h-4" /> Cetak PDF
             </button>
         </div>
@@ -170,7 +173,7 @@ export default function MasterReportPage() {
                     <td className={`card ${health.varian < 0 ? 'bg-red' : 'bg-emerald'}`}>
                         <p>STATUS VARIAN</p>
                         <h3>
-                            {health.varian < 0 ? '▼' : '▲'} 
+                            {health.varian < 0 ? 'â–¼' : 'â–²'} 
                             {health.varian > 0 ? '+' : ''}{health.varian.toFixed(2)}%
                         </h3>
                     </td>
@@ -473,6 +476,28 @@ export default function MasterReportPage() {
           /* 6. ELEMEN YANG TIDAK BOLEH TERPOTONG */
           .signature-block, .evm-cards, .print-header { 
             page-break-inside: avoid; 
+          }
+        }
+      `}</style>
+      {/* PRINT SETUP MODAL */}
+      <PrintSetupModal 
+        isOpen={isPrintModalOpen} 
+        onClose={() => setIsPrintModalOpen(false)} 
+        onPrint={(settings) => {
+          setPrintSettings(settings);
+          setIsPrintModalOpen(false);
+          setTimeout(() => {
+            window.print();
+          }, 500); // Beri jeda agar modal hilang dan CSS print aktif
+        }} 
+      />
+
+      {/* DYNAMIC PRINT CSS (Mengatur Orientasi Kertas) */}
+      <style jsx global>{`
+        @media print {
+          @page {
+            size: ${printSettings?.orientation || 'landscape'} ${printSettings?.paperSize || 'A4'};
+            margin: 10mm;
           }
         }
       `}</style>
