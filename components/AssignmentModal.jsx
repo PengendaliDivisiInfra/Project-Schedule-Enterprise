@@ -164,6 +164,11 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
                     <option value="Hari">Hari</option>
                     <option value="Buah">Buah</option>
                     <option value="Set">Set</option>
+                    <option value="Batang">Batang</option>
+                    <option value="Lembar">Lembar</option>
+                    <option value="Roll">Roll</option>
+                    <option value="Titik">Titik</option>
+                    <option value="Paket">Paket</option>
                   </select>
                 </div>
                 <div>
@@ -195,5 +200,6 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
     </div>
   );
 }
+
 
 

@@ -219,10 +219,21 @@ export default function HsdPage() {
                     <option value="LS">LS (Lump Sum)</option>
                     <option value="M3">M3 (Kubik)</option>
                     <option value="M2">M2 (Persegi)</option>
+                    <option value="M1">M1 (Meter Lari)</option>
                     <option value="Kg">Kg (Kilogram)</option>
+                    <option value="Ton">Ton</option>
                     <option value="Zak">Zak</option>
+                    <option value="Liter">Liter</option>
                     <option value="OH">OH (Orang Hari)</option>
                     <option value="Jam">Jam</option>
+                    <option value="Hari">Hari</option>
+                    <option value="Buah">Buah</option>
+                    <option value="Set">Set</option>
+                    <option value="Batang">Batang</option>
+                    <option value="Lembar">Lembar</option>
+                    <option value="Roll">Roll</option>
+                    <option value="Titik">Titik</option>
+                    <option value="Paket">Paket</option>
                   </select>
                 </div>
                 <div>
@@ -264,3 +275,4 @@ export default function HsdPage() {
     </div>
   );
 }
+
