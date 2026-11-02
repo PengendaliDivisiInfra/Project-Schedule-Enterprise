@@ -17,6 +17,49 @@ export default function GanttPage() {
   const [schedulerError, setSchedulerError] = useState(null);
   const isUpdatingRef = useRef(false);
 
+  // --- FUNGSI KALKULASI EVM (Disalin dari Tasks Page) ---
+  const calculateEVM = (data) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    return data.map(t => {
+      const vol = Number(t.volume) || 0;
+      const dur = Number(t.duration) || 1;
+      const progPct = Number(t.progress_percent) || 0;
+      const startDate = t.start_date ? new Date(t.start_date) : null;
+      const endDate = t.end_date ? new Date(t.end_date) : null;
+      
+      let smartTargetPct = 0;
+      let sisaHari = dur;
+
+      if (t.summary === 'No' && startDate && endDate) {
+        if (today >= endDate) {
+          smartTargetPct = 100;
+          sisaHari = 0;
+        } else if (today > startDate) {
+          const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) || 1;
+          const elapsedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
+          smartTargetPct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
+          sisaHari = Math.max(0, totalDays - elapsedDays);
+        }
+      }
+
+      const actualVol = vol * (progPct / 100);
+      const sisaVol = vol - actualVol;
+      const varianPct = progPct - smartTargetPct;
+      const butuhTHr = sisaHari > 0 ? (sisaVol / sisaHari) : 0;
+
+      return { 
+        ...t, 
+        smart_target: Number(smartTargetPct.toFixed(1)), 
+        sisa_hari_efektif: sisaHari, 
+        actual_vol: actualVol, 
+        sisa_vol: sisaVol, 
+        varian_pct: varianPct, 
+        butuh_t_hr: Number(butuhTHr.toFixed(3)) 
+      };
+    });
+  };
+
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     
@@ -53,26 +96,28 @@ export default function GanttPage() {
         return { ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0, duration: calculatedDuration };
       });
 
-      // PISAHKAN MANUAL DAN AUTO
-      const autoTasks = formattedTasks.filter(t => t.task_mode !== 'Manually Scheduled');
-      const manualTasks = formattedTasks.filter(t => t.task_mode === 'Manually Scheduled');
+      // 1. Jalankan CPM Engine
+      const result = updateProjectScheduleSecure(formattedTasks, currentWorkingDays, currentExceptions);
+      let finalTasks = result.success ? result.tasks : formattedTasks;
       
-      let finalTasks = formattedTasks;
-      if (autoTasks.length > 0) {
-        const result = updateProjectScheduleSecure(autoTasks, currentWorkingDays, currentExceptions);
-        if (result.success) {
-           finalTasks = [...result.tasks, ...manualTasks].sort((a,b) => a.wbs_code.localeCompare(b.wbs_code));
-        }
-      }
-      setTasks(finalTasks);
+      // 2. Jalankan EVM Engine agar Target/Sisa/T/hr muncul
+      finalTasks = calculateEVM(finalTasks);
+      
+      const sorted = finalTasks.sort((a,b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+      setTasks(sorted);
     }
 
     if (taskData) {
       const rels = [];
       taskData.forEach(t => {
         if (t.predecessors && t.summary !== 'Yes') {
-          const match = t.predecessors.match(/([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?/);
-          if (match) rels.push({ from: match[1], to: t.wbs_code, type: match[2] || 'FS', is_critical: t.is_critical });
+          const predStrings = t.predecessors.split(',').map(s => s.trim());
+          predStrings.forEach(predStr => {
+            const match = predStr.match(/^([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?$/i);
+            if (match) {
+              rels.push({ from: match[1], to: t.wbs_code, type: match[2] ? match[2].toUpperCase() : 'FS', is_critical: t.is_critical });
+            }
+          });
         }
       });
       setRelations(rels);
@@ -95,7 +140,6 @@ export default function GanttPage() {
 
   const handleInlineUpdate = async (taskId, field, value) => {
     isUpdatingRef.current = true; 
-    
     let updateData = {};
     let tempTasks = tasks.map(t => {
         if (t.id === taskId) {
@@ -104,7 +148,6 @@ export default function GanttPage() {
                 return { ...t, ...value };
             } else {
                 updateData = { [field]: value };
-                // Paksa manual jika user mengedit tanggal
                 if (field === 'start_date' || field === 'end_date' || field === 'duration') {
                     updateData.task_mode = 'Manually Scheduled';
                     return { ...t, [field]: value, task_mode: 'Manually Scheduled' };
@@ -117,11 +160,10 @@ export default function GanttPage() {
     
     const currentTask = tempTasks.find(t => t.id === taskId);
 
-    // BYPASS CPM ENGINE JIKA MANUAL
     if (currentTask?.task_mode === 'Manually Scheduled' || field === 'BULK_UPDATE') {
       setTasks([...tempTasks]);
       await supabase.from('wbs_tasks').update(updateData).eq('id', taskId);
-      setTimeout(() => { isUpdatingRef.current = false; }, 1000);
+      setTimeout(() => { isUpdatingRef.current = false; }, 500);
       return;
     }
 
@@ -132,7 +174,7 @@ export default function GanttPage() {
       return; 
     }
     
-    const calculatedTasks = result.tasks;
+    const calculatedTasks = calculateEVM(result.tasks); 
     setTasks([...calculatedTasks]); 
 
     const changedTasks = calculatedTasks.filter(t => {

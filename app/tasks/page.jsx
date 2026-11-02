@@ -209,7 +209,7 @@ export default function TasksPage() {
     const saveData = {
       name: finalData.name, volume: Number(finalData.volume) || 0, duration: Number(finalData.duration) || 1,
       start_date: finalData.start_date || null, end_date: finalData.end_date || null,
-      progress_percent: Number(finalData.progress_percent) || 0, task_mode: finalData.task_mode,
+      progress_percent: Number(Number(finalData.progress_percent).toFixed(2)) || 0, task_mode: finalData.task_mode,
       constraint_type: finalData.constraint_type, constraint_date: finalData.constraint_date || null,
       task_type: finalData.task_type, priority: finalData.priority, is_milestone: finalData.is_milestone,
       predecessors: finalData.predecessors, tags: finalData.tags, assignee: finalData.assignee, wbs_dictionary: finalData.wbs_dictionary
@@ -343,7 +343,7 @@ export default function TasksPage() {
                     <td className={`p-2 ${isSummary ? 'font-bold text-slate-800' : 'font-medium text-slate-700'}`}>
                       {t.name}
                     </td>
-                    <td className="p-2 text-center font-mono bg-slate-50/50">{isSummary ? '-' : t.volume}</td>
+                    <td className="p-2 text-center font-mono bg-slate-50/50">{isSummary ? '-' : `${t.volume} ${t.satuan_hsd || ''}`}</td>
                     
                     {showCPM && (
                       <>
@@ -399,8 +399,8 @@ export default function TasksPage() {
                     <td className={`p-2 text-center font-mono font-bold ${varian < 0 ? 'text-red-600' : varian > 0 ? 'text-green-600' : 'text-slate-500'}`}>
                         {isSummary ? '-' : (
                         <div className="flex items-center justify-center gap-1">
-                            {varian < 0 ? <TrendingDown className="w-3 h-3" /> : varian > 0 ? <TrendingUp className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
-                            {Math.abs(varian).toFixed(1)}%
+                            {varian > 0 ? <TrendingUp className="w-3 h-3" /> : varian < 0 ? <TrendingDown className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                            {varian > 0 ? '+' : ''}{varian.toFixed(1)}%
                         </div>
                         )}
                     </td>
@@ -461,7 +461,7 @@ export default function TasksPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-600 mb-1">Progress (%)</label>
-                        <input type="number" name="progress_percent" value={formData.progress_percent || 0} onChange={handleChange} min="0" max="100" className="w-full px-3 py-2 border rounded-md text-sm" />
+                        <input type="number" name="progress_percent" value={Number(formData.progress_percent || 0).toFixed(2)} onChange={handleChange} min="0" max="100" step="0.01" className="w-full px-3 py-2 border rounded-md text-sm" />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
@@ -618,10 +618,10 @@ export default function TasksPage() {
                     <h3 className="font-bold text-blue-700 text-base flex items-center gap-2"><Info className="w-5 h-5"/> Fungsi Constraint</h3>
                     <p>Constraint = batasan waktu yang memaksa kapan task harus mulai/selesai.</p>
                     <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>ASAP</strong> — Ikuti jadwal predecessor murni (Default).</li>
-                      <li><strong>SNET</strong> — Tugas baru boleh mulai SETELAH tanggal X.</li>
-                      <li><strong>MSO</strong> — Tugas HARUS mulai TEPAT tanggal X.</li>
-                      <li><strong>MFO</strong> — Tugas HARUS selesai TEPAT tanggal X.</li>
+                      <li><strong>ASAP</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Ikuti jadwal predecessor murni (Default).</li>
+                      <li><strong>SNET</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Tugas baru boleh mulai SETELAH tanggal X.</li>
+                      <li><strong>MSO</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Tugas HARUS mulai TEPAT tanggal X.</li>
+                      <li><strong>MFO</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Tugas HARUS selesai TEPAT tanggal X.</li>
                     </ul>
                   </div>
                 )}

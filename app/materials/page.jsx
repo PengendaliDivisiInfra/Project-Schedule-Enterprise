@@ -64,6 +64,7 @@ export default function MaterialsPage() {
               <tr className="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
                 <th className="p-4 font-bold">WBS / Pekerjaan</th>
                 <th className="p-4 font-bold">Nama Material</th>
+                <th className="p-4 font-bold text-center bg-orange-50 text-orange-700">Berat/Unit</th>
                 <th className="p-4 font-bold text-center">Kebutuhan Ideal</th>
                 <th className="p-4 font-bold text-center">Waste (5%)</th>
                 <th className="p-4 font-bold text-center text-indigo-700 bg-indigo-50">Total Dibeli</th>
@@ -95,6 +96,9 @@ export default function MaterialsPage() {
                         <div className="text-[10px] text-slate-400 font-mono">{m.wbs_tasks?.wbs_code}</div>
                       </td>
                       <td className="p-4 font-medium text-slate-800">{namaMat}</td>
+                    <td className="p-4 text-center font-mono text-slate-600 bg-orange-50/30">
+                      {m.master_hsd?.berat_satuan ? `${m.master_hsd.berat_satuan} ${satuan}` : '-'}
+                    </td>
                       <td className="p-4 text-center font-mono text-slate-600">
                         {Number(m.volume_requirement).toFixed(2)} <span className="text-xs text-slate-400">{satuan}</span>
                       </td>

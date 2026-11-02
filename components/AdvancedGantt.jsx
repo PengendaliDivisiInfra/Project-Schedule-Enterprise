@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 import { useRef, useEffect, useState, useMemo } from 'react';
+import { Folder, FileText, Pin, Settings, Filter, Calendar } from 'lucide-react';
 import ResourceHistogram from './ResourceHistogram';
 import { calculateResourceHistogram } from '../lib/histogramCalculator';
 
@@ -24,6 +25,9 @@ export default function AdvancedGantt({
   const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
+
+  // State untuk Data Date
+  const [dataDate, setDataDate] = useState(statusDate || new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     setLocalTasks(tasks);
@@ -51,13 +55,22 @@ export default function AdvancedGantt({
   const endIndex = Math.min(displayTasks.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + BUFFER_SIZE);
   const visibleTasks = displayTasks.slice(startIndex, endIndex);
 
-  let minDate = new Date();
-  let maxDate = new Date();
+  let minDate = null;
+  let maxDate = null;
+  
   displayTasks.forEach(t => {
-    if (t.start_date) { const d = new Date(t.start_date); if (d < minDate) minDate = d; }
-    if (t.end_date) { const d = new Date(t.end_date); if (d > maxDate) maxDate = d; }
+    const s = t.early_start || t.start_date;
+    const e = t.early_finish || t.end_date;
+    if (s) { const d = new Date(s); if (!minDate || d < minDate) minDate = d; }
+    if (e) { const d = new Date(e); if (!maxDate || d > maxDate) maxDate = d; }
   });
+
+  if (!minDate) minDate = new Date();
+  if (!maxDate) maxDate = new Date();
+
+  minDate = new Date(minDate);
   minDate.setDate(minDate.getDate() - 7);
+  maxDate = new Date(maxDate);
   maxDate.setDate(maxDate.getDate() + 14);
 
   const calendarDays = [];
@@ -65,18 +78,39 @@ export default function AdvancedGantt({
   while (cur <= maxDate) {
     const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
     const isWorking = workingDays.includes(cur.getDay());
-    
     const y = cur.getFullYear();
     const m = String(cur.getMonth() + 1).padStart(2, '0');
     const d = String(cur.getDate()).padStart(2, '0');
     const dateStr = y + '-' + m + '-' + d;
-    
     calendarDays.push({ date: new Date(cur), dateStr, isWeekend: !isWorking });
     cur.setDate(cur.getDate() + 1);
   }
 
   const pixelsPerDay = zoomLevel === 'day' ? 36 : zoomLevel === 'week' ? 16 : 4;
   const totalWidth = calendarDays.length * pixelsPerDay;
+
+  useEffect(() => {
+    if (rightPanelRef.current && displayTasks.length > 0) {
+      let firstTaskDate = null;
+      displayTasks.forEach(t => {
+        const s = t.early_start || t.start_date;
+        if (s) {
+          const d = new Date(s);
+          if (!firstTaskDate || d < firstTaskDate) firstTaskDate = d;
+        }
+      });
+      if (firstTaskDate) {
+        const mDate = new Date(minDate);
+        mDate.setHours(0,0,0,0);
+        const fDate = new Date(firstTaskDate);
+        fDate.setHours(0,0,0,0);
+        const daysDiff = Math.round((fDate - mDate) / (1000 * 60 * 60 * 24));
+        const scrollPos = Math.max(0, (daysDiff - 2) * pixelsPerDay);
+        rightPanelRef.current.scrollLeft = scrollPos;
+        setScrollLeft(scrollPos);
+      }
+    }
+  }, [zoomLevel, minDate.getTime(), displayTasks.length]);
 
   const getWeekNumber = (d) => {
     const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -113,14 +147,18 @@ export default function AdvancedGantt({
     const taskRects = {};
 
     displayTasks.forEach((t, idx) => {
-      const x = getX(t.start_date);
+      const startD = t.early_start || t.start_date;
+      const endD = t.early_finish || t.end_date;
+      if (!startD || !endD) return;
+
+      const x = getX(startD);
       let width = t.duration * pixelsPerDay;
-      if (t.start_date && t.end_date) {
-        const startX = getX(t.start_date);
-        const endX = getX(t.end_date);
-        if (endX >= startX) width = (endX - startX) + pixelsPerDay;
-      }
+      const startX = getX(startD);
+      const endX = getX(endD);
+      
+      if (endX >= startX) width = (endX - startX) + pixelsPerDay;
       width = Math.max(8, width);
+      
       const y = idx * ROW_HEIGHT;
       taskRects[t.wbs_code] = { x: Math.max(0, x), y, width, index: idx };
     });
@@ -129,27 +167,26 @@ export default function AdvancedGantt({
       const from = taskRects[rel.from];
       const to = taskRects[rel.to];
       if (!from || !to) return;
-
       if (from.index < startIndex - BUFFER_SIZE && to.index < startIndex - BUFFER_SIZE) return;
       if (from.index > endIndex + BUFFER_SIZE && to.index > endIndex + BUFFER_SIZE) return;
 
       let sourceX, sourceY, targetX, targetY;
       const fromCenterY = from.y + (ROW_HEIGHT / 2);
       const toCenterY = to.y + (ROW_HEIGHT / 2);
+      const typeUpper = rel.type.toUpperCase();
+      const ARROW_PADDING = 4; 
 
-      if (rel.type === 'FS') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; }
-      else if (rel.type === 'SS') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x; targetY = toCenterY; }
-      else if (rel.type === 'FF') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
-      else if (rel.type === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
+      if (typeUpper === 'FS') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x - ARROW_PADDING; targetY = toCenterY; }
+      else if (typeUpper === 'SS') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x - ARROW_PADDING; targetY = toCenterY; }
+      else if (typeUpper === 'FF') { sourceX = from.x + from.width; sourceY = fromCenterY; targetX = to.x + to.width + ARROW_PADDING; targetY = toCenterY; }
+      else if (typeUpper === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width + ARROW_PADDING; targetY = toCenterY; }
 
       const points = [[sourceX, sourceY]];
-      
       if (targetX < sourceX + 20) {
-        const midY = fromCenterY + ROW_HEIGHT / 2;
-        points.push([sourceX, sourceY + 8]); 
+        const midY = sourceY + (ROW_HEIGHT / 2);
         points.push([sourceX, midY]); 
-        points.push([targetX - 10, midY]); 
-        points.push([targetX - 10, targetY]);
+        points.push([targetX - 15, midY]); 
+        points.push([targetX - 15, targetY]);
       } else {
         const midX = sourceX + (targetX - sourceX) / 2;
         points.push([midX, sourceY]); points.push([midX, targetY]);
@@ -163,7 +200,7 @@ export default function AdvancedGantt({
     });
 
     setSvgPaths(paths);
-  }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay]);
+  }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay, minDate.getTime()]);
 
   const handleScroll = (e) => {
     setScrollTop(e.currentTarget.scrollTop);
@@ -180,6 +217,7 @@ export default function AdvancedGantt({
   const countWorkingDays = (startStr, endStr, workingDays, exceptions) => {
     if (!startStr || !endStr) return 1;
     let count = 0; let cur = new Date(startStr); const end = new Date(endStr);
+    cur.setHours(12,0,0,0); end.setHours(12,0,0,0);
     while (cur <= end) {
       if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) count++;
       cur.setDate(cur.getDate() + 1);
@@ -190,6 +228,7 @@ export default function AdvancedGantt({
   const addWorkingDays = (startStr, daysToAdd, workingDays, exceptions) => {
     if (!startStr) return '';
     let currentDate = new Date(startStr); let added = 0;
+    currentDate.setHours(12,0,0,0);
     while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) currentDate.setDate(currentDate.getDate() + 1);
     if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
     while (added < (daysToAdd - 1)) {
@@ -202,6 +241,7 @@ export default function AdvancedGantt({
   const snapToWorkingDay = (dateStr, workingDays, exceptions) => {
     if (!dateStr) return '';
     let d = new Date(dateStr);
+    d.setHours(12,0,0,0);
     while (!workingDays.includes(d.getDay()) || exceptions.some(e => e.exception_date === d.toISOString().split('T')[0])) d.setDate(d.getDate() + 1);
     return d.toISOString().split('T')[0];
   };
@@ -220,10 +260,8 @@ export default function AdvancedGantt({
       newDuration = countWorkingDays(startStr, endStr, workingDays, exceptions);
     }
 
-    // PERBAIKAN: Ubah Mode ke Manually Scheduled agar CPM Engine tidak menimpa
     setLocalTasks(prev => {
       let updated = prev.map(t => t.id === task.id ? { ...t, start_date: startStr, end_date: endStr, duration: newDuration, task_mode: 'Manually Scheduled' } : t);
-      
       if (task.parent_id) {
         const siblings = updated.filter(t => t.parent_id === task.parent_id);
         if (siblings.length > 0) {
@@ -238,11 +276,7 @@ export default function AdvancedGantt({
       }
       return updated;
     });
-
-    onInlineUpdate(task.id, 'start_date', startStr); 
-    onInlineUpdate(task.id, 'end_date', endStr);
-    if (newDuration !== task.duration) onInlineUpdate(task.id, 'duration', newDuration);
-    onInlineUpdate(task.id, 'task_mode', 'Manually Scheduled'); // Kirim update status manual ke DB
+    onInlineUpdate(task.id, 'BULK_UPDATE', { start_date: startStr, end_date: endStr, duration: newDuration, task_mode: 'Manually Scheduled' });
   };
 
   const handleLocalInlineUpdate = (taskId, field, value) => {
@@ -260,7 +294,6 @@ export default function AdvancedGantt({
         }
         return t;
       });
-
       const child = updated.find(t => t.id === taskId);
       if (child && child.parent_id) {
         const siblings = updated.filter(t => t.parent_id === child.parent_id);
@@ -268,7 +301,6 @@ export default function AdvancedGantt({
           const minStart = siblings.reduce((min, s) => new Date(s.start_date) < new Date(min) ? s.start_date : min, siblings[0].start_date);
           const maxEnd = siblings.reduce((max, s) => new Date(s.end_date) > new Date(max) ? s.end_date : max, siblings[0].end_date);
           const pDur = countWorkingDays(minStart, maxEnd, workingDays, exceptions);
-          
           updated = updated.map(t => {
             if (t.id === child.parent_id) return { ...t, start_date: minStart, end_date: maxEnd, duration: pDur };
             return t;
@@ -283,12 +315,44 @@ export default function AdvancedGantt({
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
+      {/* TOOLBAR ATAS (Bebas dari karakter aneh) */}
+      <div className="flex justify-between items-center px-4 py-2.5 bg-white border-b border-slate-200 shrink-0">
+        <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
+           <Filter className="w-4 h-4 text-indigo-500" /> Timeline Controls
+        </div>
+        <div className="flex items-center gap-3">
+          {/* FITUR BARU: DATA DATE (STATUS DATE) */}
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5">
+            <Calendar className="w-4 h-4 text-slate-500" />
+            <span className="text-[11px] font-bold text-slate-600">Data Date:</span>
+            <input 
+              type="date" 
+              value={dataDate} 
+              onChange={(e) => setDataDate(e.target.value)} 
+              className="bg-transparent border-none text-[11px] font-bold text-indigo-700 focus:outline-none cursor-pointer"
+            />
+          </div>
+
+          <div className="relative">
+            <select value={zoomLevel} onChange={(e) => setZoomLevel(e.target.value)} className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded shadow-sm py-1.5 pl-3 pr-8 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+              <option value="day">Skala: Hari</option>
+              <option value="week">Skala: Minggu</option>
+              <option value="month">Skala: Bulan</option>
+            </select>
+          </div>
+          
+          <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[11px] px-3 py-1.5 rounded font-bold border transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+            {showCriticalOnly ? 'Hanya Critical Path' : 'Tampilkan Semua'}
+          </button>
+        </div>
+      </div>
+
       <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 z-20">
         <div className="w-[1020px] border-r border-slate-300 flex flex-col shrink-0">
           <div className="flex justify-between items-center px-2 py-2 border-b border-slate-200 bg-slate-100">
             <div className="flex text-[11px] font-semibold text-slate-600 items-center">
-              <span className="w-6 text-center" title="Mode">📌</span>
-              <span className="w-6 text-center" title="Done">✓</span>
+              <span className="w-6 text-center" title="Mode">Mode</span>
+              <span className="w-6 text-center" title="Done">Done</span>
               <span className="w-10 text-center" title="ID">ID</span>
               <span className="w-44 pl-1 border-l border-slate-300">Task Name</span>
               <span className="w-20 text-center border-l border-slate-300">Volume</span>
@@ -299,19 +363,8 @@ export default function AdvancedGantt({
               <span className="w-16 text-center border-l border-slate-300">Resource</span>
               <span className="w-10 text-center border-l border-slate-300">%</span>
               <span className="w-12 text-center border-l border-slate-300">Target</span>
-              <span className="w-10 text-center border-l border-slate-300">Sisa</span>
+              <span className="w-12 text-center border-l border-slate-300">Sisa Vol</span>
               <span className="w-12 text-center border-l border-slate-300">T/hr</span>
-            </div>
-            
-            <div className="flex items-center gap-2 ml-2">
-              <div className="relative">
-                <select value={zoomLevel} onChange={(e) => setZoomLevel(e.target.value)} className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded shadow-sm py-1 pl-7 pr-6 text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
-                  <option value="day">Skala: Hari</option>
-                  <option value="week">Skala: Minggu</option>
-                  <option value="month">Skala: Bulan</option>
-                </select>
-              </div>
-              <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[10px] px-2 py-1 rounded font-bold border ${showCriticalOnly ? 'bg-red-500 text-white' : 'bg-white text-slate-600'}`}>{showCriticalOnly ? 'Critical' : 'All'}</button>
             </div>
           </div>
           <div className="h-[24px] bg-slate-50"></div>
@@ -356,10 +409,15 @@ export default function AdvancedGantt({
                   style={{ top, height: ROW_HEIGHT }}
                   className={`absolute w-full flex text-[11px] items-center px-2 border-b border-slate-100 transition-colors cursor-pointer
                     ${isSummary ? 'bg-slate-50 font-bold' : actualIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${isHovered ? 'bg-blue-50/80' : 'hover:bg-blue-50/50'}`}>
-                  <span className="w-6 text-center">{t.task_mode === 'Manually Scheduled' ? '📌' : '📅'}</span>
-                  <span className="w-6 text-center">{t.progress_percent === 100 ? <span className="text-green-600 font-bold">✓</span> : <span className="text-slate-300">☐</span>}</span>
+                  <span className="w-6 flex justify-center text-center">
+                    {t.task_mode === 'Manually Scheduled' ? <Pin className="w-3.5 h-3.5 text-amber-600" /> : <Settings className="w-3.5 h-3.5 text-blue-500" />}
+                  </span>
+                  <span className="w-6 text-center">{t.progress_percent === 100 ? <span className="text-green-600 font-bold">V</span> : <span className="text-slate-300">o</span>}</span>
                   <span className="w-10 font-mono text-slate-500 text-center">{t.wbs_code}</span>
-                  <span className={`w-44 truncate pl-1 ${isSummary ? 'text-black' : 'text-slate-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>{isSummary ? '📁 ' : '📄 '} {t.name}</span>
+                  <span className={`w-44 truncate pl-1 flex items-center gap-1 ${isSummary ? 'text-black' : 'text-slate-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
+                    {isSummary ? <Folder className="w-3 h-3 text-slate-400 shrink-0" /> : <FileText className="w-3 h-3 text-slate-400 shrink-0" />}
+                    <span className="truncate">{t.name}</span>
+                  </span>
                   <div className="w-20 px-1 border-r border-slate-100 bg-slate-50/50">
                     {!isSummary && (
                       <div className="flex items-center gap-1">
@@ -399,10 +457,10 @@ export default function AdvancedGantt({
                       <input type="text" defaultValue={t.resource_names || ''} placeholder="..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'resource_names', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-slate-300" />
                     )}
                   </div>
-                  <span className="w-10 text-center font-bold text-slate-700 border-l border-slate-100">{t.progress_percent}%</span>
-                  <span className="w-12 text-center font-bold text-indigo-700 border-l border-slate-100">{isSummary ? '-' : t.smart_target}</span>
-                  <span className="w-10 text-center text-slate-500 border-l border-slate-100">{isSummary ? '-' : (t.sisa_hari_efektif || 0)}</span>
-                  <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : `0`}</span>
+                  <span className="w-10 text-center font-bold text-slate-700 border-l border-slate-100">{Number(t.progress_percent || 0).toFixed(1)}%</span>
+                  <span className="w-12 text-center font-bold text-indigo-700 border-l border-slate-100">{isSummary ? '-' : Number(t.smart_target || 0).toFixed(1) + '%'}</span>
+                  <span className="w-12 text-center text-slate-600 font-semibold border-l border-slate-100">{isSummary ? '-' : Number(t.sisa_vol || 0).toFixed(2)}</span>
+                  <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : Number(t.butuh_t_hr || 0).toFixed(3)}</span>
                 </div>
               );
             })}
@@ -428,7 +486,7 @@ export default function AdvancedGantt({
               })}
             </div>
 
-            <div className="absolute top-0 bottom-0 border-l border-green-500 border-dashed z-10 pointer-events-none" style={{ left: getX(statusDate) }} title="Status Date"></div>
+            <div className="absolute top-0 bottom-0 border-l border-green-500 border-dashed z-10 pointer-events-none" style={{ left: getX(dataDate) }} title="Data Date"></div>
             <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
             
             <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={displayTasks.length * ROW_HEIGHT}>
@@ -442,13 +500,17 @@ export default function AdvancedGantt({
             <div className="absolute inset-0 z-20 pointer-events-none">
               {visibleTasks.map((t, idx) => {
                 const actualIndex = startIndex + idx;
-                const rawLeft = getX(t.start_date);
+                const rawLeft = getX(t.early_start || t.start_date);
                 const left = Math.max(0, rawLeft);
                 
                 let width = t.duration * pixelsPerDay;
-                if (t.start_date && t.end_date) {
-                  const endX = getX(t.end_date);
-                  if (endX >= rawLeft) width = (endX - rawLeft) + pixelsPerDay;
+                const startD = t.early_start || t.start_date;
+                const endD = t.early_finish || t.end_date;
+
+                if (startD && endD) {
+                  const startX = getX(startD);
+                  const endX = getX(endD);
+                  if (endX >= startX) width = (endX - startX) + pixelsPerDay;
                 }
                 if (rawLeft < 0) width = width + rawLeft; 
                 width = Math.max(8, width);
@@ -461,7 +523,7 @@ export default function AdvancedGantt({
 
                 if (t.duration === 0) return <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 5, top: top + 2 }}><div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div></div>;
                 if (isSummary) {
-                  if (!t.start_date || !t.end_date) return null; 
+                  if (!startD || !endD) return null; 
                   return <div key={t.id} className="absolute pointer-events-auto" style={{ left, width, top: top + 2 }}><div className="absolute top-0 w-full h-[4px] bg-slate-800"></div><div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div><div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div></div>;
                 }
 
