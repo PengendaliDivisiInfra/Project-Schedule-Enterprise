@@ -51,6 +51,11 @@ export default function AdvancedGantt({
     [localTasks, taskAssignments, resources, workingDays, exceptions]
   );
 
+  // --- KALKULASI SUMMARY PROYEK ---
+  const totalTasks = localTasks.length;
+  const criticalTasks = localTasks.filter(t => t.is_critical && t.summary !== 'Yes').length;
+  const overallocatedCount = histogramData?.overallocatedCount || 0;
+
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_SIZE);
   const endIndex = Math.min(displayTasks.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + BUFFER_SIZE);
   const visibleTasks = displayTasks.slice(startIndex, endIndex);
@@ -87,6 +92,7 @@ export default function AdvancedGantt({
   }
 
   const pixelsPerDay = zoomLevel === 'day' ? 36 : zoomLevel === 'week' ? 16 : 4;
+  const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
   const totalWidth = calendarDays.length * pixelsPerDay;
 
   useEffect(() => {
@@ -316,10 +322,8 @@ export default function AdvancedGantt({
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
       {/* TOOLBAR ATAS (Bebas dari karakter aneh) */}
-      <div className="flex justify-between items-center px-4 py-2.5 bg-white border-b border-slate-200 shrink-0">
-        <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-           <Filter className="w-4 h-4 text-indigo-500" /> Timeline Controls
-        </div>
+      <div className="flex justify-between items-center px-4 py-2 bg-white border-b border-slate-200 shrink-0"><div className="flex items-center gap-3"><span className="text-sm font-bold text-slate-800">Project Overview</span><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">Tasks: {totalTasks}</span><span className="bg-red-100 text-red-600 px-2 py-1 rounded text-xs">Critical: {criticalTasks}</span></div>
+
         <div className="flex items-center gap-3">
           {/* FITUR BARU: DATA DATE (STATUS DATE) */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5">
@@ -347,8 +351,8 @@ export default function AdvancedGantt({
         </div>
       </div>
 
-      <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 z-20">
-        <div className="w-[1020px] border-r border-slate-300 flex flex-col shrink-0">
+      <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 relative z-10">
+        <div className="w-[1150px] border-r border-slate-300 flex flex-col shrink-0">
           <div className="flex justify-between items-center px-2 py-2 border-b border-slate-200 bg-slate-100">
             <div className="flex text-[11px] font-semibold text-slate-600 items-center">
               <span className="w-6 text-center" title="Mode">Mode</span>
@@ -365,6 +369,9 @@ export default function AdvancedGantt({
               <span className="w-12 text-center border-l border-slate-300">Target</span>
               <span className="w-12 text-center border-l border-slate-300">Sisa Vol</span>
               <span className="w-12 text-center border-l border-slate-300">T/hr</span>
+              <span className="w-14 text-center border-l border-slate-300 bg-slate-50">Varian</span>
+              <span className="w-12 text-center border-l border-slate-300">Slack</span>
+              <span className="w-24 text-center border-l border-slate-300">Cost</span>
             </div>
           </div>
           <div className="h-[24px] bg-slate-50"></div>
@@ -394,7 +401,7 @@ export default function AdvancedGantt({
 
       <div className="flex flex-1 overflow-hidden">
         {/* PANEL KIRI */}
-        <div ref={leftPanelRef} className="w-[1020px] border-r border-slate-300 overflow-hidden bg-white shrink-0 relative">
+        <div ref={leftPanelRef} className="w-[1150px] border-r border-slate-300 overflow-hidden bg-white shrink-0 relative">
           <div className="relative" style={{ height: displayTasks.length * ROW_HEIGHT, transform: `translateY(-${scrollTop}px)` }}>
             {displayTasks.map((t, idx) => {
               const actualIndex = idx; 
@@ -461,6 +468,21 @@ export default function AdvancedGantt({
                   <span className="w-12 text-center font-bold text-indigo-700 border-l border-slate-100">{isSummary ? '-' : Number(t.smart_target || 0).toFixed(1) + '%'}</span>
                   <span className="w-12 text-center text-slate-600 font-semibold border-l border-slate-100">{isSummary ? '-' : Number(t.sisa_vol || 0).toFixed(2)}</span>
                   <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : Number(t.butuh_t_hr || 0).toFixed(3)}</span>
+                  
+                  {/* KOLOM VARIAN */}
+                  <span className={`w-14 text-center font-mono font-bold border-l border-slate-100 ${Number(t.varian_pct) < 0 ? 'text-red-600' : Number(t.varian_pct) > 0 ? 'text-green-600' : 'text-slate-500'}`}>
+                    {isSummary ? '-' : `${Number(t.varian_pct || 0) > 0 ? '+' : ''}${Number(t.varian_pct || 0).toFixed(1)}%`}
+                  </span>
+                  
+                  {/* KOLOM SLACK */}
+                  <span className={`w-12 text-center font-mono font-bold border-l border-slate-100 ${Number(t.slack) < 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                    {isSummary ? '-' : t.slack}
+                  </span>
+                  
+                  {/* KOLOM COST */}
+                  <span className="w-24 flex justify-end items-center pr-3 font-mono text-slate-600 border-l border-slate-100">
+                    {isSummary ? '-' : formatRp(t.cost)}
+                  </span>
                 </div>
               );
             })}
@@ -472,8 +494,12 @@ export default function AdvancedGantt({
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
             
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
-              {displayTasks.map((_, i) => (
-                <div key={i} className="w-full border-b border-slate-200" style={{ height: ROW_HEIGHT }}></div>
+              {displayTasks.map((t, i) => (
+                <div 
+                  key={i} 
+                  className={`w-full border-b border-slate-200 transition-colors ${hoveredTaskId === t.id ? 'bg-blue-50/50' : ''}`} 
+                  style={{ height: ROW_HEIGHT }}
+                ></div>
               ))}
             </div>
 
@@ -528,7 +554,13 @@ export default function AdvancedGantt({
                 }
 
                 return (
-                  <div key={t.id} className={`absolute group ${isHovered ? 'z-30' : ''}`} style={{ left, width, top }}>
+                  <div 
+                    key={t.id} 
+                    onMouseEnter={() => setHoveredTaskId(t.id)} 
+                    onMouseLeave={() => setHoveredTaskId(null)} 
+                    className={`absolute group pointer-events-auto ${isHovered ? 'z-30' : ''}`} 
+                    style={{ left, width, top }}
+                  >
                     <div className={`h-[16px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
                       <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[8px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
                         {progress > 20 && `${progress}%`}
