@@ -2,12 +2,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { CheckCircle2, AlertTriangle, Loader2, Link as LinkIcon } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Loader2, Link as LinkIcon, Users } from 'lucide-react';
 
 export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
   const [ahspList, setAhspList] = useState([]);
-  const [assignments, setAssignments] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
@@ -21,12 +20,11 @@ export default function AssignmentsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch AHSP Templates untuk dropdown
+      // 1. Fetch AHSP Templates
       const { data: ahspData, error: ahspError } = await supabase
         .from('ahsp_templates')
         .select('id, kode_ahsp, name, unit')
         .order('name');
-      
       if (ahspError) throw ahspError;
       setAhspList(ahspData || []);
 
@@ -35,30 +33,25 @@ export default function AssignmentsPage() {
         .from('wbs_tasks')
         .select('id, wbs_code, name, volume, ahsp_template_id, summary')
         .order('wbs_code');
-      
       if (taskError) throw taskError;
       
-      // Saring duplikat
       const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks);
 
-      // 3. Fetch Task Assignments (Untuk melihat resource otomatis)
-      const { data: assignData } = await supabase
+      // 3. Fetch Task Assignments (Untuk melihat resource otomatis dari DB Trigger)
+      const { data: assignData, error: assignError } = await supabase
         .from('task_assignments')
         .select('task_id, project_resources(name, role)');
-      if (assignData) setAssignments(assignData);
-
-      // 3. Fetch Task Assignments (Untuk melihat resource otomatis)
-      const { data: assignData } = await supabase
-        .from('task_assignments')
-        .select('task_id, project_resources(name, role)');
-      if (assignData) setAssignments(assignData);
+        
+      if (!assignError && assignData) {
+        setAssignments(assignData);
+      }
 
     } catch (error) {
       console.error("Gagal fetch data:", error);
       showToast('danger', "Gagal memuat data: " + error.message);
     } finally {
-      setLoading(false); // Selalu matikan loading, apapun yang terjadi
+      setLoading(false); 
     }
   };
 
@@ -66,10 +59,34 @@ export default function AssignmentsPage() {
     fetchData();
   }, []);
 
-    const handleUpdateVolume = async (taskId, newVolume) => {
-    const numVolume = Number(newVolume) || 0;
+  const handleAssignAhsp = async (taskId, ahspId) => {
+    setSavingId(taskId);
     
-    // Optimistic UI
+    // Optimistic UI Update
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ahsp_template_id: ahspId || null } : t));
+
+    const { error } = await supabase
+      .from('wbs_tasks')
+      .update({ ahsp_template_id: ahspId || null })
+      .eq('id', taskId);
+
+    if (error) {
+      showToast('danger', "Gagal menyimpan assignment: " + error.message);
+      fetchData(); // Rollback
+    } else {
+      showToast('success', "AHSP berhasil di-assign!");
+      // Tarik ulang data assignment karena DB Trigger baru saja bekerja di latar belakang
+      const { data: assignData } = await supabase
+        .from('task_assignments')
+        .select('task_id, project_resources(name, role)');
+      if (assignData) setAssignments(assignData);
+    }
+    
+    setSavingId(null);
+  };
+
+  const handleUpdateVolume = async (taskId, newVolume) => {
+    const numVolume = Number(newVolume) || 0;
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, volume: numVolume } : t));
 
     const { error } = await supabase
@@ -82,27 +99,6 @@ export default function AssignmentsPage() {
     } else {
       showToast('success', "Volume berhasil diperbarui!");
     }
-  };
-
-  const handleAssignAhsp = async (taskId, ahspId) => {
-    setSavingId(taskId); // Tampilkan spinner di baris ini saja
-    
-    // Update state optimis
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ahsp_template_id: ahspId || null } : t));
-
-    const { error } = await supabase
-      .from('wbs_tasks')
-      .update({ ahsp_template_id: ahspId || null })
-      .eq('id', taskId);
-
-    if (error) {
-      showToast('danger', "Gagal menyimpan assignment: " + error.message);
-      fetchData(); // Rollback jika gagal
-    } else {
-      showToast('success', "AHSP berhasil di-assign!");
-    }
-    
-    setSavingId(null);
   };
 
   if (loading) return <LoadingSpinner text="Memuat Data Assignment..." />;
@@ -125,7 +121,7 @@ export default function AssignmentsPage() {
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <LinkIcon className="text-blue-600" /> Assignment: WBS ke AHSP
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Hubungkan setiap Item Pekerjaan (WBS) dengan Analisa Harga Satuan (AHSP) yang sesuai.</p>
+          <p className="text-sm text-slate-500 mt-1">Hubungkan setiap Item Pekerjaan (WBS) dengan Analisa Harga Satuan (AHSP). Resource akan otomatis ditambahkan oleh sistem.</p>
         </div>
 
         {/* TABEL DATA */}
@@ -136,8 +132,8 @@ export default function AssignmentsPage() {
                 <th className="p-3 w-20">WBS</th>
                 <th className="p-3">Nama Task</th>
                 <th className="p-3 w-32 text-center">Volume</th>
-                <th className="p-3 w-96">Pilih AHSP Template</th>
-                <th className="p-3 w-16 text-center">Status</th>
+                <th className="p-3 w-80">Pilih AHSP Template</th>
+                <th className="p-3 w-48 text-center">Status & Resource</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -151,6 +147,9 @@ export default function AssignmentsPage() {
                 const isSummary = t.summary === 'Yes';
                 const isSaving = savingId === t.id;
                 const assignedAhsp = ahspList.find(a => a.id === t.ahsp_template_id);
+                
+                // Ambil resource yang otomatis di-assign oleh DB Trigger
+                const taskResources = assignments.filter(a => a.task_id === t.id);
 
                 return (
                   <tr key={t.id} className={`hover:bg-slate-50 ${isSummary ? 'bg-slate-50/50 font-bold' : ''}`}>
@@ -159,18 +158,18 @@ export default function AssignmentsPage() {
                        {isSummary ? '📁' : '📄'} {t.name}
                     </td>
                     <td className="p-3 text-center">
-  {isSummary ? (
-    <span className="text-slate-400">-</span>
-  ) : (
-    <input 
-      type="number" 
-      defaultValue={t.volume || 0} 
-      onBlur={(e) => handleUpdateVolume(t.id, e.target.value)}
-      onFocus={(e) => e.target.select()}
-      className="w-20 border border-slate-300 hover:border-slate-400 focus:border-blue-500 rounded text-center text-sm py-1 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-    />
-  )}
-</td>
+                      {isSummary ? (
+                        <span className="text-slate-400">-</span>
+                      ) : (
+                        <input 
+                          type="number" 
+                          defaultValue={t.volume || 0} 
+                          onBlur={(e) => handleUpdateVolume(t.id, e.target.value)}
+                          onFocus={(e) => e.target.select()}
+                          className="w-20 border border-slate-300 hover:border-slate-400 focus:border-blue-500 rounded text-center text-sm py-1 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                        />
+                      )}
+                    </td>
                     
                     <td className="p-3">
                       {isSummary ? (
@@ -200,27 +199,23 @@ export default function AssignmentsPage() {
                     </td>
 
                     <td className="p-3 text-center">
-                      <div className="flex flex-col items-center gap-2">
+                      <div className="flex flex-col items-center gap-1.5">
                         {assignedAhsp ? (
                            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold uppercase w-full">Assigned</span>
                         ) : (
                            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-bold uppercase w-full">Empty</span>
                         )}
                         
-                        {/* VISUAL RESOURCE CHIPS (Auto-Assigned) */}
-                        {(() => {
-                          const taskResources = assignments.filter(a => a.task_id === t.id);
-                          if (taskResources.length === 0) return null;
-                          return (
-                            <div className="flex flex-wrap justify-center gap-1 mt-1">
-                              {taskResources.map((tr, i) => (
-                                <span key={i} title={`${tr.project_resources?.name} (${tr.project_resources?.role})`} className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded shadow-sm">
-                                  👤 {tr.project_resources?.name}
-                                </span>
-                              ))}
-                            </div>
-                          );
-                        })()}
+                        {/* VISUAL RESOURCE CHIPS (Dari Auto-Assign DB Trigger) */}
+                        {taskResources.length > 0 && (
+                          <div className="flex flex-wrap justify-center gap-1">
+                            {taskResources.map((tr, i) => (
+                              <span key={i} title={`${tr.project_resources?.name} (${tr.project_resources?.role})`} className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1">
+                                <Users size={10} /> {tr.project_resources?.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -233,6 +228,3 @@ export default function AssignmentsPage() {
     </div>
   );
 }
-
-
-
