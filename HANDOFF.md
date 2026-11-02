@@ -1,71 +1,70 @@
 ﻿# Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** 🟢 Production Ready (V12 - Ultimate Enterprise Grade)
-**Terakhir Diperbarui:** 01 November 2026
+**Status Proyek:** 🟢 Production Ready (V13 - Enterprise Advanced)
+**Terakhir Diperbarui:** 02 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
-## 1. Status Saat Ini (Current Status)
-Aplikasi **InfraControl PRO** telah bertransformasi menjadi sistem manajemen proyek konstruksi kelas *Enterprise* yang setara dengan MS Project / Primavera, dengan antarmuka modern (SaaS) dan mesin penjadwalan otomatis berbasis database.
+## 1. Status Saat Ini (Implemented Features)
+Aplikasi **InfraControl PRO** telah sangat stabil dengan pondasi *Enterprise Grade*.
 
-### Fitur Unggulan yang Telah Selesai:
-- **Enterprise UI/UX:**
-  - **Right-Side Drawer (Transparan):** Form edit muncul dari kanan tanpa menggelapkan tabel di belakangnya.
-  - **Global Command Palette (Ctrl+K):** Pencarian menu dan task secara instan.
-  - **Top Loading Bar (NProgress):** Indikator transisi halaman yang halus.
-  - **Custom Modals & Toasts:** Pengganti total `alert()` dan `confirm()` bawaan browser.
-  - **RBAC (Role-Based Access Control):** Menu sidebar dinamis berdasarkan role (Owner, Admin, Pelaksana).
-  - **Live Presence:** Avatar stack (Supabase Presence) untuk melihat siapa yang sedang online.
-- **Scheduling Engine (CPM):**
-  - **Virtual Scrolling:** Gantt Chart dan tabel WBS sangat ringan meskipun memuat ribuan baris data.
-  - **Advanced Dependency:** Mendukung relasi FS, SS, FF, SF beserta Lag/Lead (+/- hari) via Database Trigger.
-  - **Dynamic Work Calendar:** Sinkronisasi kalender 5 hari / 7 hari (Full Day).
-  - **Baseline & Critical Path:** Tombol "Set Baseline" dan "Recalc CPM" (mewarnai jalur kritis merah).
-- **Costing & AHSP (Standar PUPR):**
-  - **Format Cetak PUPR:** Tabel AHSP dengan baris A (Upah), B (Bahan), C (Alat), D (Total), E (Overhead), F (Harga Satuan).
-  - **Dropdown Satuan Lengkap:** Input satuan menggunakan dropdown standar konstruksi (M3, Kg, OH, dll).
-  - **Hapus Komponen:** Fitur hapus komponen dengan konfirmasi modal (otomatis hilang saat dicetak).
-- **Real-Time Sync:**
-  - Sinkronisasi WebSocket antara tabel, Gantt Chart, dan Progress Harian tanpa perlu refresh (dengan optimasi *Debounce* & *Anti-Race Condition*).
-
-## 2. Isu yang Diketahui (Known Issues)
-- **Autentikasi:** Belum diimplementasikan (masih menggunakan data *dummy* dari tabel `profiles`).
-- **Multi-Project:** Sistem masih mengasumsikan 1 proyek aktif per database (menggunakan `LIMIT 1`).
+### Fitur Utama yang Sudah Selesai:
+- **CPM & Scheduling Engine:**
+  - Forward Pass (FS, SS, FF, SF), Lag/Lead, Circular Dependency Check (Frontend Engine).
+  - Auto-Schedule (Cascading Update) & Summary Rollup (WBS Code based).
+  - Virtual Scrolling (Anti-lag untuk ribuan baris).
+- **UI/UX Enterprise:**
+  - Right-Side Transparent Drawer, Global Command Palette (Ctrl+K), Top Loading Bar.
+  - Interactive Modals (Glassmorphism), Toast Notifications, RBAC (Role-Based Access).
+  - Live Collaboration Presence (Supabase).
+- **Costing & Resources:**
+  - Master HSD & AHSP Standar PUPR (Print-ready).
+  - Auto-Generate Task Assignments (DB Trigger menghubungkan AHSP ke Resource).
+  - Inline Edit (Volume, Koefisien, Tanggal, Pred).
+- **Laporan:** Dashboard S-Curve (EVM), Laporan Harian & Mingguan.
 
 ---
 
-## 3. 🚀 Apa Langkah Selanjutnya? (Next Steps Priority)
+## 2. Gap Analysis (Apa yang BELUM Diimplementasikan)
+Berdasarkan Audit terhadap Dokumen Standar "Action Plan Proyek Konstruksi", berikut adalah fitur yang **Belum Ada**:
 
-Jika Anda ingin melanjutkan pengembangan aplikasi ini ke tahap berikutnya, berikut adalah rekomendasi prioritas beserta panduan eksekusinya:
+1.  **Resource Histogram (Grafik Beban Kerja):** Belum ada visualisasi panel bawah di Gantt untuk melihat apakah seorang pekerja *overallocated* (>100%).
+2.  **Risk Register (Manajemen Risiko):** Belum ada modul untuk mencatat, menilai probabilitas, dan merencanakan mitigasi risiko (cuaca, harga, dll).
+3.  **QA/QC Plan (Kendali Mutu):** Belum ada modul *Checklist Inspeksi* (slump test, dll) dan *Non-Conformance Report (NCR)*.
+4.  **HSE Plan (K3L):** Belum ada modul *Safety Briefing*, *Hazard Identification*, dan laporan insiden.
+5.  **Cash Flow Forecast (Arus Kas):** Dashboard EVM sudah ada, tapi belum ada tabel proyeksi arus kas (Kas Masuk vs Kas Keluar) per minggu/bulan.
 
-### Opsi A: Resource Histogram (Fase 4 Lanjutan)
-*Tujuan: Menampilkan grafik batang di bawah Gantt Chart untuk melihat beban kerja tim per hari (mendeteksi Overallocated).*
-*   **Cara:** Buat panel bawah (collapsible) di file `AdvancedGantt.jsx` yang membaca tabel `task_assignments` dan `project_resources` untuk menghitung total jam kerja per tanggal. Berikan warna merah jika melebihi 100% kapasitas.
+---
 
-### Opsi B: Autentikasi Pengguna (Login/Register)
-*Tujuan: Mengamankan aplikasi agar bisa digunakan oleh banyak user (Owner, Admin, Pelaksana).*
-*   **Cara:** 
-    1. Aktifkan **Supabase Auth**.
-    2. Buat halaman `app/login/page.jsx`.
-    3. Gunakan `supabase.auth.signInWithPassword()`.
-    4. Update `ClientLayout.jsx` untuk mengecek session user. Jika tidak ada, *redirect* ke `/login`.
+## 3. 🚀 ROADMAP PRIORITAS (Next Steps)
 
-### Opsi C: Cetak Gantt Chart & S-Curve
-*Tujuan: Mengekspor Gantt Chart dan grafik EVM ke PDF.*
-*   **Cara:** Tambahkan tombol "Cetak" di halaman Gantt. Gunakan CSS `@media print` untuk mengatur ukuran kertas (A4 Landscape) dan sembunyikan tombol UI (sidebar, header).
+Untuk melengkapi 8 Pilar Action Plan, berikut adalah urutan fase pengembangan yang direkomendasikan:
 
-### Opsi D: Audit Logs Otomatis
-*Tujuan: Mencatat setiap perubahan data (Create/Update/Delete) beserta nama user dan IP.*
-*   **Cara:** Buat *Database Trigger* di Supabase yang menyisipkan baris ke tabel `activity_logs` setiap kali ada operasi `INSERT`, `UPDATE`, atau `DELETE` pada tabel `wbs_tasks` atau `ahsp_templates`.
+### Fase 1: Resource Histogram (Melengkapi Pilar Resource Management)
+*Tujuan: Mencegah pekerja/alat *overallocated* (beban kerja melebihi kapasitas).*
+*   **Cara Eksekusi:** Buat *Bottom Panel* (Collapsible) di bawah Gantt Chart yang me-render grafik batang (bar chart) beban kerja per hari. Data diambil dari tabel `task_assignments`.
+
+### Fase 2: Risk Register & Mitigation (Melengkapi Pilar Manajemen Risiko)
+*Tujuan: Proaktif terhadap ketidakpastian proyek.*
+*   **Cara Eksekusi:** Buat tabel baru `project_risks` (id, deskripsi, probabilitas, dampak, mitigasi, status). Buat halaman UI `/risks` dengan matriks 3x3 (Probabilitas x Dampak) agar terlihat profesional.
+
+### Fase 3: QA/QC & HSE Modules (Melengkapi Pilar Mutu & K3L)
+*Tujuan: Standarisasi inspeksi lapangan dan keselamatan kerja.*
+*   **Cara Eksekusi:** Buat tabel `inspections` (checklist) dan `safety_reports`. Buat formulir digital di aplikasi (bisa diisi via HP oleh pelaksana lapangan).
+
+### Fase 4: Cash Flow & Cost S-Curve (Melengkapi Pilar Keuangan)
+*Tujuan: Memastikan likuiditas dana proyek.*
+*   **Cara Eksekusi:** Tambahkan grafik Kurva S Biaya di Dashboard yang membandingkan *Rencana Pengeluaran* (dari RAB/AHSP) dengan *Realisasi* (dari input pembayaran).
 
 ---
 
 ## 4. Panduan Developer Selanjutnya
-- **Menjalankan Proyek:** `npm run dev`
-- **Build Production:** `npm run build`
-- **Deploy:** Cukup lakukan `git push origin main`. Vercel akan otomatis melakukan *build* dan *deploy*.
-- **Catatan Penting:** Selalu jalankan `NOTIFY pgrst, 'reload schema';` di Supabase SQL Editor setiap kali Anda menambahkan kolom baru di database agar Frontend langsung mengenalinya.
+- **Build:** `npm run build`
+- **Deploy:** `git push origin main` (Otomatis via Vercel).
+- **Catatan Penting Database:** 
+  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` di Supabase setelah menambah kolom/tabel baru.
+  - Scheduling Engine murni berjalan di Frontend (`lib/scheduler.js`), Trigger di Database untuk *Rollup* sudah dimatikan agar tidak bentrok.
 
 ## 5. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
