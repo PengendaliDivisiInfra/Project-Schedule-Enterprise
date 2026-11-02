@@ -193,7 +193,7 @@ export default function TasksPage() {
                   <th className="p-3">Volume</th>
                   <th className="p-3">Total Biaya</th>
                   <th className="p-3">Durasi</th>
-                  <th className="p-3 text-center">Progres</th>
+                  <th className="p-3 text-center">Progres</th>`n                  <th className="p-3 text-center bg-indigo-50 text-indigo-800">Target</th>`n                  <th className="p-3 text-center bg-indigo-50 text-indigo-800">T/hr</th>
                   <th className="p-3 text-center">Aksi</th>
                 </tr>
               </thead>
@@ -322,6 +322,7 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
 
 
