@@ -150,6 +150,24 @@ export default function AhspPage() {
   };
 
   // 4. Konfirmasi Hapus Komponen
+    const handleUpdateKoefisien = async (detailId, newKoefisien) => {
+    const val = Number(newKoefisien) || 0;
+    
+    // A. OPTIMISTIC UI (Update tabel seketika agar total langsung berubah)
+    setDetails(prev => prev.map(d => d.id === detailId ? { ...d, koefisien: val } : d));
+
+    // B. SIMPAN KE DATABASE
+    const { error } = await supabase
+      .from('ahsp_details')
+      .update({ koefisien: val })
+      .eq('id', detailId);
+
+    if (error) {
+      showToast('danger', "Gagal update koefisien: " + error.message);
+      handleRefresh(); // Rollback jika gagal
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
@@ -313,7 +331,17 @@ export default function AhspPage() {
                       <td className="border border-black p-1">{d.master_hsd?.nama_item}</td>
                       <td className="border border-black p-1 text-center">{d.master_hsd?.kode || '-'}</td>
                       <td className="border border-black p-1 text-center">{d.master_hsd?.satuan}</td>
-                      <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
+                      <td className="border border-black p-0 text-center relative">
+                      <input
+                        type="number"
+                        step="any"
+                        defaultValue={Number(d.koefisien)}
+                        onBlur={(e) => handleUpdateKoefisien(d.id, e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full h-full min-h-[30px] text-center bg-transparent outline-none hover:bg-slate-100 focus:bg-blue-50 transition-colors cursor-text print:appearance-none print:bg-transparent"
+                        title="Klik untuk mengedit koefisien"
+                      />
+                    </td>
                       <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                       <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                       <td className="border border-black p-1 text-center print-hidden">
@@ -338,7 +366,17 @@ export default function AhspPage() {
                       <td className="border border-black p-1">{d.master_hsd?.nama_item}</td>
                       <td className="border border-black p-1 text-center">{d.master_hsd?.kode || '-'}</td>
                       <td className="border border-black p-1 text-center">{d.master_hsd?.satuan}</td>
-                      <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
+                      <td className="border border-black p-0 text-center relative">
+                      <input
+                        type="number"
+                        step="any"
+                        defaultValue={Number(d.koefisien)}
+                        onBlur={(e) => handleUpdateKoefisien(d.id, e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full h-full min-h-[30px] text-center bg-transparent outline-none hover:bg-slate-100 focus:bg-blue-50 transition-colors cursor-text print:appearance-none print:bg-transparent"
+                        title="Klik untuk mengedit koefisien"
+                      />
+                    </td>
                       <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                       <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                       <td className="border border-black p-1 text-center print-hidden">
@@ -363,7 +401,17 @@ export default function AhspPage() {
                       <td className="border border-black p-1">{d.master_hsd?.nama_item}</td>
                       <td className="border border-black p-1 text-center">{d.master_hsd?.kode || '-'}</td>
                       <td className="border border-black p-1 text-center">{d.master_hsd?.satuan}</td>
-                      <td className="border border-black p-1 text-center">{Number(d.koefisien).toFixed(5)}</td>
+                      <td className="border border-black p-0 text-center relative">
+                      <input
+                        type="number"
+                        step="any"
+                        defaultValue={Number(d.koefisien)}
+                        onBlur={(e) => handleUpdateKoefisien(d.id, e.target.value)}
+                        onFocus={(e) => e.target.select()}
+                        className="w-full h-full min-h-[30px] text-center bg-transparent outline-none hover:bg-slate-100 focus:bg-blue-50 transition-colors cursor-text print:appearance-none print:bg-transparent"
+                        title="Klik untuk mengedit koefisien"
+                      />
+                    </td>
                       <td className="border border-black p-1 text-right">{Number(d.master_hsd?.harga_dasar || 0).toLocaleString('id-ID')}</td>
                       <td className="border border-black p-1 text-right">{(Number(d.koefisien) * Number(d.master_hsd?.harga_dasar || 0)).toLocaleString('id-ID')}</td>
                       <td className="border border-black p-1 text-center print-hidden">
@@ -505,4 +553,5 @@ export default function AhspPage() {
     </>
   );
 }
+
 
