@@ -21,7 +21,26 @@ export default function MasterReportPage() {
   const [health, setHealth] = useState({ totalCost: 0, targetPct: 0, actualPct: 0, varian: 0 });
   const [loading, setLoading] = useState(true);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [printSettings, setPrintSettings] = useState(null);
+  const [printSettings, setPrintSettings] = useState({
+    orientation: 'landscape',
+    paperSize: 'A4',
+    scale: 100,
+    timescale: 'mingguan',
+    startDate: '',
+    endDate: '',
+    showLegend: true,
+    showSignature: true,
+    columns: {
+      id: false, wbs: true, name: true, duration: true, start: true, finish: true,
+      priority: false, pred: true, slack: false, critical: true, cost: true,
+      alert: false, volume: true, satuan: true, tgtHr: true
+    },
+    signatures: {
+      created: { title: 'Dibuat Oleh', name: '', role: 'Site Engineer', instansi: 'Kontraktor' },
+      checked: { title: 'Diperiksa Oleh', name: '', role: 'Tim Leader', instansi: 'Konsultan Supervisi' },
+      approved: { title: 'Disetujui Oleh', name: '', role: 'Direksi', instansi: 'Instansi' }
+    }
+  });
 
   const [signatures, setSignatures] = useState({
     pm: { title: 'Dibuat oleh,', role: 'Project Manager', name: '' },
@@ -504,3 +523,4 @@ export default function MasterReportPage() {
     </div>
   );
 }
+
