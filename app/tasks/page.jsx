@@ -1,333 +1,640 @@
-﻿'use client';
-import { useEffect, useState, useRef } from 'react';
+'use client';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { updateProjectScheduleSecure, addWorkingDays, countWorkingDays } from '../../lib/scheduler';
+import { 
+  ListTree, Plus, Edit, Trash2, X, Settings, Pin, CheckCircle, XCircle, 
+  TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder, FileText
+} from 'lucide-react';
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState('general');
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [toast, setToast] = useState(null);
-  const isSavingRef = useRef(false);
-  
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
 
-  const [formData, setFormData] = useState({
-    wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: ''
-  });
+  const [showCPM, setShowCPM] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentTask, setCurrentTask] = useState(null);
+  const [activeTab, setActiveTab] = useState('general');
+  
+  const [formData, setFormData] = useState({});
+  const [predList, setPredList] = useState([]);
+  const [newPred, setNewPred] = useState({ wbs: '', type: 'FS', lag: 0 });
 
-  const fetchTasks = async (silent = false) => {
-    if (!silent) setLoading(true);
-    const { data } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
-    if (data) {
-      const uniqueTasks = Array.from(new Map(data.map(item => [item.wbs_code, item])).values());
-      setTasks(uniqueTasks.map(t => ({ ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0 })));
-    }
-    if (!silent) setLoading(false);
-  };
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
-  const fetchCalendar = async () => {
-    const { data } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
-    if (data) {
-      if (data.working_days) setWorkingDays(Array.isArray(data.working_days) ? data.working_days.map(Number) : [1,2,3,4,5]);
-      if (data.exceptions) setExceptions(data.exceptions);
-    }
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
   };
 
   useEffect(() => {
-    fetchTasks();
-    fetchCalendar();
-
-    // LOGIKA REAL-TIME SUPABASE
-    const channel = supabase.channel('realtime-wbs-tasks')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'wbs_tasks' }, (payload) => {
-        if (isSavingRef.current) return;
-        // UPDATE STATE LOKAL SECARA LANGSUNG (Jauh lebih cepat dari fetchTasks)
-        setTasks(prev => prev.map(t => t.id === payload.new.id ? { ...t, ...payload.new } : t));
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'wbs_tasks' }, (payload) => {
-        if (isSavingRef.current) return;
-        fetchTasks(); // Hanya fetch jika ada data baru
-      })
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'wbs_tasks' }, (payload) => {
-        if (isSavingRef.current) return;
-        setTasks(prev => prev.filter(t => t.id !== payload.old.id));
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    fetchTasksAndCalendar();
   }, []);
 
-  const handleOpenAdd = () => {
-    setEditingTask(null);
-    setFormData({ wbs_code: '', name: '', duration: 1, start_date: '', end_date: '', volume: 0, summary: 'No', predecessors: '' });
-    setIsModalOpen(true);
+  const parsePreds = (str) => {
+    if (!str) return [];
+    return str.split(',').map(s => {
+        const match = s.trim().match(/^([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?$/i);
+        if (match) return { wbs: match[1], type: match[2] || 'FS', lag: parseInt(match[3] || '0', 10) };
+        return null;
+    }).filter(Boolean);
   };
 
-  const handleOpenEdit = (task) => {
-    setEditingTask(task);
-    const formatDate = (dateStr) => dateStr ? dateStr.split('T')[0] : '';
-    setFormData({
-      wbs_code: task.wbs_code, name: task.name, duration: task.duration,
-      start_date: formatDate(task.start_date), end_date: formatDate(task.end_date),
-      volume: task.volume || 0, summary: task.summary || 'No', predecessors: task.predecessors || ''
+  const stringifyPreds = (list) => {
+    return list.map(p => `${p.wbs}${p.type}${p.lag > 0 ? '+' + p.lag : p.lag < 0 ? p.lag : ''}`).join(', ');
+  };
+
+  const calculateEVM = (data) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    return data.map(t => {
+      const vol = Number(t.volume) || 0;
+      const dur = Number(t.duration) || 1;
+      const progPct = Number(t.progress_percent) || 0;
+      const startDate = t.start_date ? new Date(t.start_date) : null;
+      const endDate = t.end_date ? new Date(t.end_date) : null;
+      
+      let smartTargetPct = 0;
+      let sisaHari = dur;
+
+      if (t.summary === 'No' && startDate && endDate) {
+        if (today >= endDate) {
+          smartTargetPct = 100;
+          sisaHari = 0;
+        } else if (today > startDate) {
+          const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) || 1;
+          const elapsedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
+          smartTargetPct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
+          sisaHari = Math.max(0, totalDays - elapsedDays);
+        }
+      }
+
+      const actualVol = vol * (progPct / 100);
+      const sisaVol = vol - actualVol;
+      const varianPct = progPct - smartTargetPct;
+      const butuhTHr = sisaHari > 0 ? (sisaVol / sisaHari) : 0;
+
+      return { ...t, smart_target: smartTargetPct, sisa_hari_efektif: sisaHari, actual_vol: actualVol, sisa_vol: sisaVol, varian_pct: varianPct, butuh_t_hr: butuhTHr };
     });
+  };
+
+  const fetchTasksAndCalendar = async () => {
+    setLoading(true);
+    
+    const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
+    let cwd = [1,2,3,4,5];
+    let cex = [];
+    if (projectData) {
+      if (projectData.working_days && Array.isArray(projectData.working_days) && projectData.working_days.length > 0) cwd = projectData.working_days.map(Number);
+      if (projectData.exceptions) cex = projectData.exceptions;
+    }
+    setWorkingDays(cwd);
+    setExceptions(cex);
+
+    const { data, error } = await supabase.from('wbs_tasks').select('*').order('wbs_code', { ascending: true }); 
+    if (data) {
+      const engineResult = updateProjectScheduleSecure(data, cwd, cex);
+      if (engineResult.success) {
+        const evmTasks = calculateEVM(engineResult.tasks);
+        const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+        setTasks(sorted);
+      } else {
+        setTasks(calculateEVM(data));
+      }
+    }
+    if (error) console.error(error);
+    setLoading(false);
+  };
+
+  const handleVolumeUpdate = async (taskId, inputVolume) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const totalVol = Number(task.volume) || 0;
+    if (totalVol === 0) return;
+    let newVol = Number(inputVolume);
+    if (isNaN(newVol) || newVol < 0) newVol = 0;
+    if (newVol > totalVol) newVol = totalVol;
+    const newPct = (newVol / totalVol) * 100;
+    const previousTasks = [...tasks];
+    setTasks(prev => {
+        const updated = prev.map(t => t.id === taskId ? { ...t, progress_percent: newPct } : t);
+        return calculateEVM(updated);
+    });
+    showToast(`Progres diupdate: ${newPct.toFixed(1)}%`, 'success');
+    const { error } = await supabase.from('wbs_tasks').update({ progress_percent: newPct }).eq('id', taskId);
+    if (error) { setTasks(previousTasks); showToast('Gagal update: ' + error.message, 'error'); }
+  };
+
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm('Yakin ingin menghapus task ini?')) return;
+    const previousTasks = [...tasks];
+    setTasks(prev => prev.filter(t => t.id !== id));
+    showToast('Task berhasil dihapus', 'success');
+    const { error } = await supabase.from('wbs_tasks').delete().eq('id', id);
+    if (error) { setTasks(previousTasks); showToast('Gagal menghapus task: ' + error.message, 'error'); }
+  };
+
+  const openModal = (task = null) => {
+    setCurrentTask(task);
+    setFormData(task || {
+      task_mode: 'Auto Scheduled', constraint_type: 'ASAP', task_type: 'Fixed Duration', priority: 'Medium', is_milestone: false, duration: 1, progress_percent: 0
+    });
+    setPredList(parsePreds(task?.predecessors || ''));
+    setNewPred({ wbs: '', type: 'FS', lag: 0 });
+    setActiveTab('general');
     setIsModalOpen(true);
   };
 
-  const countWorkingDays = (startStr, endStr) => {
-    if (!startStr || !endStr) return 1;
-    let count = 0; let cur = new Date(startStr); const end = new Date(endStr);
-    while (cur <= end) {
-      if (workingDays.includes(cur.getDay()) && !exceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) count++;
-      cur.setDate(cur.getDate() + 1);
-    }
-    return Math.max(1, count);
-  };
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    let newValue = type === 'checkbox' ? checked : value;
+    let newData = { ...formData, [name]: newValue };
 
-  const addWorkingDays = (startStr, daysToAdd) => {
-    if (!startStr || !daysToAdd || daysToAdd < 1) return '';
-    if (!workingDays || workingDays.length === 0) return startStr;
-    let currentDate = new Date(startStr); let added = 0;
-    while (!workingDays.includes(currentDate.getDay()) || exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) currentDate.setDate(currentDate.getDate() + 1);
-    if (daysToAdd <= 1) return currentDate.toISOString().split('T')[0];
-    while (added < (daysToAdd - 1)) {
-      currentDate.setDate(currentDate.getDate() + 1);
-      if (workingDays.includes(currentDate.getDay()) && !exceptions.some(e => e.exception_date === currentDate.toISOString().split('T')[0])) added++;
+    if (name === 'start_date' && newValue && formData.duration) {
+        const dur = Number(formData.duration);
+        newData.end_date = addWorkingDays(newValue, dur - 1, workingDays, exceptions);
+    } else if (name === 'end_date' && newValue && formData.start_date) {
+        const newDur = countWorkingDays(formData.start_date, newValue, workingDays, exceptions);
+        newData.duration = newDur;
+    } else if (name === 'duration' && newValue && formData.start_date) {
+        const dur = Number(newValue);
+        newData.end_date = addWorkingDays(formData.start_date, dur - 1, workingDays, exceptions);
     }
-    return currentDate.toISOString().split('T')[0];
-  };
 
-  const handleFormChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
-
-  const handleFormBlur = (field) => {
-    let newData = { ...formData };
-    if (field === 'duration' || field === 'start_date') {
-      if (newData.start_date && newData.duration > 0) newData.end_date = addWorkingDays(newData.start_date, newData.duration);
-    } else if (field === 'end_date') {
-      if (newData.start_date && newData.end_date) newData.duration = countWorkingDays(newData.start_date, newData.end_date);
+    if (name === 'is_milestone' && newValue === true) {
+        newData.duration = 0;
+        if (formData.start_date) newData.end_date = formData.start_date;
     }
+
     setFormData(newData);
   };
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setIsSaving(true);
-    isSavingRef.current = true; // Kunci WebSocket (Anti-Revert)
+  const addPredecessor = () => {
+    if (!newPred.wbs) return showToast('Pilih task pendahulu!', 'error');
+    if (newPred.wbs === currentTask?.wbs_code) return showToast('Task tidak bisa menjadi pendahulu dirinya sendiri!', 'error');
+    if (predList.some(p => p.wbs === newPred.wbs)) {
+        return showToast('Predecessor ini sudah ditambahkan!', 'error');
+    }
+    setPredList([...predList, newPred]);
+    setNewPred({ wbs: '', type: 'FS', lag: 0 });
+  };
 
-    // 1. Kirim ke Database
-    if (editingTask) {
-      const { error } = await supabase.from('wbs_tasks').update(formData).eq('id', editingTask.id);
-      if (!error) showToast('success', 'Task berhasil diperbarui!');
-    } else {
-      const { error } = await supabase.from('wbs_tasks').insert([formData]);
-      if (!error) showToast('success', 'Task baru berhasil ditambahkan!');
+  const removePredecessor = (index) => {
+    setPredList(predList.filter((_, i) => i !== index));
+  };
+
+  const handleSaveModal = async (e) => {
+    e.preventDefault();
+    
+    let finalData = { ...formData };
+    if (finalData.start_date && finalData.end_date) {
+        finalData.duration = countWorkingDays(finalData.start_date, finalData.end_date, workingDays, exceptions);
     }
     
-    // 2. INSTANT FETCH: Segera tarik data terbaru (tanpa loading screen) agar UI langsung berubah
-    await fetchTasks(true); 
+    let finalPredList = [...predList];
+    if (newPred.wbs) {
+        finalPredList.push(newPred);
+    }
+    finalData.predecessors = stringifyPreds(finalPredList);
 
-    setIsSaving(false);
+    const saveData = {
+      name: finalData.name, volume: Number(finalData.volume) || 0, duration: Number(finalData.duration) || 1,
+      start_date: finalData.start_date || null, end_date: finalData.end_date || null,
+      progress_percent: Number(finalData.progress_percent) || 0, task_mode: finalData.task_mode,
+      constraint_type: finalData.constraint_type, constraint_date: finalData.constraint_date || null,
+      task_type: finalData.task_type, priority: finalData.priority, is_milestone: finalData.is_milestone,
+      predecessors: finalData.predecessors, tags: finalData.tags, assignee: finalData.assignee, wbs_dictionary: finalData.wbs_dictionary
+    };
+
     setIsModalOpen(false);
-    
-    // Buka kunci WebSocket setelah 1 detik
-    setTimeout(() => { isSavingRef.current = false; }, 1000);
-  };
 
-  const handleDeleteConfirm = async () => {
-    if (!deleteTarget) return;
-    await supabase.from('wbs_tasks').delete().eq('id', deleteTarget.id);
-    setDeleteTarget(null);
-    showToast('danger', 'Task berhasil dihapus.');
-  };
+    if (currentTask?.id) {
+      const previousTasks = [...tasks];
+      let updatedTasks = tasks.map(t => t.id === currentTask.id ? { ...t, ...saveData } : t);
+      
+      const cpmResult = updateProjectScheduleSecure(updatedTasks, workingDays, exceptions);
+      if (cpmResult.success) updatedTasks = cpmResult.tasks;
+      
+      const evmTasks = calculateEVM(updatedTasks);
+      const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+      
+      setTasks(sorted);
+      showToast('Task diperbarui', 'success');
 
-  const showToast = (type, message) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
-  };
+      const { error } = await supabase.from('wbs_tasks').update(saveData).eq('id', currentTask.id);
+      if (error) { setTasks(previousTasks); showToast('Gagal: ' + error.message, 'error'); }
 
-  if (loading && tasks.length === 0) return <LoadingSpinner text="Memuat Tasks..." />;
+    } else {
+      const newTaskData = { ...saveData, wbs_code: '99.' + Math.floor(Math.random() * 100), summary: 'No' };
+      const { data: insertedData, error } = await supabase.from('wbs_tasks').insert([newTaskData]).select().single();
+
+      if (error) {
+        showToast('Gagal: ' + error.message, 'error');
+      } else if (insertedData) {
+        let updatedTasks = [...tasks, insertedData];
+        const cpmResult = updateProjectScheduleSecure(updatedTasks, workingDays, exceptions);
+        if (cpmResult.success) updatedTasks = cpmResult.tasks;
+        
+        const evmTasks = calculateEVM(updatedTasks);
+        const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+        
+        setTasks(sorted);
+        showToast('Task ditambahkan', 'success');
+      }
+    }
+  };
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen relative overflow-hidden">
-      {toast && (
-        <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-lg shadow-xl text-white font-bold animate-fade-in-up ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
-          {toast.message}
+    <div className="p-6 bg-slate-50 min-h-screen relative">
+      {toast.show && (
+        <div className={`fixed top-5 right-5 z-[10000] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border animate-in slide-in-from-top-4 fade-in ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+          {toast.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
+          <span className="font-semibold text-sm">{toast.message}</span>
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto space-y-4">
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3 shadow-sm">
-          <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={18} />
+      <div className="max-w-[1900px] mx-auto">
+        <div className="flex justify-between items-end mb-4">
           <div>
-            <h4 className="text-sm font-bold text-amber-800">Perhatian Khusus</h4>
-            <p className="text-xs text-amber-700">Terdapat 1 Task (WBS 1.1) yang belum memiliki Harga Satuan. Segera lengkapi data di menu Assignments.</p>
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><ListTree className="text-indigo-600" /> Task Management (CPM & EVM)</h1>
+            <p className="text-sm text-slate-500 mt-1">Ketik Volume Realisasi untuk mengupdate Progres secara otomatis.</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setShowCPM(!showCPM)} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border transition-colors shadow-sm ${showCPM ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+              {showCPM ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {showCPM ? 'Sembunyikan Matriks CPM' : 'Tampilkan Matriks CPM'}
+            </button>
+            <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md">
+              <Plus className="w-4 h-4" /> Tambah Task
+            </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-          <div className="flex justify-between items-center p-4 border-b border-slate-200">
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">Task Management (CPM Engine)</h1>
-              <p className="text-sm text-slate-500">Warna <span className="text-red-500 font-bold">Merah</span> menandakan Jalur Kritis.</p>
-            </div>
-            <button onClick={handleOpenAdd} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-colors">
-              + Tambah Task
-            </button>
-          </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-max">
+            <thead>
+              <tr className="bg-slate-100 text-slate-600 text-[10px] uppercase border-b border-slate-200">
+                <th className="p-2 font-bold text-center w-12">Mode</th>
+                <th className="p-2 font-bold w-16">WBS</th>
+                <th className="p-2 font-bold min-w-[200px]">Task Name</th>
+                <th className="p-2 font-bold text-center bg-slate-200">Vol Total</th>
+                
+                {showCPM && (
+                  <>
+                    <th className="p-2 font-bold text-center">Dur</th>
+                    <th className="p-2 font-bold text-center">Start</th>
+                    <th className="p-2 font-bold text-center">Finish</th>
+                    <th className="p-2 font-bold text-center bg-blue-50 text-blue-700">ES</th>
+                    <th className="p-2 font-bold text-center bg-blue-50 text-blue-700">EF</th>
+                    <th className="p-2 font-bold text-center bg-amber-50 text-amber-700">LS</th>
+                    <th className="p-2 font-bold text-center bg-amber-50 text-amber-700">LF</th>
+                    <th className="p-2 font-bold text-center">Slack</th>
+                    <th className="p-2 font-bold text-center">Crit</th>
+                  </>
+                )}
+                {!showCPM && (
+                  <>
+                    <th className="p-2 font-bold text-center">Dur</th>
+                    <th className="p-2 font-bold text-center">Start</th>
+                    <th className="p-2 font-bold text-center">Finish</th>
+                  </>
+                )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="p-3">Hierarki</th>
-                  <th className="p-3">Mata Varian</th>
-                  <th className="p-3">WBS</th>
-                  <th className="p-3">Nama Task</th>
-                  <th className="p-3">Volume</th>
-                  <th className="p-3">Total Biaya</th>
-                  <th className="p-3">Durasi</th>
-                  <th className="p-3 text-center">Progres</th>`n                  <th className="p-3 text-center bg-indigo-50 text-indigo-800">Target</th>`n                  <th className="p-3 text-center bg-indigo-50 text-indigo-800">T/hr</th>
-                  <th className="p-3 text-center">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {tasks.map((t) => {
-                  const isSummary = t.summary === 'Yes';
-                  return (
-                    <tr key={t.id} className={`hover:bg-slate-50 ${isSummary ? 'bg-slate-50/50 font-bold' : ''} ${t.is_critical ? 'text-red-600' : 'text-slate-700'}`}>
-                      <td className="p-3">{isSummary ? '📁' : '📄'}</td>
-                      <td className="p-3 text-xs text-slate-500">{isSummary ? '-' : t.mata_varian || '-'}</td>
-                      <td className="p-3 font-mono">{t.wbs_code}</td>
-                      <td className="p-3">{t.name}</td>
-                      <td className="p-3 text-center">
-                      {isSummary ? '-' : (
-                        <div className="flex items-center justify-center gap-1">
-                          <input
-                            type="number"
-                            defaultValue={t.volume || 0}
-                            onBlur={(e) => handleInlineUpdate(t.id, 'volume', Number(e.target.value))}
-                            onFocus={(e) => e.target.select()}
-                            className="w-16 border border-slate-300 hover:border-slate-400 focus:border-blue-500 rounded text-center text-sm py-1 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                          />
-                          <span className="text-xs text-slate-500">{t.satuan_hsd}</span>
-                        </div>
+                <th className="p-2 font-bold text-center bg-yellow-100 text-yellow-800 border-l-2 border-yellow-300">Vol. Realisasi (Input)</th>
+                <th className="p-2 font-bold text-center bg-orange-50 text-orange-700">Sisa Vol</th>
+                <th className="p-2 font-bold text-center bg-indigo-50 text-indigo-700">Target (%)</th>
+                <th className="p-2 font-bold text-center bg-blue-100 text-blue-800 border-r-2 border-blue-300">Aktual (%)</th>
+                <th className="p-2 font-bold text-center">Varian</th>
+                <th className="p-2 font-bold text-center bg-emerald-50 text-emerald-700">T/Hari</th>
+
+                <th className="p-2 font-bold text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {loading ? (
+                 <tr><td colSpan={showCPM ? 20 : 14} className="p-8 text-center text-slate-500">Memuat data...</td></tr>
+              ) : tasks.map((t) => {
+                const isSummary = t.summary === 'Yes';
+                const varian = t.varian_pct || 0;
+                return (
+                  <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${t.is_critical && !isSummary ? 'bg-red-50/40' : ''}`}>
+                    
+                    {/* PERBAIKAN: MENGGANTI EMOJI DENGAN LUCIDE ICONS */}
+                    <td className="p-2 text-center">
+                      {isSummary ? (
+                        <Folder className="w-4 h-4 text-slate-400 mx-auto" />
+                      ) : t.task_mode === 'Manually Scheduled' ? (
+                        <Pin className="w-3.5 h-3.5 text-amber-600 mx-auto" />
+                      ) : (
+                        <Settings className="w-3.5 h-3.5 text-blue-500 mx-auto" />
                       )}
                     </td>
-                      <td className="p-3 font-semibold">{isSummary ? '-' : `Rp ${Number(t.cost).toLocaleString('id-ID')}`}</td>
-                      <td className="p-3">{t.duration} d</td>
-                      <td className="p-3">
-                        <div className="w-full bg-slate-200 rounded-full h-2.5">
-                            <div className={`h-2.5 rounded-full ${t.is_critical ? 'bg-red-500' : 'bg-blue-500'}`} style={{ width: `${t.progress_percent || 0}%` }}></div>
+                    
+                    <td className="p-2 font-mono text-slate-500">{t.wbs_code}</td>
+                    <td className={`p-2 ${isSummary ? 'font-bold text-slate-800' : 'font-medium text-slate-700'}`}>
+                      {t.name}
+                    </td>
+                    <td className="p-2 text-center font-mono bg-slate-50/50">{isSummary ? '-' : t.volume}</td>
+                    
+                    {showCPM && (
+                      <>
+                        <td className="p-2 text-center font-mono">{t.duration} d</td>
+                        <td className="p-2 text-center font-mono">{formatDateDisplay(t.start_date)}</td>
+                        <td className="p-2 text-center font-mono">{formatDateDisplay(t.end_date)}</td>
+                        <td className="p-2 text-center font-mono text-blue-600 bg-blue-50/30">{formatDateDisplay(t.early_start)}</td>
+                        <td className="p-2 text-center font-mono text-blue-600 bg-blue-50/30">{formatDateDisplay(t.early_finish)}</td>
+                        <td className="p-2 text-center font-mono text-amber-600 bg-amber-50/30">{formatDateDisplay(t.late_start)}</td>
+                        <td className="p-2 text-center font-mono text-amber-600 bg-amber-50/30">{formatDateDisplay(t.late_finish)}</td>
+                        <td className={`p-2 text-center font-mono font-bold ${t.slack < 0 ? 'text-red-600' : t.slack === 0 ? 'text-orange-600' : 'text-slate-600'}`}>{isSummary ? '-' : t.slack}</td>
+                        <td className="p-2 text-center">
+                          {isSummary ? '-' : t.is_critical ? <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded font-bold text-[9px]">YES</span> : <span className="text-slate-400 text-[9px]">No</span>}
+                        </td>
+                      </>
+                    )}
+                    {!showCPM && (
+                      <>
+                        <td className="p-2 text-center font-mono">{t.duration} d</td>
+                        <td className="p-2 text-center font-mono">{formatDateDisplay(t.start_date)}</td>
+                        <td className="p-2 text-center font-mono">{formatDateDisplay(t.end_date)}</td>
+                      </>
+                    )}
+
+                    <td className="p-1 text-center bg-yellow-50/50 border-l-2 border-yellow-200">
+                      {isSummary || t.volume === 0 ? '-' : (
+                        <input 
+                          type="number" 
+                          defaultValue={t.actual_vol.toFixed(2)}
+                          onBlur={(e) => handleVolumeUpdate(t.id, e.target.value)}
+                          className="w-20 px-1 py-1 text-center font-mono font-bold border border-slate-300 rounded focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 bg-white"
+                          step="0.01"
+                        />
+                      )}
+                    </td>
+
+                    <td className="p-2 text-center font-mono font-bold text-orange-600 bg-orange-50/30">
+                      {isSummary || t.volume === 0 ? '-' : (t.sisa_vol || 0).toFixed(2)}
+                    </td>
+
+                    <td className="p-2 text-center font-mono font-bold text-indigo-600 bg-indigo-50/30">{isSummary ? '-' : `${(t.smart_target || 0).toFixed(1)}%`}</td>
+                    <td className="p-2 text-center font-mono font-bold text-blue-600 bg-blue-50/30 border-r-2 border-blue-200">
+                        {isSummary ? '-' : (
+                        <div className="flex flex-col items-center gap-1">
+                            <span>{Number(t.progress_percent || 0).toFixed(1)}%</span>
+                            <div className="w-full bg-slate-200 rounded-full h-1.5 relative">
+                                <div className={`h-1.5 rounded-full ${varian < 0 ? 'bg-amber-400' : 'bg-blue-600'}`} style={{ width: `${t.progress_percent || 0}%` }}></div>
+                                <div className="absolute top-0 bottom-0 w-0.5 bg-red-600 z-10" style={{ left: `${t.smart_target || 0}%` }}></div>
+                            </div>
                         </div>
-                        <span className="text-xs text-center block mt-1">{t.progress_percent || 0}%</span>
-                      </td>
-                      <td className="p-3 text-center text-blue-600 font-medium text-xs whitespace-nowrap">
-                        <button onClick={() => handleOpenEdit(t)} className="hover:underline">Edit</button> | 
-                        <button onClick={() => setDeleteTarget(t)} className="text-red-500 hover:underline ml-1">Hapus</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        )}
+                    </td>
+                    <td className={`p-2 text-center font-mono font-bold ${varian < 0 ? 'text-red-600' : varian > 0 ? 'text-green-600' : 'text-slate-500'}`}>
+                        {isSummary ? '-' : (
+                        <div className="flex items-center justify-center gap-1">
+                            {varian < 0 ? <TrendingDown className="w-3 h-3" /> : varian > 0 ? <TrendingUp className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+                            {Math.abs(varian).toFixed(1)}%
+                        </div>
+                        )}
+                    </td>
+                    <td className={`p-2 text-center font-mono font-bold bg-emerald-50/30 ${varian < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        {isSummary || t.volume === 0 ? '-' : (t.butuh_t_hr || 0).toFixed(3)}
+                    </td>
+
+                    <td className="p-2 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => openModal(t)} className="text-blue-600 p-1 bg-blue-50 rounded"><Edit className="w-3 h-3" /></button>
+                        <button onClick={() => handleDelete(t.id)} className="text-red-600 p-1 bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* MODAL FORM */}
+      {/* MODAL TASK INFORMATION */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex justify-end bg-transparent pointer-events-none animate-fade-in">
-          <div className="bg-white h-full w-full max-w-md shadow-[-10px_0_30px_rgba(0,0,0,0.1)] border-l border-slate-200 overflow-y-auto animate-slide-in-right flex flex-col pointer-events-auto">
-            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-white sticky top-0 z-10">
-              <h2 className="text-lg font-bold text-slate-800">{editingTask ? '✏️ Detail Task' : '📄 Tambah Task Baru'}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold bg-slate-100 w-8 h-8 rounded-full flex items-center justify-center">&times;</button>
-            </div>
+         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+         <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+           <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-white">
+             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><ListTree className="w-5 h-5 text-indigo-600" /> Task Information</h2>
+             <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition-colors"><X className="w-5 h-5"/></button>
+           </div>
+           <div className="flex border-b border-slate-200 bg-slate-50 px-4 pt-2">
+              <button type="button" onClick={() => setActiveTab('general')} className={`px-4 py-2 text-sm font-semibold border-b-2 ${activeTab === 'general' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>General</button>
+              <button type="button" onClick={() => setActiveTab('metadata')} className={`px-4 py-2 text-sm font-semibold border-b-2 ${activeTab === 'metadata' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Metadata</button>
+              <button type="button" onClick={() => setActiveTab('predecessors')} className={`px-4 py-2 text-sm font-semibold border-b-2 ${activeTab === 'predecessors' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Predecessors</button>
+              <button type="button" onClick={() => setActiveTab('help')} className={`px-4 py-2 text-sm font-semibold border-b-2 flex items-center gap-1 ${activeTab === 'help' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}><Info className="w-4 h-4"/> Help</button>
+           </div>
+           <form onSubmit={handleSaveModal}>
+             <div className="p-6 h-[400px] overflow-y-auto">
+                {activeTab === 'general' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Task Name</label>
+                      <input type="text" name="name" value={formData.name || ''} onChange={handleChange} required className="w-full px-3 py-2 border rounded-md text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Planned Start</label>
+                        <input type="date" name="start_date" value={formData.start_date?.split('T')[0] || ''} onChange={handleChange} disabled={formData.task_mode === 'Auto Scheduled'} className={`w-full px-3 py-2 border rounded-md text-sm ${formData.task_mode === 'Auto Scheduled' ? 'bg-slate-100 text-slate-500' : ''}`} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Planned Finish</label>
+                        <input type="date" name="end_date" value={formData.end_date?.split('T')[0] || ''} onChange={handleChange} disabled={formData.task_mode === 'Auto Scheduled'} className={`w-full px-3 py-2 border rounded-md text-sm ${formData.task_mode === 'Auto Scheduled' ? 'bg-slate-100 text-slate-500' : ''}`} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Duration (Working Days)</label>
+                        <input type="number" name="duration" value={formData.duration || 1} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Progress (%)</label>
+                        <input type="number" name="progress_percent" value={formData.progress_percent || 0} onChange={handleChange} min="0" max="100" className="w-full px-3 py-2 border rounded-md text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                      <div>
+                        <label className="block text-xs font-bold text-blue-800 mb-1">Schedule Mode</label>
+                        <select name="task_mode" value={formData.task_mode} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm bg-white font-semibold">
+                          <option value="Auto Scheduled">Auto Scheduled</option>
+                          <option value="Manually Scheduled">Manually Scheduled</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-blue-800 mb-1">Constraint</label>
+                        <select name="constraint_type" value={formData.constraint_type || 'ASAP'} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm bg-white font-semibold">
+                          <option value="ASAP">ASAP (As Soon As Possible)</option>
+                          <option value="SNET">SNET (Start No Earlier Than)</option>
+                          <option value="MSO">MSO (Must Start On)</option>
+                          <option value="FNET">FNET (Finish No Earlier Than)</option>
+                          <option value="FNLT">FNLT (Finish No Later Than)</option>
+                          <option value="MFO">MFO (Must Finish On)</option>
+                        </select>
+                      </div>
+                      {formData.constraint_type !== 'ASAP' && (
+                        <div className="col-span-2">
+                          <label className="block text-xs font-bold text-blue-800 mb-1">Constraint Date</label>
+                          <input type="date" name="constraint_date" value={formData.constraint_date?.split('T')[0] || ''} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-            {/* TABS NAVIGATION */}
-            <div className="flex border-b border-slate-200 bg-slate-50">
-              <button type="button" onClick={() => setActiveTab('general')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'general' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>General</button>
-              <button type="button" onClick={() => setActiveTab('history')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>History Log</button>
-            </div>
-            <form onSubmit={handleSave} className={`p-6 space-y-4 ${activeTab === 'general' ? 'block' : 'hidden'}`}>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-1">
-                  <label className="block text-xs font-bold text-slate-600 mb-1">WBS Code</label>
-                  <input required type="text" value={formData.wbs_code} onChange={e => handleFormChange('wbs_code', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Nama Pekerjaan</label>
-                  <input required type="text" value={formData.name} onChange={e => handleFormChange('name', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Durasi (Hari)</label>
-                  <input required type="number" value={formData.duration} onChange={e => handleFormChange('duration', Number(e.target.value) || 0)} onBlur={() => handleFormBlur('duration')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" onFocus={(e) => e.target.select()} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Tipe Task</label>
-                  <select value={formData.summary} onChange={e => handleFormChange('summary', e.target.value)} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                    <option value="No">Detail Task</option>
-                    <option value="Yes">Summary Task</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Start Date</label>
-                  <input required type="date" value={formData.start_date || ''} onChange={e => handleFormChange('start_date', e.target.value)} onBlur={() => handleFormBlur('start_date')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1">Finish Date</label>
-                  <input required type="date" value={formData.end_date || ''} onChange={e => handleFormChange('end_date', e.target.value)} onBlur={() => handleFormBlur('end_date')} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
-                <button type="submit" disabled={isSaving} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSaving ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                  {isSaving ? <><Loader2 size={16} className="animate-spin" /> Menyimpan...</> : 'Simpan Task'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+                {activeTab === 'metadata' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Priority</label>
+                        <select name="priority" value={formData.priority || 'Medium'} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm">
+                          <option value="Low">Low</option>
+                          <option value="Medium">Medium</option>
+                          <option value="High">High</option>
+                          <option value="Critical">Critical</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center mt-5">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" name="is_milestone" checked={formData.is_milestone || false} onChange={handleChange} className="w-4 h-4 text-blue-600 rounded" />
+                          <span className="text-sm font-semibold text-slate-700">Milestone (Durasi = 0)</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Tags</label>
+                      <input type="text" name="tags" value={formData.tags || ''} onChange={handleChange} placeholder="Contoh: Struktur, Kritis, Klien" className="w-full px-3 py-2 border rounded-md text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Assignee (Penanggung Jawab)</label>
+                      <input type="text" name="assignee" value={formData.assignee || ''} onChange={handleChange} placeholder="Nama pengawas / mandor" className="w-full px-3 py-2 border rounded-md text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">WBS Dictionary</label>
+                      <textarea name="wbs_dictionary" rows="3" value={formData.wbs_dictionary || ''} onChange={handleChange} placeholder="Deskripsi detail lingkup pekerjaan..." className="w-full px-3 py-2 border rounded-md text-sm"></textarea>
+                    </div>
+                  </div>
+                )}
 
-      {/* DIALOG HAPUS */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in text-center p-6">
-            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-              <svg className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-2">Hapus Task Ini?</h3>
-            <p className="text-sm text-slate-500 mb-6">
-              Anda akan menghapus <strong className="text-slate-800">{deleteTarget.name}</strong>. 
-              {deleteTarget.summary === 'Yes' && <span className="block mt-2 text-red-500 font-bold text-xs bg-red-50 p-2 rounded">Peringatan: Menghapus Summary Task akan menghapus seluruh Sub-Task di dalamnya!</span>}
-            </p>
-            <div className="flex justify-center gap-3">
-              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 w-full">Batal</button>
-              <button onClick={handleDeleteConfirm} className="px-4 py-2 text-sm font-bold bg-red-600 text-white rounded-lg hover:bg-red-700 shadow-md w-full">Ya, Hapus</button>
-            </div>
-          </div>
-        </div>
+                {activeTab === 'predecessors' && (
+                  <div className="space-y-4">
+                    <p className="text-sm text-slate-500">Pilih task pendahulu. Tanggal mulai task ini akan otomatis mengikuti task yang dipilih.</p>
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex gap-2 items-end">
+                        <div className="flex-1">
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Pilih Task Pendahulu</label>
+                            <select 
+                                value={newPred.wbs} 
+                                onChange={(e) => setNewPred({...newPred, wbs: e.target.value})}
+                                className="w-full px-3 py-2 border rounded-md text-sm bg-white"
+                            >
+                                <option value="">-- Pilih Task --</option>
+                                {tasks.filter(t => t.wbs_code !== currentTask?.wbs_code && t.summary === 'No').map(t => (
+                                    <option key={t.id} value={t.wbs_code}>{t.wbs_code} - {t.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="w-40">
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Tipe Hubungan</label>
+                            <select 
+                                value={newPred.type} 
+                                onChange={(e) => setNewPred({...newPred, type: e.target.value})}
+                                className="w-full px-3 py-2 border rounded-md text-sm bg-white font-semibold"
+                            >
+                                <option value="FS">FS (Finish-to-Start)</option>
+                                <option value="SS">SS (Start-to-Start)</option>
+                                <option value="FF">FF (Finish-to-Finish)</option>
+                                <option value="SF">SF (Start-to-Finish)</option>
+                            </select>
+                        </div>
+                        <div className="w-24">
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Lag (Hari)</label>
+                            <input 
+                                type="number" 
+                                value={newPred.lag} 
+                                onChange={(e) => setNewPred({...newPred, lag: Number(e.target.value)})}
+                                className="w-full px-3 py-2 border rounded-md text-sm bg-white" 
+                            />
+                        </div>
+                        <button type="button" onClick={addPredecessor} className="bg-slate-800 text-white p-2.5 rounded-md hover:bg-slate-900 transition-colors">
+                            <Plus className="w-4 h-4" />
+                        </button>
+                    </div>
+                    
+                    <div className="mt-3 bg-blue-50 border border-blue-100 p-3 rounded-lg flex items-start gap-2">
+                        <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                        <div className="text-[11px] text-blue-800 leading-relaxed">
+                            {newPred.type === 'FS' && <span><b>Finish-to-Start (FS):</b> Pekerjaan ini baru bisa dimulai setelah pekerjaan pendahulu selesai 100%. (Paling umum digunakan).</span>}
+                            {newPred.type === 'SS' && <span><b>Start-to-Start (SS):</b> Pekerjaan ini bisa dimulai secara bersamaan dengan mulainya pekerjaan pendahulu. (Cocok untuk pekerjaan tumpang tindih/overlap).</span>}
+                            {newPred.type === 'FF' && <span><b>Finish-to-Finish (FF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu selesai. (Biasanya untuk penyerahan akhir).</span>}
+                            {newPred.type === 'SF' && <span><b>Start-to-Finish (SF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu dimulai. (Sangat jarang digunakan).</span>}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2 mt-4">
+                        {predList.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic text-center">Belum ada predecessor dipilih.</p>
+                        ) : (
+                            predList.map((p, idx) => {
+                                const taskRef = tasks.find(t => t.wbs_code === p.wbs);
+                                return (
+                                    <div key={idx} className="flex items-center justify-between bg-white border border-slate-200 p-2 rounded-md shadow-sm">
+                                        <div className="flex items-center gap-3">
+                                            <div className="bg-blue-100 p-1.5 rounded text-blue-600"><Link2 className="w-4 h-4" /></div>
+                                            <div>
+                                                <span className="font-bold text-sm text-slate-700">{p.wbs} - {taskRef?.name || 'Unknown'}</span>
+                                                <div className="text-[10px] text-slate-500">Tipe: {p.type} | Lag: {p.lag} hari</div>
+                                            </div>
+                                        </div>
+                                        <button type="button" onClick={() => removePredecessor(idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded">
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'help' && (
+                  <div className="space-y-4 text-sm text-slate-700">
+                    <h3 className="font-bold text-blue-700 text-base flex items-center gap-2"><Info className="w-5 h-5"/> Fungsi Task Type</h3>
+                    <ul className="list-disc pl-5 space-y-1 mb-4">
+                      <li><strong>Fixed Duration:</strong> Durasi terkunci. Mengubah Start/Finish akan menggeser blok waktu.</li>
+                      <li><strong>Fixed Units:</strong> Jumlah pekerja terkunci. Mengubah durasi akan mengubah total jam kerja.</li>
+                      <li><strong>Fixed Work:</strong> Total jam kerja terkunci. Memperpendek durasi akan menambah jumlah pekerja.</li>
+                    </ul>
+                    <h3 className="font-bold text-blue-700 text-base flex items-center gap-2"><Info className="w-5 h-5"/> Fungsi Constraint</h3>
+                    <p>Constraint = batasan waktu yang memaksa kapan task harus mulai/selesai.</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li><strong>ASAP</strong> — Ikuti jadwal predecessor murni (Default).</li>
+                      <li><strong>SNET</strong> — Tugas baru boleh mulai SETELAH tanggal X.</li>
+                      <li><strong>MSO</strong> — Tugas HARUS mulai TEPAT tanggal X.</li>
+                      <li><strong>MFO</strong> — Tugas HARUS selesai TEPAT tanggal X.</li>
+                    </ul>
+                  </div>
+                )}
+             </div>
+
+             <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+               <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-md transition-colors">Batal</button>
+               <button type="submit" className="px-5 py-2 text-sm font-bold text-white bg-blue-700 hover:bg-blue-800 rounded-md shadow-sm transition-colors">Simpan</button>
+             </div>
+           </form>
+         </div>
+       </div>
       )}
     </div>
   );
 }
-
-
-
-
-
-
-
-
-

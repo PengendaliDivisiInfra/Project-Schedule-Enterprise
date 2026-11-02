@@ -1,12 +1,17 @@
-﻿/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @next/next/no-img-element */
 'use client';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
+import ResourceHistogram from './ResourceHistogram';
+import { calculateResourceHistogram } from '../lib/histogramCalculator';
 
 const ROW_HEIGHT = 38;
 const BUFFER_SIZE = 10;
 
-export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate, onRefresh }) {
+export default function AdvancedGantt({ 
+  tasks, relations, taskAssignments = [], resources = [], 
+  workingDays = [1,2,3,4,5], statusDate, exceptions = [], onInlineUpdate, onRefresh 
+}) {
   const leftPanelRef = useRef(null);
   const rightPanelRef = useRef(null);
   const [svgPaths, setSvgPaths] = useState([]);
@@ -15,6 +20,8 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   const [localTasks, setLocalTasks] = useState(tasks);
   const [zoomLevel, setZoomLevel] = useState('day');
   
+  const [showHistogram, setShowHistogram] = useState(true);
+  const [scrollLeft, setScrollLeft] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
 
@@ -35,12 +42,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     ? localTasks.filter(t => t.is_critical || t.summary === 'Yes')
     : localTasks;
 
-  // --- VIRTUAL SCROLLING LOGIC ---
+  const histogramData = useMemo(
+    () => calculateResourceHistogram(localTasks, taskAssignments, resources, workingDays, exceptions),
+    [localTasks, taskAssignments, resources, workingDays, exceptions]
+  );
+
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_SIZE);
   const endIndex = Math.min(displayTasks.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + BUFFER_SIZE);
   const visibleTasks = displayTasks.slice(startIndex, endIndex);
 
-  // Generate Calendar Days
   let minDate = new Date();
   let maxDate = new Date();
   displayTasks.forEach(t => {
@@ -55,7 +65,13 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
   while (cur <= maxDate) {
     const isWeekend = cur.getDay() === 0 || cur.getDay() === 6;
     const isWorking = workingDays.includes(cur.getDay());
-    calendarDays.push({ date: new Date(cur), isWeekend: !isWorking });
+    
+    const y = cur.getFullYear();
+    const m = String(cur.getMonth() + 1).padStart(2, '0');
+    const d = String(cur.getDate()).padStart(2, '0');
+    const dateStr = y + '-' + m + '-' + d;
+    
+    calendarDays.push({ date: new Date(cur), dateStr, isWeekend: !isWorking });
     cur.setDate(cur.getDate() + 1);
   }
 
@@ -92,7 +108,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     return daysDiff * pixelsPerDay;
   };
 
-  // Hitung SVG Paths (Garis Panah)
   useEffect(() => {
     const paths = [];
     const taskRects = {};
@@ -107,8 +122,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       }
       width = Math.max(8, width);
       const y = idx * ROW_HEIGHT;
-      
-      // x: Math.max(0, x) mencegah garis error jika tanggal negatif
       taskRects[t.wbs_code] = { x: Math.max(0, x), y, width, index: idx };
     });
 
@@ -117,7 +130,6 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       const to = taskRects[rel.to];
       if (!from || !to) return;
 
-      // Cek apakah garis terlihat di layar (dengan buffer)
       if (from.index < startIndex - BUFFER_SIZE && to.index < startIndex - BUFFER_SIZE) return;
       if (from.index > endIndex + BUFFER_SIZE && to.index > endIndex + BUFFER_SIZE) return;
 
@@ -131,9 +143,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       else if (rel.type === 'SF') { sourceX = from.x; sourceY = fromCenterY; targetX = to.x + to.width; targetY = toCenterY; }
 
       const points = [[sourceX, sourceY]];
-      const paddingX = zoomLevel === 'day' ? 12 : 4;
-
-      // Jika target berada di kiri (mundur) atau terlalu dekat, rute memutar
+      
       if (targetX < sourceX + 20) {
         const midY = fromCenterY + ROW_HEIGHT / 2;
         points.push([sourceX, sourceY + 8]); 
@@ -155,11 +165,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     setSvgPaths(paths);
   }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay]);
 
-  // Fungsi Scroll Sinkronisasi
   const handleScroll = (e) => {
-    const newScrollTop = e.currentTarget.scrollTop;
-    setScrollTop(newScrollTop);
-    // Panel kiri akan mengikuti via CSS transform, tidak perlu set scrollTop manual
+    setScrollTop(e.currentTarget.scrollTop);
+    setScrollLeft(e.currentTarget.scrollLeft);
   };
 
   const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-';
@@ -212,8 +220,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       newDuration = countWorkingDays(startStr, endStr, workingDays, exceptions);
     }
 
+    // PERBAIKAN: Ubah Mode ke Manually Scheduled agar CPM Engine tidak menimpa
     setLocalTasks(prev => {
-      let updated = prev.map(t => t.id === task.id ? { ...t, start_date: startStr, end_date: endStr, duration: newDuration } : t);
+      let updated = prev.map(t => t.id === task.id ? { ...t, start_date: startStr, end_date: endStr, duration: newDuration, task_mode: 'Manually Scheduled' } : t);
       
       if (task.parent_id) {
         const siblings = updated.filter(t => t.parent_id === task.parent_id);
@@ -222,9 +231,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
           const maxEnd = siblings.reduce((max, s) => new Date(s.end_date) > new Date(max) ? s.end_date : max, siblings[0].end_date);
           const pDur = countWorkingDays(minStart, maxEnd, workingDays, exceptions);
           updated = updated.map(t => {
-            if (t.id === task.parent_id) {
-              return { ...t, start_date: minStart, end_date: maxEnd, duration: pDur };
-            }
+            if (t.id === task.parent_id) return { ...t, start_date: minStart, end_date: maxEnd, duration: pDur };
             return t;
           });
         }
@@ -235,6 +242,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     onInlineUpdate(task.id, 'start_date', startStr); 
     onInlineUpdate(task.id, 'end_date', endStr);
     if (newDuration !== task.duration) onInlineUpdate(task.id, 'duration', newDuration);
+    onInlineUpdate(task.id, 'task_mode', 'Manually Scheduled'); // Kirim update status manual ke DB
   };
 
   const handleLocalInlineUpdate = (taskId, field, value) => {
@@ -262,9 +270,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
           const pDur = countWorkingDays(minStart, maxEnd, workingDays, exceptions);
           
           updated = updated.map(t => {
-            if (t.id === child.parent_id) {
-              return { ...t, start_date: minStart, end_date: maxEnd, duration: pDur };
-            }
+            if (t.id === child.parent_id) return { ...t, start_date: minStart, end_date: maxEnd, duration: pDur };
             return t;
           });
         }
@@ -299,20 +305,11 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
             
             <div className="flex items-center gap-2 ml-2">
               <div className="relative">
-                <select
-                  value={zoomLevel}
-                  onChange={(e) => setZoomLevel(e.target.value)}
-                  className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded shadow-sm py-1 pl-7 pr-6 text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 cursor-pointer transition-colors"
-                >
+                <select value={zoomLevel} onChange={(e) => setZoomLevel(e.target.value)} className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded shadow-sm py-1 pl-7 pr-6 text-[10px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
                   <option value="day">Skala: Hari</option>
                   <option value="week">Skala: Minggu</option>
                   <option value="month">Skala: Bulan</option>
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
-                  <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                  </svg>
-                </div>
               </div>
               <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[10px] px-2 py-1 rounded font-bold border ${showCriticalOnly ? 'bg-red-500 text-white' : 'bg-white text-slate-600'}`}>{showCriticalOnly ? 'Critical' : 'All'}</button>
             </div>
@@ -343,16 +340,15 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* PANEL KIRI (Menggunakan transform untuk scroll sinkron) */}
+        {/* PANEL KIRI */}
         <div ref={leftPanelRef} className="w-[1020px] border-r border-slate-300 overflow-hidden bg-white shrink-0 relative">
           <div className="relative" style={{ height: displayTasks.length * ROW_HEIGHT, transform: `translateY(-${scrollTop}px)` }}>
             {displayTasks.map((t, idx) => {
-              const actualIndex = idx; // index absolut untuk semua tasks
+              const actualIndex = idx; 
               const top = actualIndex * ROW_HEIGHT;
               const isSummary = t.summary === 'Yes';
               const isHovered = hoveredTaskId === t.id;
 
-              // Render hanya jika dalam viewport
               if (actualIndex < startIndex - BUFFER_SIZE || actualIndex > endIndex + BUFFER_SIZE) return null;
               
               return (
@@ -393,7 +389,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                   </div>
                   <div className="w-12 px-1 border-l border-slate-100">
                     {!isSummary ? (
-                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="1.1FS+2" onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-black font-semibold placeholder:text-slate-400 placeholder:font-normal" />
+                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="Ketik Pre..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-black font-semibold placeholder:text-slate-400 placeholder:font-normal" />
                     ) : (
                       <div className="text-center text-slate-300 text-[10px]">-</div>
                     )}
@@ -425,8 +421,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => {
-                const dateStr = cd.date.toISOString().split('T')[0];
-                const isHoliday = exceptions.some(e => e.exception_date === dateStr);
+                const isHoliday = exceptions.some(e => e.exception_date === cd.dateStr);
                 let bgClass = isHoliday ? 'bg-red-50/50' : (zoomLevel === 'day' && cd.isWeekend) ? 'bg-slate-50' : '';
                 let borderClass = (zoomLevel === 'week' && cd.date.getDay() === 1) ? 'border-r border-slate-300' : (zoomLevel === 'month' && cd.date.getDate() === 1) ? 'border-r border-slate-400' : 'border-r border-slate-100';
                 return <div key={i} className={`${borderClass} h-full ${bgClass}`} style={{ width: pixelsPerDay }}></div>;
@@ -453,13 +448,9 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
                 let width = t.duration * pixelsPerDay;
                 if (t.start_date && t.end_date) {
                   const endX = getX(t.end_date);
-                  if (endX >= rawLeft) {
-                    width = (endX - rawLeft) + pixelsPerDay;
-                  }
+                  if (endX >= rawLeft) width = (endX - rawLeft) + pixelsPerDay;
                 }
-                if (rawLeft < 0) {
-                  width = width + rawLeft; 
-                }
+                if (rawLeft < 0) width = width + rawLeft; 
                 width = Math.max(8, width);
                 
                 const top = actualIndex * ROW_HEIGHT + 6; 
@@ -470,7 +461,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
 
                 if (t.duration === 0) return <div key={t.id} className="absolute pointer-events-auto flex items-center" style={{ left: left - 5, top: top + 2 }}><div className="w-3 h-3 bg-black rotate-45 shadow-sm z-30"></div></div>;
                 if (isSummary) {
-                  if (!t.start_date || !t.end_date) return null; // Mencegah bar melayang
+                  if (!t.start_date || !t.end_date) return null; 
                   return <div key={t.id} className="absolute pointer-events-auto" style={{ left, width, top: top + 2 }}><div className="absolute top-0 w-full h-[4px] bg-slate-800"></div><div className="absolute top-0 left-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%, 0 60%)' }}></div><div className="absolute top-0 right-0 w-[4px] h-[10px] bg-slate-800" style={{ clipPath: 'polygon(0 0, 100% 0, 100% 60%, 0 100%)' }}></div></div>;
                 }
 
@@ -488,8 +479,17 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
           </div>
         </div>
       </div>
+
+      <ResourceHistogram
+        calendarDays={calendarDays}
+        pixelsPerDay={pixelsPerDay}
+        scrollLeft={scrollLeft}
+        totalWidth={totalWidth}
+        histogramData={histogramData}
+        showHistogram={showHistogram}
+        onToggle={() => setShowHistogram(v => !v)}
+      />
+
     </div>
   );
 }
-
-

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ChevronLeft, ChevronRight
+  Settings, ShieldCheck, ChevronLeft, ChevronRight, Layers // Tambah Layers
 } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
@@ -28,6 +28,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     { group: 'Manajemen Biaya', items: [
       { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin'] },
       { name: 'Resources', path: '/resources', icon: Users, roles: ['owner', 'admin'] },
+      { name: 'Material Requirement', path: '/materials', icon: Layers, roles: ['owner', 'admin'] }, // MENU BARU
       { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Package, roles: ['owner', 'admin'] },
       { name: 'Assignments', path: '/assignments', icon: Database, roles: ['owner', 'admin'] },
     ]},
@@ -56,7 +57,6 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
       {/* Menu Items */}
       <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 custom-scrollbar">
         {menuItems.map((group, idx) => {
-          // Filter items based on role
           const visibleItems = group.items.filter(item => item.roles.includes(role));
           if (visibleItems.length === 0) return null;
 
@@ -97,6 +97,3 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     </aside>
   );
 }
-
-
-
