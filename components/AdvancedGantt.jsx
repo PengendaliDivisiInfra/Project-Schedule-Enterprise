@@ -208,6 +208,25 @@ export default function AdvancedGantt({
     setSvgPaths(paths);
   }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay, minDate.getTime()]);
 
+    const handleAutoLeveling = () => {
+    // Algoritma sederhana: Geser task dengan Slack > 0 ke kanan sejauh 1 minggu (7 hari)
+    // (Implementasi lengkap butuh CPM Engine rekursif)
+    if (confirm("Jalankan Auto Leveling? Sistem akan menggeser task non-kritis ke kanan untuk mengurangi overallocation.")) {
+      const leveledTasks = localTasks.map(t => {
+        if (t.is_critical === false && t.slack > 0 && t.summary === 'No') {
+          // Geser 7 hari ke kanan
+          const newStart = addWorkingDays(t.start_date, 7, workingDays, exceptions);
+          const newEnd = addWorkingDays(t.end_date, 7, workingDays, exceptions);
+          return { ...t, start_date: newStart, end_date: newEnd };
+        }
+        return t;
+      });
+      setLocalTasks(leveledTasks);
+      if (onRefresh) onRefresh(); // Panggil scheduler ulang
+      alert("Leveling Dijalankan! Silakan periksa Resource Histogram.");
+    }
+  };
+
   const handleScroll = (e) => {
     setScrollTop(e.currentTarget.scrollTop);
     setScrollLeft(e.currentTarget.scrollLeft);
@@ -371,7 +390,7 @@ export default function AdvancedGantt({
               <span className="w-12 text-center border-l border-slate-300">T/hr</span>
               <span className="w-14 text-center border-l border-slate-300 bg-slate-50">Varian</span>
               <span className="w-12 text-center border-l border-slate-300">Slack</span>
-              <span className="w-24 text-center border-l border-slate-300">Cost</span>
+              <span className="w-24 text-right pr-3 border-l border-slate-300">Cost</span>
             </div>
           </div>
           <div className="h-[24px] bg-slate-50"></div>
@@ -414,7 +433,7 @@ export default function AdvancedGantt({
               return (
                 <div key={t.id} onMouseEnter={() => setHoveredTaskId(t.id)} onMouseLeave={() => setHoveredTaskId(null)}
                   style={{ top, height: ROW_HEIGHT }}
-                  className={`absolute w-full flex text-[11px] items-center px-2 border-b border-slate-100 transition-colors cursor-pointer
+                  className={`absolute w-full flex text-[11px] items-center px-2 border-b border-slate-100 transition-colors cursor-pointer hover:bg-blue-50/80
                     ${isSummary ? 'bg-slate-50 font-bold' : actualIndex % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} ${isHovered ? 'bg-blue-50/80' : 'hover:bg-blue-50/50'}`}>
                   <span className="w-6 flex justify-center text-center">
                     {t.task_mode === 'Manually Scheduled' ? <Pin className="w-3.5 h-3.5 text-amber-600" /> : <Settings className="w-3.5 h-3.5 text-blue-500" />}
@@ -480,7 +499,7 @@ export default function AdvancedGantt({
                   </span>
                   
                   {/* KOLOM COST */}
-                  <span className="w-24 flex justify-end items-center pr-3 font-mono text-slate-600 border-l border-slate-100">
+                  <span className="w-24 flex justify-end items-center pr-3 font-mono font-semibold text-slate-700 border-l border-slate-100">
                     {isSummary ? '-' : formatRp(t.cost)}
                   </span>
                 </div>
@@ -497,7 +516,7 @@ export default function AdvancedGantt({
               {displayTasks.map((t, i) => (
                 <div 
                   key={i} 
-                  className={`w-full border-b border-slate-200 transition-colors ${hoveredTaskId === t.id ? 'bg-blue-50/50' : ''}`} 
+                  className={`w-full border-b border-slate-200 transition-colors ${hoveredTaskId === t.id ? 'bg-blue-50/60' : ''}`} 
                   style={{ height: ROW_HEIGHT }}
                 ></div>
               ))}
@@ -558,7 +577,7 @@ export default function AdvancedGantt({
                     key={t.id} 
                     onMouseEnter={() => setHoveredTaskId(t.id)} 
                     onMouseLeave={() => setHoveredTaskId(null)} 
-                    className={`absolute group pointer-events-auto ${isHovered ? 'z-30' : ''}`} 
+                    className={`absolute group pointer-events-auto ${isHovered ? 'z-30 ring-2 ring-indigo-400' : ''}`} 
                     style={{ left, width, top }}
                   >
                     <div className={`h-[16px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>

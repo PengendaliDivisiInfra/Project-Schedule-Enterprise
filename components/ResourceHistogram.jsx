@@ -1,24 +1,15 @@
 'use client';
 import { useMemo } from 'react';
-import { ChevronDown, ChevronUp, AlertTriangle, BarChart3 } from 'lucide-react';
+import { ChevronDown, ChevronUp, AlertTriangle, BarChart3, HardHat, Truck, Package } from 'lucide-react';
 
 const ROW_H = 22;
 
 export default function ResourceHistogram({
-  calendarDays = [],
-  pixelsPerDay = 36,
-  scrollLeft = 0,
-  totalWidth = 0,
-  histogramData,
-  showHistogram = true,
-  onToggle,
+  calendarDays = [], pixelsPerDay = 36, scrollLeft = 0, totalWidth = 0, histogramData, showHistogram = true, onToggle,
 }) {
   const { resourceRows, overallocatedCount } = useMemo(() => {
     const rows = histogramData?.resources || [];
-    return {
-      resourceRows: rows,
-      overallocatedCount: histogramData?.overallocatedCount || 0,
-    };
+    return { resourceRows: rows, overallocatedCount: histogramData?.overallocatedCount || 0 };
   }, [histogramData]);
 
   if (!showHistogram) {
@@ -66,46 +57,53 @@ export default function ResourceHistogram({
           </div>
         )}
 
-        {resourceRows.map((r) => (
-          <div key={r.id} className="flex border-b border-slate-100" style={{ height: ROW_H }}>
-            <div className="w-[1020px] shrink-0 flex items-center px-2 text-[11px] bg-white border-r border-slate-300">
-              <span className="w-6 text-center">
-                {['labor','tenaga','pekerja'].includes(r.category) ? '👷' :
-                 ['equipment','alat'].includes(r.category) ? '🚜' : '📦'}
-              </span>
-              <span className="w-56 truncate font-medium text-slate-700">{r.name}</span>
-              <span className="w-16 text-slate-500 truncate">{r.unit}</span>
-              <span className="w-20 text-center text-slate-500 font-mono text-[10px]">cap: {r.capacity.toFixed(1)}</span>
-              
-              {/* PERUBAHAN 1: Menampilkan Crew Size (Jumlah Pekerja) */}
-              <span className={`w-36 text-right font-mono text-[10px] pr-2 ${r.maxLoad > r.capacity ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
-                peak: {r.maxLoad.toFixed(1)} hr 
-                {!r.isEquipment && r.maxCrewSize > 0 && (
-                  <span className="block text-[9px] text-indigo-600 font-sans">Need ~{Math.ceil(r.maxCrewSize)} workers</span>
-                )}
-              </span>
-            </div>
+        {resourceRows.map((r) => {
+          let safeTarget = Math.ceil(Math.abs(Number(r.maxCrewSize) || 0));
+          if (!isFinite(safeTarget) || isNaN(safeTarget) || safeTarget < 0) safeTarget = 0;
+          
+          return (
+            <div key={r.id} className="flex border-b border-slate-100" style={{ height: ROW_H }}>
+              <div className="w-[1150px] shrink-0 flex items-center px-2 text-[11px] bg-white border-r border-slate-300">
+                <span className="w-6 flex justify-center text-center">
+                  {['labor','tenaga','pekerja'].includes(r.category) ? <HardHat className="w-3.5 h-3.5 text-slate-500" /> :
+                   ['equipment','alat'].includes(r.category) ? <Truck className="w-3.5 h-3.5 text-slate-500" /> : 
+                   <Package className="w-3.5 h-3.5 text-slate-500" />}
+                </span>
+                <span className="w-56 truncate font-medium text-slate-700">{r.name}</span>
+                <span className="w-16 text-slate-500 truncate">{r.unit}</span>
+                <span className="w-20 text-center text-slate-500 font-mono text-[10px]">cap: {r.capacity.toFixed(1)}</span>
+                
+                <span className={`w-36 text-right font-mono text-[10px] pr-2 ${safeTarget > r.capacity ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
+                  Target: {safeTarget} unit/hr 
+                  {safeTarget > 0 && (
+                    <span className="block text-[9px] text-indigo-600 font-sans">
+                      Need ~{safeTarget} unit/day
+                    </span>
+                  )}
+                </span>
+              </div>
 
-            <div className="flex-1 relative overflow-hidden">
-              <div className="flex h-full" style={{ width: totalWidth, transform: `translateX(-${scrollLeft}px)` }}>
-                {calendarDays.map((cd, i) => {
-                  const dStr = cd.dateStr;
-                  const load = r.loadByDate[dStr] || 0;
-                  const ratio = r.capacity > 0 ? load / r.capacity : 0;
-                  const isOver = ratio > 1.0001;
-                  const heightPct = Math.min(100, ratio * 100);
-                  return (
-                    <div key={i} className="relative flex items-end h-full" style={{ width: pixelsPerDay }} title={`${r.name}\n${dStr}\nLoad: ${load.toFixed(2)} hr\nCapacity: ${r.capacity.toFixed(2)} hr\n${isOver ? '⚠ OVERALLOCATED' : ''}`}>
-                      {load > 0 && (
-                        <div className={`w-full ${isOver ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ height: `${heightPct}%`, minHeight: 2 }} />
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="flex-1 relative overflow-hidden">
+                <div className="flex h-full" style={{ width: totalWidth, transform: `translateX(-${scrollLeft}px)` }}>
+                  {calendarDays.map((cd, i) => {
+                    const dStr = cd.dateStr;
+                    const load = r.loadByDate[dStr] || 0;
+                    const ratio = r.capacity > 0 ? load / r.capacity : 0;
+                    const isOver = ratio > 1.0001;
+                    const heightPct = Math.min(100, ratio * 100);
+                    return (
+                      <div key={i} className="relative flex items-end h-full" style={{ width: pixelsPerDay }} title={`${r.name}\n${dStr}\nLoad: ${load.toFixed(2)} hr\nCapacity: ${r.capacity.toFixed(2)} hr\n${isOver ? '⚠ OVERALLOCATED' : ''}`}>
+                        {load > 0 && (
+                          <div className={`w-full ${isOver ? 'bg-red-500' : 'bg-indigo-500'}`} style={{ height: `${heightPct}%`, minHeight: 2 }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
