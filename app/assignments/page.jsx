@@ -8,6 +8,7 @@ export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
   const [ahspList, setAhspList] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -40,6 +41,12 @@ export default function AssignmentsPage() {
       // Saring duplikat
       const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks);
+
+      // 3. Fetch Task Assignments (Untuk melihat resource otomatis)
+      const { data: assignData } = await supabase
+        .from('task_assignments')
+        .select('task_id, project_resources(name, role)');
+      if (assignData) setAssignments(assignData);
 
       // 3. Fetch Task Assignments (Untuk melihat resource otomatis)
       const { data: assignData } = await supabase
@@ -226,5 +233,6 @@ export default function AssignmentsPage() {
     </div>
   );
 }
+
 
 
