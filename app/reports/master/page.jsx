@@ -1,0 +1,481 @@
+'use client';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '../../../lib/supabase';
+import { updateProjectScheduleSecure } from '../../../lib/scheduler';
+import { calculateEVM } from '../../../lib/evm';
+import { Printer, ArrowLeft, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+
+export const dynamic = 'force-dynamic';
+
+export default function MasterReportPage() {
+  const router = useRouter();
+  const [project, setProject] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [ganttData, setGanttData] = useState([]);
+  const [ganttMonths, setGanttMonths] = useState([]);
+  const [resourcesPlan, setResourcesPlan] = useState([]);
+  const [materialsPlan, setMaterialsPlan] = useState([]);
+  const [health, setHealth] = useState({ totalCost: 0, targetPct: 0, actualPct: 0, varian: 0 });
+  const [loading, setLoading] = useState(true);
+
+  const [signatures, setSignatures] = useState({
+    pm: { title: 'Dibuat oleh,', role: 'Project Manager', name: '' },
+    se: { title: 'Diperiksa oleh,', role: 'Site Engineer', name: '' },
+    owner: { title: 'Disetujui oleh,', role: 'Owner / PPK', name: '' }
+  });
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const { data: projData } = await supabase.from('projects').select('*').limit(1).single();
+    if (projData) setProject(projData);
+    let workingDays = [1,2,3,4,5];
+    let exceptions = [];
+    if (projData) {
+      if (projData.working_days) workingDays = Array.isArray(projData.working_days) ? projData.working_days.map(Number) : [1,2,3,4,5];
+      if (projData.exceptions) exceptions = projData.exceptions;
+    }
+
+    const { data: taskData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
+    if (taskData) {
+        const formattedTasks = taskData.map(t => ({ ...t, volume: Number(t.volume) || 0, duration: Number(t.duration) || 1 }));
+        const cpmResult = updateProjectScheduleSecure(formattedTasks, workingDays, exceptions);
+        const cpmTasks = cpmResult.success ? cpmResult.tasks : formattedTasks;
+        const evmTasks = calculateEVM(cpmTasks);
+        setTasks(evmTasks); 
+
+        const leafTasks = evmTasks.filter(t => t.summary !== 'Yes');
+        let totalCost = 0, totalTarget = 0, totalActual = 0, totalWeight = 0;
+        leafTasks.forEach(t => {
+            const weight = (Number(t.cost) > 0) ? Number(t.cost) : (Number(t.duration) || 1);
+            totalCost += Number(t.cost) || 0;
+            totalWeight += weight;
+            totalTarget += weight * ((t.smart_target || 0) / 100);
+            totalActual += weight * ((Number(t.progress_percent) || 0) / 100);
+        });
+        const targetPct = totalWeight > 0 ? (totalTarget / totalWeight) * 100 : 0;
+        const actualPct = totalWeight > 0 ? (totalActual / totalWeight) * 100 : 0;
+        setHealth({ totalCost, targetPct, actualPct, varian: actualPct - targetPct });
+
+        if (leafTasks.length > 0) {
+            const startDates = leafTasks.map(t => new Date(t.early_start || t.start_date).getTime());
+            const endDates = leafTasks.map(t => new Date(t.early_finish || t.end_date).getTime());
+            const minDate = Math.min(...startDates);
+            const maxDate = Math.max(...endDates);
+            const totalDays = Math.ceil((maxDate - minDate) / (1000 * 60 * 60 * 24));
+
+            const computedGantt = leafTasks.map(t => {
+                const tStart = new Date(t.early_start || t.start_date).getTime();
+                const tEnd = new Date(t.early_finish || t.end_date).getTime();
+                const leftDays = Math.max(0, (tStart - minDate) / (1000 * 60 * 60 * 24));
+                const widthDays = Math.max(1, (tEnd - tStart) / (1000 * 60 * 60 * 24));
+                return { ...t, leftPct: (leftDays / totalDays) * 100, widthPct: (widthDays / totalDays) * 100 };
+            });
+            setGanttData(computedGantt);
+
+            const months = [];
+            let current = new Date(minDate);
+            current.setDate(1);
+            let currentLeft = 0;
+            while (current <= maxDate) {
+                const nextMonth = new Date(current);
+                nextMonth.setMonth(nextMonth.getMonth() + 1);
+                const start = current < minDate ? minDate : current;
+                const end = nextMonth > maxDate ? maxDate : nextMonth;
+                const daysInMonth = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+                const pct = (daysInMonth / totalDays) * 100;
+                months.push({ label: current.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' }), width: pct });
+                currentLeft += pct;
+                current = nextMonth;
+            }
+            setGanttMonths(months);
+        }
+    }
+
+    const { data: resData } = await supabase.from('v_resource_requirements').select('*').order('wbs_code');
+    if (resData) {
+        const filteredRes = resData.filter(r => r.resource_type === 'Tenaga Kerja' || r.resource_type === 'Alat');
+        setResourcesPlan(filteredRes);
+    }
+
+    const { data: matData } = await supabase.from('task_material_requirements')
+        .select('*, wbs_tasks(name, wbs_code, duration), master_hsd(nama_item, satuan, harga_dasar)')
+        .order('created_at', { ascending: false });
+    if (matData) setMaterialsPlan(matData);
+
+    setLoading(false);
+  };
+
+  const formatDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+  const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
+
+  if (loading) return <div style={{ padding: '40px', textAlign: 'center', fontWeight: 'bold' }}>Menyiapkan Laporan Eksekutif...</div>;
+
+  return (
+    <div className="bg-slate-100 min-h-screen p-4 md:p-8 font-sans print:bg-white print:p-0 print:min-h-0 print:overflow-visible">
+      
+      {/* TOOLBAR (Hilang saat print) */}
+      <div className="no-print max-w-6xl mx-auto mb-4 flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+        <Link href="/dashboard" className="flex items-center gap-2 text-slate-600 hover:text-indigo-600 font-bold px-2">
+          <ArrowLeft className="w-5 h-5" /> Kembali
+        </Link>
+        <div className="flex gap-3">
+            <button onClick={() => { router.refresh(); fetchData(); }} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm text-sm">
+                <RefreshCw className="w-4 h-4" /> Sync Data
+            </button>
+            <button onClick={() => window.print()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold flex items-center gap-2 shadow-md text-sm">
+                <Printer className="w-4 h-4" /> Cetak PDF
+            </button>
+        </div>
+      </div>
+
+      {/* KERTAS LAPORAN */}
+      <div className="print-container max-w-[297mm] mx-auto bg-white shadow-2xl print:shadow-none print:w-full print:max-w-none">
+        
+        {/* ======================================================== */}
+        {/* HALAMAN 1: HEADER, EVM DASHBOARD, GANTT CHART            */}
+        {/* ======================================================== */}
+        <div className="page-break">
+            <div className="print-header">
+                <div>
+                    <h1>Laporan Eksekutif Proyek</h1>
+                    <h2>{project?.name}</h2>
+                    <p>No. Kontrak: {project?.contract_number || '-'} | Lokasi: {project?.location || '-'}</p>
+                </div>
+                <div className="date-box">
+                    <p>Tanggal Cetak</p>
+                    <span>{formatDate(new Date().toISOString())}</span>
+                </div>
+            </div>
+
+            <table className="evm-cards">
+                <tr>
+                    <td className="card bg-slate">
+                        <p>NILAI KONTRAK</p>
+                        <h3>{formatRp(project?.contract_value)}</h3>
+                    </td>
+                    <td className="card bg-indigo">
+                        <p>TARGET RENCANA (%)</p>
+                        <h3>{health.targetPct.toFixed(2)}%</h3>
+                    </td>
+                    <td className="card bg-emerald">
+                        <p>AKTUAL REALISASI (%)</p>
+                        <h3>{health.actualPct.toFixed(2)}%</h3>
+                    </td>
+                    <td className={`card ${health.varian < 0 ? 'bg-red' : 'bg-emerald'}`}>
+                        <p>STATUS VARIAN</p>
+                        <h3>
+                            {health.varian < 0 ? '▼' : '▲'} 
+                            {health.varian > 0 ? '+' : ''}{health.varian.toFixed(2)}%
+                        </h3>
+                    </td>
+                </tr>
+            </table>
+
+            <h3 className="section-title">VISUALISASI JADWAL (GANTT CHART)</h3>
+            
+            <table className="data-table gantt-table">
+                <colgroup>
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '6%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '8%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '6%' }} />
+                    <col style={{ width: '6%' }} />
+                    <col style={{ width: '6%' }} />
+                    <col style={{ width: '28%' }} />
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>WBS</th>
+                        <th style={{ textAlign: 'left' }}>TASK NAME</th>
+                        <th>VOL</th>
+                        <th>START</th>
+                        <th>FINISH</th>
+                        <th>%</th>
+                        <th>TARGET</th>
+                        <th>SISA</th>
+                        <th>T/HR</th>
+                        <th style={{ padding: 0 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <tr>
+                                    {ganttMonths.map((m, i) => (
+                                        <td key={i} style={{ width: `${m.width}%`, borderLeft: '1px solid #64748b', fontSize: '9px', textAlign: 'center', color: 'white', fontWeight: 'bold', padding: '4px 0' }}>
+                                            {m.label.replace(' 20', " '")}
+                                        </td>
+                                    ))}
+                                </tr>
+                            </table>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {tasks.filter(t => t.summary !== 'Yes').map((t, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{t.wbs_code}</td>
+                            <td style={{ fontWeight: '600' }}>{t.name}</td>
+                            <td style={{ textAlign: 'center' }}>{t.volume}</td>
+                            <td style={{ textAlign: 'center' }}>{formatDate(t.start_date).replace(' 2026','26')}</td>
+                            <td style={{ textAlign: 'center' }}>{formatDate(t.end_date).replace(' 2026','26')}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{t.progress_percent}%</td>
+                            <td style={{ textAlign: 'center', color: '#4338ca', fontWeight: 'bold' }}>{(t.smart_target||0).toFixed(0)}%</td>
+                            <td style={{ textAlign: 'center', color: '#ea580c', fontWeight: 'bold' }}>{(t.sisa_vol||0).toFixed(0)}</td>
+                            <td style={{ textAlign: 'center' }}>{(t.butuh_t_hr||0).toFixed(1)}</td>
+                            <td style={{ padding: 0, position: 'relative', backgroundColor: '#f8fafc', backgroundImage: 'linear-gradient(to right, #e2e8f0 1px, transparent 1px)', backgroundSize: '5% 100%' }}>
+                                {ganttData[i] && (
+                                    <div style={{ position: 'absolute', top: '50%', transform: 'translateY(-50%)', left: `${ganttData[i].leftPct}%`, width: `${ganttData[i].widthPct}%`, height: '12px', backgroundColor: t.is_critical ? '#ef4444' : '#3b82f6', borderRadius: '2px', overflow: 'hidden' }}>
+                                        <div style={{ width: `${t.progress_percent}%`, height: '100%', backgroundColor: 'rgba(0,0,0,0.2)' }}></div>
+                                    </div>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            
+            <div className="legend">
+                <div><span className="box normal"></span> Normal</div>
+                <div><span className="box critical"></span> Kritis</div>
+            </div>
+        </div>
+
+        {/* ======================================================== */}
+        {/* HALAMAN 2: MATRIKS EVM                                   */}
+        {/* ======================================================== */}
+        <div className="page-break">
+            <h3 className="section-title">MATRIKS TASK MANAGEMENT (EVM)</h3>
+            <table className="data-table">
+                <thead>
+                    <tr>
+                        <th>WBS</th>
+                        <th>TASK NAME</th>
+                        <th>VOL TOTAL</th>
+                        <th>DURASI</th>
+                        <th>START</th>
+                        <th>FINISH</th>
+                        <th>VOL. REAL.</th>
+                        <th>SISA VOL</th>
+                        <th>TARGET</th>
+                        <th>AKTUAL</th>
+                        <th>VARIAN</th>
+                        <th>T/HR</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {tasks.map(t => {
+                        const isSummary = t.summary === 'Yes';
+                        const varian = t.varian_pct || 0;
+                        return (
+                            <tr key={t.id} className={isSummary ? 'row-summary' : ''}>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{t.wbs_code}</td>
+                                <td style={{ fontWeight: isSummary ? 'bold' : 'normal' }}>{t.name}</td>
+                                <td style={{ textAlign: 'center' }}>{isSummary ? '-' : t.volume}</td>
+                                <td style={{ textAlign: 'center' }}>{t.duration}d</td>
+                                <td style={{ textAlign: 'center' }}>{formatDate(t.start_date)}</td>
+                                <td style={{ textAlign: 'center' }}>{formatDate(t.end_date)}</td>
+                                <td style={{ textAlign: 'center', color: '#2563eb' }}>{isSummary ? '-' : Number(t.actual_vol || 0).toFixed(2)}</td>
+                                <td style={{ textAlign: 'center', color: '#ea580c' }}>{isSummary ? '-' : Number(t.sisa_vol || 0).toFixed(2)}</td>
+                                <td style={{ textAlign: 'center', color: '#4338ca' }}>{isSummary ? '-' : `${(t.smart_target || 0).toFixed(1)}%`}</td>
+                                <td style={{ textAlign: 'center', color: '#2563eb' }}>{isSummary ? '-' : `${Number(t.progress_percent || 0).toFixed(1)}%`}</td>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', color: varian < 0 ? '#dc2626' : (varian > 0 ? '#059669' : '#64748b') }}>
+                                    {isSummary ? '-' : `${varian > 0 ? '+' : ''}${varian.toFixed(1)}%`}
+                                </td>
+                                <td style={{ textAlign: 'center' }}>{isSummary || t.volume === 0 ? '-' : Number(t.butuh_t_hr || 0).toFixed(3)}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+
+        {/* ======================================================== */}
+        {/* HALAMAN 3: RESOURCE, MATERIAL & TANDA TANGAN             */}
+        {/* ======================================================== */}
+        <div className="page">
+            <h3 className="section-title">RESOURCE REQUIREMENT PLAN</h3>
+            <table className="data-table" style={{ marginBottom: '30px' }}>
+                <thead>
+                    <tr>
+                        <th>WBS</th>
+                        <th>TASK NAME</th>
+                        <th>RESOURCE / CREW</th>
+                        <th>VOL</th>
+                        <th>DUR</th>
+                        <th>KOEF</th>
+                        <th>TOTAL TR</th>
+                        <th>KEBUTUHAN HARIAN</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {resourcesPlan.map((r, i) => (
+                        <tr key={i} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{r.wbs_code}</td>
+                            <td style={{ fontWeight: '600' }}>{r.task_name}</td>
+                            <td style={{ fontWeight: 'bold', color: '#4338ca' }}>{r.resource_name} <span style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 'normal' }}>({r.resource_type})</span></td>
+                            <td style={{ textAlign: 'center' }}>{r.volume}</td>
+                            <td style={{ textAlign: 'center' }}>{r.duration} hr</td>
+                            <td style={{ textAlign: 'center' }}>{r.koefisien}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#4338ca' }}>{Number(r.total_requirement).toFixed(2)} {r.unit}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#059669' }}>{Number(r.daily_requirement).toFixed(2)} {r.unit}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            <h3 className="section-title">MATERIAL REQUIREMENT PLAN</h3>
+            <table className="data-table">
+                <thead>
+                    <tr>
+                        <th>WBS</th>
+                        <th>TASK NAME</th>
+                        <th>MATERIAL</th>
+                        <th>KEBUTUHAN IDEAL</th>
+                        <th>WASTE</th>
+                        <th>TOTAL DIBELI</th>
+                        <th>DELIVERY / MGG</th>
+                        <th>ESTIMASI BIAYA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {materialsPlan.map((m, i) => {
+                        const volumeIdeal = Number(m.volume_requirement) || 0;
+                        const totalDibeli = Number(m.actual_requirement) || 0;
+                        const waste = totalDibeli - volumeIdeal;
+                        const durasiMinggu = (m.wbs_tasks?.duration || 1) / 7;
+                        const deliveryRate = durasiMinggu > 0 ? totalDibeli / durasiMinggu : 0;
+                        const biaya = totalDibeli * (Number(m.master_hsd?.harga_dasar) || 0);
+                        const satuan = m.master_hsd?.satuan || '';
+                        return (
+                            <tr key={i} className={i % 2 === 0 ? 'row-even' : 'row-odd'}>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{m.wbs_tasks?.wbs_code}</td>
+                                <td style={{ fontWeight: '600' }}>{m.wbs_tasks?.name}</td>
+                                <td style={{ fontWeight: 'bold' }}>{m.master_hsd?.nama_item}</td>
+                                <td style={{ textAlign: 'center' }}>{volumeIdeal.toFixed(2)} {satuan}</td>
+                                <td style={{ textAlign: 'center', color: '#ea580c' }}>{waste.toFixed(2)} {satuan}</td>
+                                <td style={{ textAlign: 'center', fontWeight: 'bold', color: '#4338ca' }}>{totalDibeli.toFixed(2)} {satuan}</td>
+                                <td style={{ textAlign: 'center', color: '#059669' }}>{deliveryRate.toFixed(2)} {satuan}/mgg</td>
+                                <td style={{ textAlign: 'right', fontWeight: '600' }}>{formatRp(biaya)}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+
+            {/* TANDA TANGAN */}
+            <div className="signature-block">
+                {['pm', 'se', 'owner'].map((key) => (
+                    <div key={key} className="signature-col">
+                        <input type="text" value={signatures[key].title} onChange={(e) => setSignatures({...signatures, [key]: {...signatures[key], title: e.target.value}})} className="sig-title" />
+                        <input type="text" value={signatures[key].role} onChange={(e) => setSignatures({...signatures, [key]: {...signatures[key], role: e.target.value}})} className="sig-role" />
+                        <div className="sig-space"></div>
+                        <input type="text" value={signatures[key].name} onChange={(e) => setSignatures({...signatures, [key]: {...signatures[key], name: e.target.value}})} placeholder="( Ketik Nama )" className="sig-name" />
+                    </div>
+                ))}
+            </div>
+        </div>
+      </div>
+
+      <style jsx global>{`
+        /* --- STYLING WEB (LAYAR) --- */
+        .print-container {
+          width: 100%;
+        }
+        .print-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          border-bottom: 4px solid #1e293b;
+          padding-bottom: 15px;
+          margin-bottom: 20px;
+        }
+        .print-header h1 { font-size: 26px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin: 0; }
+        .print-header h2 { font-size: 18px; font-weight: bold; color: #4338ca; margin: 6px 0 0 0; }
+        .print-header p { font-size: 12px; color: #475569; margin: 6px 0 0 0; font-weight: 500; }
+        .date-box { text-align: right; }
+        .date-box p { margin: 0; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; }
+        .date-box span { font-family: monospace; font-size: 16px; font-weight: bold; color: #0f172a; }
+        
+        .evm-cards { width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-left: -12px; margin-bottom: 25px; }
+        .card { width: 25%; padding: 12px; border-radius: 4px; border: 1px solid; }
+        .card p { margin: 0; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .card h3 { margin: 4px 0 0 0; font-size: 18px; font-weight: 900; }
+        .bg-slate { background-color: #f8fafc; border-color: #cbd5e1; } .bg-slate p { color: #64748b; } .bg-slate h3 { color: #0f172a; }
+        .bg-indigo { background-color: #eef2ff; border-color: #c7d2fe; } .bg-indigo p { color: #4338ca; } .bg-indigo h3 { color: #312e81; }
+        .bg-emerald { background-color: #ecfdf5; border-color: #a7f3d0; } .bg-emerald p { color: #047857; } .bg-emerald h3 { color: #064e3b; }
+        .bg-red { background-color: #fef2f2; border-color: #fecaca; } .bg-red p { color: #b91c1c; } .bg-red h3 { color: #991b1b; }
+        
+        .section-title { font-size: 14px; font-weight: 900; border-bottom: 2px solid #1e293b; padding-bottom: 6px; margin-bottom: 12px; text-transform: uppercase; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+        .data-table th { background-color: #1e293b; color: white; padding: 8px 6px; text-align: center; font-weight: 800; border: 1px solid #475569; text-transform: uppercase; font-size: 9px; }
+        .data-table td { border: 1px solid #cbd5e1; padding: 5px 6px; }
+        .row-even { background-color: #ffffff; } .row-odd { background-color: #f8fafc; } .row-summary { background-color: #e2e8f0 !important; }
+        .gantt-table tr { height: 26px; }
+        .legend { display: flex; gap: 20px; justify-content: flex-end; font-size: 10px; margin-top: 15px; font-weight: bold; }
+        .box { display: inline-block; width: 16px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+        .box.normal { background-color: #3b82f6; } .box.critical { background-color: #ef4444; }
+        .signature-block { margin-top: 50px; padding-top: 20px; border-top: 2px solid #1e293b; display: flex; justify-content: space-around; text-align: center; }
+        .signature-col { width: 30%; }
+        .sig-title { width: 100%; text-align: center; font-size: 12px; border: none; background: transparent; color: #64748b; outline: none; font-weight: 600; }
+        .sig-role { width: 100%; text-align: center; font-size: 15px; font-weight: 900; border: none; background: transparent; color: #0f172a; outline: none; margin-top: 4px; }
+        .sig-space { height: 70px; }
+        .sig-name { width: 100%; text-align: center; font-size: 13px; font-weight: bold; border: none; border-bottom: 2px solid #94a3b8; background: transparent; color: #0f172a; outline: none; }
+
+        /* --- STYLING PRINT (PDF) STRICT MULTI-PAGE & OVERRIDE GLOBAL --- */
+        @media print {
+          @page {
+            size: A4 landscape;
+            margin: 10mm;
+          }
+          
+          /* 1. PAKSA BODY & CONTAINER UTAMA UNTUK MELUBER (Mengatasi 1 Halaman) */
+          html, body, #__next, main, aside, .min-h-screen, .h-screen, .overflow-hidden {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          /* 2. SEMBUNYIKAN SIDEBAR & TOPBAR APLIKASI */
+          aside, header, nav, .no-print { 
+            display: none !important; 
+          }
+
+          /* 3. MARGIN & LEBAR LAPORAN */
+          .print-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+
+          /* 4. PEMISAHAN HALAMAN OTOMATIS */
+          .page-break {
+            page-break-after: always;
+            break-after: page;
+          }
+
+          /* 5. ATURAN CETAK TABEL */
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          
+          /* 6. ELEMEN YANG TIDAK BOLEH TERPOTONG */
+          .signature-block, .evm-cards, .print-header { 
+            page-break-inside: avoid; 
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
