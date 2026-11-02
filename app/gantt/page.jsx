@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { processProjectSchedule } from '../../lib/scheduler';
+import { processProjectSchedule } from '../../lib/scheduler';
 
 export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
@@ -166,6 +167,7 @@ export default function GanttPage() {
     </div>
   );
 }
+
 
 
 
