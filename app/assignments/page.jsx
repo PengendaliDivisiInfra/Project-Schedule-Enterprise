@@ -7,6 +7,7 @@ import { CheckCircle2, AlertTriangle, Loader2, Link as LinkIcon } from 'lucide-r
 export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
   const [ahspList, setAhspList] = useState([]);
+  const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -39,6 +40,12 @@ export default function AssignmentsPage() {
       // Saring duplikat
       const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks);
+
+      // 3. Fetch Task Assignments (Untuk melihat resource otomatis)
+      const { data: assignData } = await supabase
+        .from('task_assignments')
+        .select('task_id, project_resources(name, role)');
+      if (assignData) setAssignments(assignData);
 
     } catch (error) {
       console.error("Gagal fetch data:", error);
@@ -186,11 +193,28 @@ export default function AssignmentsPage() {
                     </td>
 
                     <td className="p-3 text-center">
-                      {assignedAhsp ? (
-                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold uppercase">Assigned</span>
-                      ) : (
-                         <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-bold uppercase">Empty</span>
-                      )}
+                      <div className="flex flex-col items-center gap-2">
+                        {assignedAhsp ? (
+                           <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold uppercase w-full">Assigned</span>
+                        ) : (
+                           <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-bold uppercase w-full">Empty</span>
+                        )}
+                        
+                        {/* VISUAL RESOURCE CHIPS (Auto-Assigned) */}
+                        {(() => {
+                          const taskResources = assignments.filter(a => a.task_id === t.id);
+                          if (taskResources.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap justify-center gap-1 mt-1">
+                              {taskResources.map((tr, i) => (
+                                <span key={i} title={`${tr.project_resources?.name} (${tr.project_resources?.role})`} className="text-[9px] bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded shadow-sm">
+                                  👤 {tr.project_resources?.name}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -202,4 +226,5 @@ export default function AssignmentsPage() {
     </div>
   );
 }
+
 
