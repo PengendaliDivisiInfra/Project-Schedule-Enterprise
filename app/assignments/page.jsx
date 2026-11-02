@@ -52,6 +52,24 @@ export default function AssignmentsPage() {
     fetchData();
   }, []);
 
+    const handleUpdateVolume = async (taskId, newVolume) => {
+    const numVolume = Number(newVolume) || 0;
+    
+    // Optimistic UI
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, volume: numVolume } : t));
+
+    const { error } = await supabase
+      .from('wbs_tasks')
+      .update({ volume: numVolume })
+      .eq('id', taskId);
+
+    if (error) {
+      showToast('danger', "Gagal update volume: " + error.message);
+    } else {
+      showToast('success', "Volume berhasil diperbarui!");
+    }
+  };
+
   const handleAssignAhsp = async (taskId, ahspId) => {
     setSavingId(taskId); // Tampilkan spinner di baris ini saja
     
@@ -126,7 +144,19 @@ export default function AssignmentsPage() {
                     <td className="p-3 text-slate-800 flex items-center gap-2">
                        {isSummary ? '📁' : '📄'} {t.name}
                     </td>
-                    <td className="p-3 text-center text-slate-500">{t.volume || 0}</td>
+                    <td className="p-3 text-center">
+  {isSummary ? (
+    <span className="text-slate-400">-</span>
+  ) : (
+    <input 
+      type="number" 
+      defaultValue={t.volume || 0} 
+      onBlur={(e) => handleUpdateVolume(t.id, e.target.value)}
+      onFocus={(e) => e.target.select()}
+      className="w-20 border border-slate-300 hover:border-slate-400 focus:border-blue-500 rounded text-center text-sm py-1 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+    />
+  )}
+</td>
                     
                     <td className="p-3">
                       {isSummary ? (
@@ -172,3 +202,4 @@ export default function AssignmentsPage() {
     </div>
   );
 }
+

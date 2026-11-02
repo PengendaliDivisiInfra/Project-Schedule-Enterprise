@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AssignmentModal from '../../components/AssignmentModal';
-import { Plus, Printer, Trash2, AlertTriangle, CheckCircle2, Save, X } from 'lucide-react';
+import { Plus, Printer, Trash2, AlertTriangle, CheckCircle2, Save, X, Edit } from 'lucide-react';
 
 export default function AhspPage() {
   const [ahspList, setAhspList] = useState([]);
@@ -17,6 +17,7 @@ export default function AhspPage() {
   
   // State Modal Master AHSP (Tambah AHSP Baru)
   const [isAhspModalOpen, setIsAhspModalOpen] = useState(false);
+  const [editingAhsp, setEditingAhsp] = useState(null);
   const [isSavingAhsp, setIsSavingAhsp] = useState(false);
   const [formAhsp, setFormAhsp] = useState({ kode_ahsp: '', name: '', unit: 'Unit' });
 
@@ -97,21 +98,44 @@ export default function AhspPage() {
   };
 
   // 3. Handle Tambah Master AHSP
+    const handleOpenEditAhsp = () => {
+    if (!selectedAhsp) return;
+    setEditingAhsp(selectedAhsp);
+    setFormAhsp({
+      kode_ahsp: selectedAhsp.kode_ahsp || '',
+      name: selectedAhsp.name,
+      unit: selectedAhsp.unit
+    });
+    setIsAhspModalOpen(true);
+  };
+
   const handleSaveNewAhsp = async (e) => {
     e.preventDefault();
     setIsSavingAhsp(true);
     
-    const { data, error } = await supabase
-      .from('ahsp_templates')
-      .insert([{
-        kode_ahsp: formAhsp.kode_ahsp,
-        name: formAhsp.name,
-        unit: formAhsp.unit,
-        total_direct_cost: 0,
-        total_harga_ahsp: 0
-      }])
-      .select()
-      .single();
+    let error, data;
+    if (editingAhsp) {
+      const res = await supabase.from('ahsp_templates')
+        .update({
+          kode_ahsp: formAhsp.kode_ahsp,
+          name: formAhsp.name,
+          unit: formAhsp.unit
+        })
+        .eq('id', editingAhsp.id)
+        .select().single();
+      error = res.error; data = res.data;
+    } else {
+      const res = await supabase.from('ahsp_templates')
+        .insert([{
+          kode_ahsp: formAhsp.kode_ahsp,
+          name: formAhsp.name,
+          unit: formAhsp.unit,
+          total_direct_cost: 0,
+          total_harga_ahsp: 0
+        }])
+        .select().single();
+      error = res.error; data = res.data;
+    }
 
     if (error) {
       alert("Gagal membuat AHSP: " + error.message);
@@ -230,7 +254,12 @@ export default function AhspPage() {
           {selectedAhsp ? (
             <>
               {/* HEADER DOKUMEN */}
-              <div className="mb-6 border-b-2 border-black pb-4">
+              <div className="mb-6 border-b-2 border-black pb-4 relative">
+                <div className="absolute right-0 top-0 print-hidden">
+                  <button onClick={handleOpenEditAhsp} className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors flex items-center gap-1 text-xs font-bold" title="Edit Nama & Satuan AHSP">
+                    <Edit size={14} /> Edit Header
+                  </button>
+                </div>
                 <h1 className="text-xl font-bold text-black uppercase mb-1">
                   ANALISA HARGA SATUAN PEKERJAAN (AHSP)
                 </h1>
@@ -410,7 +439,7 @@ export default function AhspPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in print-hidden">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-bold text-slate-800">📁 Buat Master AHSP Baru</h2>
+              <h2 className="text-lg font-bold text-slate-800">{editingAhsp ? '✏️ Edit Master AHSP' : '📁 Buat Master AHSP Baru'}</h2>
               <button onClick={() => setIsAhspModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
             </div>
             <form onSubmit={handleSaveNewAhsp} className="p-6 space-y-4">
@@ -437,7 +466,7 @@ export default function AhspPage() {
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsAhspModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
                 <button type="submit" disabled={isSavingAhsp} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${isSavingAhsp ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                  {isSavingAhsp ? 'Menyimpan...' : <><Save size={16} /> Simpan AHSP</>}
+                  {isSavingAhsp ? 'Menyimpan...' : <><Save size={16} /> {editingAhsp ? 'Simpan Perubahan' : 'Simpan AHSP'}</>}
                 </button>
               </div>
             </form>
@@ -476,3 +505,4 @@ export default function AhspPage() {
     </>
   );
 }
+
