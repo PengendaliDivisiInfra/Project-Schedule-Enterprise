@@ -2,177 +2,172 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { CheckCircle2, AlertTriangle, Loader2, Link as LinkIcon } from 'lucide-react';
 
 export default function AssignmentsPage() {
   const [tasks, setTasks] = useState([]);
-  const [templates, setTemplates] = useState([]);
+  const [ahspList, setAhspList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  // --- ENGINE ROLLUP WBS (BOTTOM-UP) ---
-  const runRollupEngine = (inputTasks) => {
-    const taskMap = {};
-    const roots = [];
-
-    inputTasks.forEach(task => {
-      taskMap[task.id] = { ...task, children: [] };
-    });
-
-    inputTasks.forEach(task => {
-      const mappedItem = taskMap[task.id];
-      let parentId = null;
-
-      if (mappedItem.wbs_code && mappedItem.wbs_code.includes('.')) {
-        const wbsParts = mappedItem.wbs_code.split('.');
-        wbsParts.pop();
-        const parentWbs = wbsParts.join('.');
-        const parentFound = inputTasks.find(p => p.wbs_code === parentWbs);
-        if (parentFound) parentId = parentFound.id;
-      }
-
-      if (parentId && taskMap[parentId]) {
-        taskMap[parentId].children.push(mappedItem);
-        taskMap[parentId].is_summary = true;
-      } else {
-        roots.push(mappedItem);
-      }
-    });
-
-    const executeRollup = (node) => {
-      if (!node.children || node.children.length === 0) {
-        return node.cost;
-      }
-      let accumulatedCost = 0;
-      node.children.forEach(child => {
-        accumulatedCost += executeRollup(child);
-      });
-      node.cost = accumulatedCost;
-      node.volume = 0; 
-      return node.cost;
-    };
-
-    roots.forEach(root => executeRollup(root));
-
-    const flatResult = [];
-    const flatten = (node) => {
-      const { children, ...clean } = node;
-      flatResult.push(clean);
-      if (children) children.forEach(flatten);
-    };
-    roots.forEach(flatten);
-
-    return flatResult.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+  const showToast = (type, message) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3000);
   };
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const { data: tData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
-      const { data: aData } = await supabase.from('ahsp_templates').select('id, name, unit, total_harga_ahsp');
+      // 1. Fetch AHSP Templates untuk dropdown
+      const { data: ahspData, error: ahspError } = await supabase
+        .from('ahsp_templates')
+        .select('id, kode_ahsp, name, unit')
+        .order('name');
       
-      if (tData) {
-        const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
-        
-        let formattedTasks = uniqueTasks.map(t => ({
-          ...t,
-          volume: Number(t.volume || 0),
-          cost: Number(t.cost || 0),
-          is_summary: t.summary === 'Yes'
-        }));
+      if (ahspError) throw ahspError;
+      setAhspList(ahspData || []);
 
-        // ⚡ OTOMATISASI: Jalankan Rollup di frontend agar UI PASTI benar
-        const rolledUpTasks = runRollupEngine(formattedTasks);
-        setTasks(rolledUpTasks);
-      }
-      setTemplates(aData || []);
-    } catch (err) {
-      console.error(err);
+      // 2. Fetch WBS Tasks
+      const { data: taskData, error: taskError } = await supabase
+        .from('wbs_tasks')
+        .select('id, wbs_code, name, volume, ahsp_template_id, summary')
+        .order('wbs_code');
+      
+      if (taskError) throw taskError;
+      
+      // Saring duplikat
+      const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
+      setTasks(uniqueTasks);
+
+    } catch (error) {
+      console.error("Gagal fetch data:", error);
+      showToast('danger', "Gagal memuat data: " + error.message);
     } finally {
-      setLoading(false);
+      setLoading(false); // Selalu matikan loading, apapun yang terjadi
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const handleAssign = async (taskId, templateId, volume) => {
-    try {
-      // Kirim data ke database, Trigger DB yang akan menghitung cost
-      const { error } = await supabase.from('wbs_tasks')
-        .update({ 
-          ahsp_template_id: templateId || null, 
-          volume: Number(volume) || 0
-        })
-        .eq('id', taskId);
-      
-      if (error) throw error;
-      
-      // Tarik ulang data agar angka terbaru dari database langsung muncul
-      fetchData(); 
-    } catch (err) {
-      alert('Gagal update: ' + err.message);
+  const handleAssignAhsp = async (taskId, ahspId) => {
+    setSavingId(taskId); // Tampilkan spinner di baris ini saja
+    
+    // Update state optimis
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ahsp_template_id: ahspId || null } : t));
+
+    const { error } = await supabase
+      .from('wbs_tasks')
+      .update({ ahsp_template_id: ahspId || null })
+      .eq('id', taskId);
+
+    if (error) {
+      showToast('danger', "Gagal menyimpan assignment: " + error.message);
+      fetchData(); // Rollback jika gagal
+    } else {
+      showToast('success', "AHSP berhasil di-assign!");
     }
+    
+    setSavingId(null);
   };
+
+  if (loading) return <LoadingSpinner text="Memuat Data Assignment..." />;
 
   return (
-    <div>
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Assignment: WBS ke AHSP</h1>
-          <p className="text-sm text-gray-500 mt-1">Biaya task dikalkulasi otomatis secara <em>real-time</em> oleh Database Trigger.</p>
-        </div>
-      </div>
+    <div className="p-6 bg-slate-50 min-h-screen relative">
       
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
-        {loading ? <LoadingSpinner text="Memuat data Assignment..." /> : (
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b text-sm font-semibold text-gray-600">
+      {/* TOAST */}
+      {toast && (
+        <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-lg shadow-xl text-white font-bold animate-fade-in-up flex items-center gap-2 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+          {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+          {toast.message}
+        </div>
+      )}
+
+      <div className="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+        
+        {/* HEADER */}
+        <div className="p-4 border-b border-slate-200 bg-slate-50">
+          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+            <LinkIcon className="text-blue-600" /> Assignment: WBS ke AHSP
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Hubungkan setiap Item Pekerjaan (WBS) dengan Analisa Harga Satuan (AHSP) yang sesuai.</p>
+        </div>
+
+        {/* TABEL DATA */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
               <tr>
-                <th className="p-4">WBS</th>
-                <th className="p-4">Nama Task</th>
-                <th className="p-4 w-1/3">Pilih AHSP Template</th>
-                <th className="p-4 w-24">Volume</th>
-                <th className="p-4 text-right">Total Biaya (Rp)</th>
+                <th className="p-3 w-20">WBS</th>
+                <th className="p-3">Nama Task</th>
+                <th className="p-3 w-32 text-center">Volume</th>
+                <th className="p-3 w-96">Pilih AHSP Template</th>
+                <th className="p-3 w-16 text-center">Status</th>
               </tr>
             </thead>
-            <tbody className="text-sm divide-y divide-gray-100">
-              {tasks.map((t) => (
-                <tr key={t.id} className={`hover:bg-gray-50 ${t.is_summary ? 'bg-gray-100 font-bold' : ''}`}>
-                  <td className="p-4 font-mono">{t.wbs_code}</td>
-                  <td className="p-4">{t.is_summary ? '📁 ' : '📄 '} {t.name}</td>
-                  
-                  <td className="p-4">
-                    {t.is_summary ? (
-                      <span className="text-gray-400 italic text-xs block text-center py-2 bg-gray-50 rounded border border-dashed">— Induk (Otomatis) —</span>
-                    ) : (
-                      <select 
-                        value={t.ahsp_template_id || ''} 
-                        onChange={(e) => handleAssign(t.id, e.target.value, t.volume)} 
-                        className="w-full border rounded-lg p-2 text-sm"
-                      >
-                        <option value="">-- Belum di-assign --</option>
-                        {templates.map(tpl => (
-                          <option key={tpl.id} value={tpl.id}>{tpl.name} ({tpl.unit})</option>
-                        ))}
-                      </select>
-                    )}
-                  </td>
-                  <td className="p-4">
-                    {t.is_summary ? (
-                      <span className="text-gray-400 italic text-xs block text-center py-2">-</span>
-                    ) : (
-                      <input 
-                        type="number" 
-                        value={t.volume || 0} 
-                        onChange={(e) => handleAssign(t.id, t.ahsp_template_id, e.target.value)} 
-                        className="w-full border rounded-lg p-2 text-sm" 
-                      />
-                    )}
-                  </td>
-                  <td className="p-4 text-right text-gray-800">Rp {(t.cost || 0).toLocaleString('id-ID')}</td>
+            <tbody className="divide-y divide-slate-100">
+              {tasks.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-10 text-center text-slate-500 italic">Belum ada data WBS.</td>
                 </tr>
-              ))}
+              )}
+              
+              {tasks.map((t) => {
+                const isSummary = t.summary === 'Yes';
+                const isSaving = savingId === t.id;
+                const assignedAhsp = ahspList.find(a => a.id === t.ahsp_template_id);
+
+                return (
+                  <tr key={t.id} className={`hover:bg-slate-50 ${isSummary ? 'bg-slate-50/50 font-bold' : ''}`}>
+                    <td className="p-3 font-mono text-slate-600">{t.wbs_code}</td>
+                    <td className="p-3 text-slate-800 flex items-center gap-2">
+                       {isSummary ? '📁' : '📄'} {t.name}
+                    </td>
+                    <td className="p-3 text-center text-slate-500">{t.volume || 0}</td>
+                    
+                    <td className="p-3">
+                      {isSummary ? (
+                        <div className="text-xs text-slate-400 italic px-3">— Induk (Otomatis) —</div>
+                      ) : (
+                        <div className="relative">
+                          <select
+                            value={t.ahsp_template_id || ''}
+                            onChange={(e) => handleAssignAhsp(t.id, e.target.value)}
+                            disabled={isSaving}
+                            className={`w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer ${isSaving ? 'bg-slate-100 opacity-50' : 'bg-white'}`}
+                          >
+                            <option value="">-- Pilih AHSP Template --</option>
+                            {ahspList.map(ahsp => (
+                              <option key={ahsp.id} value={ahsp.id}>
+                                [{ahsp.kode_ahsp || 'No Code'}] {ahsp.name} ({ahsp.unit})
+                              </option>
+                            ))}
+                          </select>
+                          {isSaving && (
+                            <div className="absolute right-8 top-1/2 -translate-y-1/2">
+                              <Loader2 size={16} className="animate-spin text-blue-600" />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="p-3 text-center">
+                      {assignedAhsp ? (
+                         <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded font-bold uppercase">Assigned</span>
+                      ) : (
+                         <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded font-bold uppercase">Empty</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        )}
+        </div>
       </div>
     </div>
   );
