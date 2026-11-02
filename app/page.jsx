@@ -1,9 +1,9 @@
-﻿'use client';
+'use client';
 import { useEffect, useState, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
-import ClientGanttWrapper from '../../components/ClientGanttWrapper';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import { updateProjectScheduleSecure } from '../../lib/scheduler';
+import { supabase } from '../lib/supabase';
+import ClientGanttWrapper from '../components/ClientGanttWrapper';
+import LoadingSpinner from '../components/LoadingSpinner';
+import { updateProjectScheduleSecure } from '../lib/scheduler';
 import { AlertTriangle } from 'lucide-react';
 
 export default function GanttPage() {
