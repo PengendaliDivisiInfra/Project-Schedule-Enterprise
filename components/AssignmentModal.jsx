@@ -11,6 +11,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
 
   const [formData, setFormData] = useState({
     tipe: 'Bahan', 
+    kode: '',
     nama_item: '', 
     satuan: 'Unit',
     harga_dasar: 0, 
@@ -46,6 +47,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
       if (activeTab === 'new') {
         const payloadHsd = {
           tipe: formData.tipe,
+          kode: formData.kode || null,
           nama_item: formData.nama_item,
           satuan: formData.satuan || 'Unit',
           harga_dasar: Number(formData.harga_dasar) || 0
@@ -135,6 +137,10 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
                   </select>
                 </div>
                 <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Kode HSD</label>
+                  <input type="text" value={formData.kode || ''} onChange={e => setFormData({...formData, kode: e.target.value})} placeholder="cth: M.01" className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Nama Item</label>
                   <input required type="text" value={formData.nama_item} onChange={e => setFormData({...formData, nama_item: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
@@ -189,4 +195,5 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
     </div>
   );
 }
+
 
