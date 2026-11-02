@@ -206,7 +206,20 @@ export default function TasksPage() {
                       <td className="p-3 text-xs text-slate-500">{isSummary ? '-' : t.mata_varian || '-'}</td>
                       <td className="p-3 font-mono">{t.wbs_code}</td>
                       <td className="p-3">{t.name}</td>
-                      <td className="p-3">{isSummary ? '-' : `${t.volume} ${t.satuan_hsd}`}</td>
+                      <td className="p-3 text-center">
+                      {isSummary ? '-' : (
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            defaultValue={t.volume || 0}
+                            onBlur={(e) => handleInlineUpdate(t.id, 'volume', Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                            className="w-16 border border-slate-300 hover:border-slate-400 focus:border-blue-500 rounded text-center text-sm py-1 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                          />
+                          <span className="text-xs text-slate-500">{t.satuan_hsd}</span>
+                        </div>
+                      )}
+                    </td>
                       <td className="p-3 font-semibold">{isSummary ? '-' : `Rp ${Number(t.cost).toLocaleString('id-ID')}`}</td>
                       <td className="p-3">{t.duration} d</td>
                       <td className="p-3">
@@ -309,6 +322,7 @@ export default function TasksPage() {
     </div>
   );
 }
+
 
 
 
