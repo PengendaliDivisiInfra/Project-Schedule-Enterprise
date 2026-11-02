@@ -162,7 +162,7 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     // Panel kiri akan mengikuti via CSS transform, tidak perlu set scrollTop manual
   };
 
-  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) : '-';
+  const fmtDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-';
   
   const formatDateForInput = (dateString) => {
     if (!dateString) return '';
@@ -491,4 +491,5 @@ export default function AdvancedGantt({ tasks, relations, workingDays = [1,2,3,4
     </div>
   );
 }
+
 
