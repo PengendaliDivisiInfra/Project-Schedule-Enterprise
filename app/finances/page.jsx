@@ -254,6 +254,11 @@ export default function CashFlowPage() {
                         f.approval_status === 'Pending Overbudget' ? 'bg-orange-100 text-orange-700 border border-orange-300' : 
                         'bg-amber-100 text-amber-700'
                       }`}>{f.approval_status}</span>
+                      {f.approval_status === 'Rejected' && f.rejection_reason && (
+                        <div className="text-[9px] text-red-500 mt-1 max-w-[150px] leading-tight italic mx-auto text-center" title={f.rejection_reason}>
+                          "{f.rejection_reason}"
+                        </div>
+                      )}
                     </td>
                     <td className={`p-3 text-right font-bold ${f.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatRp(f.amount)}
