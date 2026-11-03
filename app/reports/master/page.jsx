@@ -407,11 +407,8 @@ export default function MasterReportPage() {
         }} 
       />
 
-      <style jsx global>{`
-        @media print {
-          @page { size: ${printSettings.orientation} ${printSettings.paperSize}; margin: 10mm; }
-        }
-        /* CSS Web & Print */
+            <style jsx global>{`
+        /* CSS Web & Print Dasar */
         .print-container { width: 100%; }
         .print-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0f172a; padding-bottom: 15px; margin-bottom: 25px; }
         .print-header h1 { font-size: 22px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin: 0; line-height: 1.2; }
@@ -443,17 +440,58 @@ export default function MasterReportPage() {
         .sig-role { width: 100%; text-align: center; font-size: 14px; font-weight: 900; color: #0f172a; margin-bottom: 50px; }
         .sig-name { width: 100%; text-align: center; font-size: 13px; font-weight: bold; color: #0f172a; border-bottom: 1px solid #94a3b8; padding-bottom: 4px; display: inline-block; }
 
+        /* ========================================= */
+        /* CSS KHUSUS UNTUK MODE PRINT (PEMICU HALAMAN) */
+        /* ========================================= */
         @media print {
-          .no-print { display: none !important; }
-          body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .print-container { box-shadow: none !important; border: none !important; }
-          .page-break { page-break-after: always; }
+          @page { 
+            size: ${printSettings.orientation} ${printSettings.paperSize}; 
+            margin: 10mm; 
+          }
+          
+          /* 1. PAKSA BODY & CONTAINER UNTUK MELUBER (MENGATASI 1 HALAMAN) */
+          html, body, #__next, main, aside, .min-h-screen, .h-screen, .overflow-hidden {
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          /* 2. SEMBUNYIKAN SIDEBAR, TOPBAR, & TOMBOL */
+          aside, header, nav, .no-print {
+            display: none !important;
+          }
+
+          /* 3. MARGIN & LEBAR LAPORAN */
+          .print-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+
+          /* 4. PEMISAHAN HALAMAN (PAGE BREAK) */
+          .page-break {
+            page-break-after: always;
+            break-after: page;
+          }
+
+          /* 5. ATURAN TABEL TIDAK TERPOTONG */
           table { page-break-inside: auto; }
           tr { page-break-inside: avoid; page-break-after: auto; }
           thead { display: table-header-group; }
-          .signature-block { page-break-inside: avoid; }
+
+          /* 6. ELEMEN YANG TIDAK BOLEH TERPOTONG */
+          .signature-block, .evm-cards, .print-header {
+            page-break-inside: avoid;
+          }
         }
       `}</style>
     </div>
   );
 }
+
