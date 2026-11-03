@@ -165,13 +165,21 @@ export default function MasterReportPage() {
         <div className="page-break">
             <div className="print-header">
                 <div>
-                    <h1>Laporan Eksekutif Proyek</h1>
-                    <h2>{project?.name}</h2>
-                    <p>No. Kontrak: {project?.contract_number || '-'} | Lokasi: {project?.location || '-'}</p>
+                    <h1>PROJECT MASTER PROGRAM (PMP) - TIME SCHEDULE</h1>
+                    <h2 style={{ color: '#1e293b', textTransform: 'uppercase' }}>{project?.name}</h2>
+                    <div style={{ display: 'flex', gap: '20px', marginTop: '6px', fontSize: '11px', color: '#475569', fontWeight: '600' }}>
+                        <span>No. Kontrak: {project?.contract_number || '-'}</span>
+                        <span>Lokasi: {project?.location || '-'}</span>
+                        <span>Tahun Anggaran: {project?.budget_year || '-'}</span>
+                    </div>
                 </div>
-                <div className="date-box">
-                    <p>Tanggal Cetak</p>
-                    <span>{formatDate(new Date().toISOString())}</span>
+                <div className="date-box" style={{ textAlign: 'right', minWidth: '150px' }}>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#64748b' }}>TANGGAL CETAK</p>
+                    <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold', color: '#0f172a', display: 'block', marginBottom: '4px' }}>
+                        {formatDate(new Date().toISOString())}
+                    </span>
+                    <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#64748b' }}>REVISI</p>
+                    <span style={{ fontFamily: 'monospace', fontSize: '14px', fontWeight: 'bold', color: '#0f172a' }}>00</span>
                 </div>
             </div>
 
@@ -199,7 +207,7 @@ export default function MasterReportPage() {
                 </tr>
             </table>
 
-            <h3 className="section-title">VISUALISASI JADWAL (GANTT CHART)</h3>
+            <h3 className="section-title">TIME SCHEDULE (GANTT CHART)</h3>
             
             <table className="data-table gantt-table">
                 <colgroup>
@@ -412,24 +420,23 @@ export default function MasterReportPage() {
         .print-header {
           display: flex;
           justify-content: space-between;
-          align-items: flex-end;
-          border-bottom: 4px solid #1e293b;
-          padding-bottom: 15px;
-          margin-bottom: 20px;
+          align-items: flex-start;
+          border-bottom: 3px solid #0f172a;
+          padding-bottom: 12px;
+          margin-bottom: 24px;
         }
-        .print-header h1 { font-size: 26px; font-weight: 900; text-transform: uppercase; color: #0f172a; margin: 0; }
-        .print-header h2 { font-size: 18px; font-weight: bold; color: #4338ca; margin: 6px 0 0 0; }
-        .print-header p { font-size: 12px; color: #475569; margin: 6px 0 0 0; font-weight: 500; }
+        .print-header h1 { font-size: 22px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #0f172a; margin: 0; }
+        .print-header h2 { font-size: 16px; font-weight: 800; color: #4338ca; margin: 8px 0 0 0; }
         .date-box { text-align: right; }
         .date-box p { margin: 0; font-size: 11px; font-weight: bold; text-transform: uppercase; color: #64748b; }
         .date-box span { font-family: monospace; font-size: 16px; font-weight: bold; color: #0f172a; }
         
-        .evm-cards { width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-left: -12px; margin-bottom: 25px; }
-        .card { width: 25%; padding: 12px; border-radius: 4px; border: 1px solid; }
-        .card p { margin: 0; font-size: 10px; font-weight: bold; text-transform: uppercase; }
-        .card h3 { margin: 4px 0 0 0; font-size: 18px; font-weight: 900; }
+        .evm-cards { width: 100%; border-collapse: separate; border-spacing: 10px 0; margin-left: -10px; margin-bottom: 24px; }
+        .card { width: 25%; padding: 10px 14px; border-radius: 2px; border: 1px solid #cbd5e1; background-color: #f8fafc; }
+        .card p { margin: 0; font-size: 9px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;}
+        .card h3 { margin: 6px 0 0 0; font-size: 16px; font-weight: 900; color: #0f172a; }
         .bg-slate { background-color: #f8fafc; border-color: #cbd5e1; } .bg-slate p { color: #64748b; } .bg-slate h3 { color: #0f172a; }
-        .bg-indigo { background-color: #eef2ff; border-color: #c7d2fe; } .bg-indigo p { color: #4338ca; } .bg-indigo h3 { color: #312e81; }
+        .bg-indigo { background-color: #f8fafc; border-color: #cbd5e1; } .bg-indigo p { color: #64748b; } .bg-indigo h3 { color: #0f172a; }
         .bg-emerald { background-color: #ecfdf5; border-color: #a7f3d0; } .bg-emerald p { color: #047857; } .bg-emerald h3 { color: #064e3b; }
         .bg-red { background-color: #fef2f2; border-color: #fecaca; } .bg-red p { color: #b91c1c; } .bg-red h3 { color: #991b1b; }
         
@@ -523,4 +530,5 @@ export default function MasterReportPage() {
     </div>
   );
 }
+
 
