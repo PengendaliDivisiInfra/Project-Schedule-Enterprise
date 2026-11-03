@@ -1,11 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useProject } from '../../context/ProjectContext';
 import { Activity, DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
-import { useProject } from '../../context/ProjectContext';
 import { supabase } from '../../lib/supabase';
-
 import { useProject } from '../../context/ProjectContext';
+
 export default function DashboardPage() {
   const { activeProjectId } = useProject();
   const [totalProgress, setTotalProgress] = useState(0);
@@ -26,7 +24,7 @@ export default function DashboardPage() {
     // REAL-TIME LISTENER
     const channel = supabase.channel('realtime-dashboard')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_progress' }, () => {
-        console.log('🔄 Dashboard mendeteksi progres baru, memperbarui grafik...');
+        console.log('ðŸ”„ Dashboard mendeteksi progres baru, memperbarui grafik...');
         fetchDashboardData();
       })
       .subscribe();
