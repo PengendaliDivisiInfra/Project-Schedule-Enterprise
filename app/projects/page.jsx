@@ -13,31 +13,41 @@ export default function ProjectsPage() {
 
   const [formData, setFormData] = useState({ name: '', description: '', location: '' });
 
-  const fetchProjects = async () => {
+    const fetchProjects = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      // Mengambil proyek yang diikuti oleh user ini
-      const { data } = await supabase
-        .from('project_members')
-        .select(`
-          role,
-          projects ( id, name, description, location, created_at )
-        `)
-        .eq('user_id', user.id);
-        
-      if (data) {
-        // Merapikan format data
-        const formattedProjects = data.map(item => ({
-          ...item.projects,
-          role: item.role
-        })).filter(p => p.id); // Filter jika ada data proyek yang null
-        
-        setProjects(formattedProjects);
+    try {
+      // 1. Ambil user yang sedang login
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // 2. Ambil data projects secara langsung (karena RLS sudah dimatikan)
+        const { data: projectData, error: projectError } = await supabase
+          .from('projects')
+          .select('*');
+          
+        // 3. Ambil data role user ini di tabel members
+        const { data: memberData, error: memberError } = await supabase
+          .from('project_members')
+          .select('*')
+          .eq('user_id', user.id);
+
+        if (projectError) console.error("Project Error:", projectError);
+        if (memberError) console.error("Member Error:", memberError);
+
+        if (projectData && memberData) {
+          // Gabungkan data proyek dengan role milik user
+          const formattedProjects = projectData.map(proj => {
+            const memberRole = memberData.find(m => m.project_id === proj.id);
+            return { ...proj, role: memberRole ? memberRole.role : 'viewer' };
+          });
+          setProjects(formattedProjects);
+        }
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { fetchProjects(); }, []);
