@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Plus, MapPin, Building2, Loader2, X } from 'lucide-react';
+import { useProject } from '../../context/ProjectContext';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -10,37 +11,23 @@ export default function ProjectsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const router = useRouter();
+  const { selectProject } = useProject();
 
   const [formData, setFormData] = useState({ name: '', description: '', location: '' });
 
-    const fetchProjects = async () => {
+  const fetchProjects = async () => {
     setLoading(true);
     try {
-      // 1. Ambil user yang sedang login
       const { data: { user } } = await supabase.auth.getUser();
-      
       if (user) {
-        // 2. Ambil data projects secara langsung (karena RLS sudah dimatikan)
-        const { data: projectData, error: projectError } = await supabase
-          .from('projects')
-          .select('*');
-          
-        // 3. Ambil data role user ini di tabel members
-        const { data: memberData, error: memberError } = await supabase
+        const { data, error } = await supabase
           .from('project_members')
-          .select('*')
+          .select(`role, projects (id, name, description, location)`)
           .eq('user_id', user.id);
-
-        if (projectError) console.error("Project Error:", projectError);
-        if (memberError) console.error("Member Error:", memberError);
-
-        if (projectData && memberData) {
-          // Gabungkan data proyek dengan role milik user
-          const formattedProjects = projectData.map(proj => {
-            const memberRole = memberData.find(m => m.project_id === proj.id);
-            return { ...proj, role: memberRole ? memberRole.role : 'viewer' };
-          });
-          setProjects(formattedProjects);
+        if (error) throw error;
+        if (data) {
+          const formatted = data.filter(i => i.projects).map(i => ({ ...i.projects, role: i.role }));
+          setProjects(formatted);
         }
       }
     } catch (err) {
@@ -55,86 +42,58 @@ export default function ProjectsPage() {
   const handleCreateProject = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     const { error } = await supabase.from('projects').insert([{
-      name: formData.name,
-      description: formData.description,
-      location: formData.location,
-      owner_id: user.id
+      name: formData.name, description: formData.description, location: formData.location, owner_id: user.id
     }]);
 
     if (!error) {
       setIsModalOpen(false);
       setFormData({ name: '', description: '', location: '' });
-      fetchProjects(); // Refresh list
+      fetchProjects();
     } else {
       alert(error.message);
     }
     setIsSaving(false);
   };
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <Loader2 className="animate-spin text-indigo-600" size={40} />
-    </div>
-  );
+  const handleSelectProject = (proj) => {
+    selectProject(proj.id);
+    router.push('/tasks');
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>;
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen">
       <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Header */}
         <div className="flex justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Building2 className="text-indigo-600" /> Manajemen Proyek
-            </h1>
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Building2 className="text-indigo-600" /> Manajemen Proyek</h1>
             <p className="text-sm text-slate-500 mt-1">Pilih proyek untuk dikelola atau buat proyek baru.</p>
           </div>
-          <button 
-            onClick={() => setIsModalOpen(true)} 
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-md transition-all flex items-center gap-2"
-          >
+          <button onClick={() => setIsModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm shadow-md transition-all flex items-center gap-2">
             <Plus size={18} /> Buat Proyek Baru
           </button>
         </div>
 
-        {/* Grid Projects */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((proj) => (
-            <div 
-              key={proj.id} 
-              onClick={() => router.push(`/tasks`)} // Sementara arahkan ke tasks
-              className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 cursor-pointer hover:shadow-md hover:border-indigo-300 transition-all group"
-            >
+            <div key={proj.id} onClick={() => handleSelectProject(proj)} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 cursor-pointer hover:shadow-md hover:border-indigo-300 transition-all group">
               <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
-                  <Building2 className="text-indigo-600" size={24} />
-                </div>
-                <span className="bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase">
-                  {proj.role}
-                </span>
+                <div className="p-3 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors"><Building2 className="text-indigo-600" size={24} /></div>
+                <span className="bg-slate-100 text-slate-600 text-xs font-bold px-3 py-1 rounded-full uppercase">{proj.role}</span>
               </div>
               <h3 className="text-lg font-bold text-slate-800 mb-1">{proj.name}</h3>
               <p className="text-xs text-slate-500 mb-4 line-clamp-2">{proj.description || 'Tidak ada deskripsi'}</p>
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <MapPin size={16} /> {proj.location || 'Lokasi belum diatur'}
-              </div>
+              <div className="flex items-center gap-2 text-sm text-slate-500"><MapPin size={16} /> {proj.location || 'Lokasi belum diatur'}</div>
             </div>
           ))}
-          
-          {projects.length === 0 && (
-            <div className="col-span-full text-center p-10 bg-white rounded-xl border border-slate-200 border-dashed">
-              <p className="text-slate-500">Anda belum memiliki proyek. Silakan buat proyek baru.</p>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Modal Buat Proyek */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
@@ -143,22 +102,13 @@ export default function ProjectsPage() {
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20}/></button>
             </div>
             <form onSubmit={handleCreateProject} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Nama Proyek</label>
-                <input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Pembangunan Jembatan Mahakam" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Lokasi</label>
-                <input type="text" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="w-full border p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Kalimantan Timur" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Deskripsi Singkat</label>
-                <textarea rows="3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full border p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none" placeholder="Jelaskan detail proyek..." />
-              </div>
+              <div><label className="block text-xs font-bold text-slate-600 mb-1">Nama Proyek</label><input required type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Jembatan Mahakam" /></div>
+              <div><label className="block text-xs font-bold text-slate-600 mb-1">Lokasi</label><input type="text" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="w-full border p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Kalimantan Timur" /></div>
+              <div><label className="block text-xs font-bold text-slate-600 mb-1">Deskripsi</label><textarea rows="3" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="w-full border p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none resize-none" /></div>
               <div className="pt-4 flex justify-end gap-3 border-t">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg">Batal</button>
                 <button type="submit" disabled={isSaving} className="px-6 py-2 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md flex items-center gap-2">
-                  {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} Simpan Proyek
+                  {isSaving ? <Loader2 className="animate-spin" size={16}/> : <Plus size={16}/>} Simpan
                 </button>
               </div>
             </form>
