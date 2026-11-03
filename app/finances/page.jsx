@@ -25,7 +25,8 @@ export default function CashFlowPage() {
     payment_method: 'Transfer',
     vendor_or_ref: '',
     wbs_code: '',
-    approval_status: 'Pending'
+    approval_status: 'Pending',
+    overbudget_reason: ''
   });
 
   const showToast = (type, message) => {
@@ -82,6 +83,12 @@ export default function CashFlowPage() {
       alert("Wajib mengunggah bukti nota/kuitansi untuk pembayaran Tunai atau Petty Cash!");
       return;
     }
+
+    // Validasi wajib alasan jika Overbudget
+    if (isOverbudget && !formData.overbudget_reason) {
+      alert("Wajib mengisi alasan overbudget!");
+      return;
+    }
     
     setIsSaving(true);
     let finalAttachmentUrl = null;
@@ -112,7 +119,9 @@ export default function CashFlowPage() {
 
       setIsModalOpen(false);
       showToast('success', 'Transaksi berhasil diajukan!');
-      setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '', approval_status: 'Pending' });
+      setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '',
+    approval_status: 'Pending',
+    overbudget_reason: '' });
       setFile(null);
       setSelectedWbsBudget(null);
       fetchData();
@@ -219,7 +228,7 @@ export default function CashFlowPage() {
                       }`}>{f.approval_status}</span>
                     </td>
                     <td className={`p-3 text-right font-bold ${f.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {f.type === 'IN' ? '+' : '-'} {formatRp(f.amount)}
+                      {formatRp(f.amount)}
                     </td>
                     <td className="p-3 text-center">
                       {f.approval_status === 'Pending' ? (
@@ -307,7 +316,20 @@ export default function CashFlowPage() {
                   <input required type="text" value={formData.amount ? Number(formData.amount).toLocaleString('id-ID') : ''} onChange={(e) => { const rawValue = e.target.value.replace(/\D/g, ''); setFormData({ ...formData, amount: rawValue }); }} className={`w-full border p-2 pl-10 rounded-lg text-sm focus:ring-2 outline-none font-bold text-lg ${isOverbudget ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-500' : 'border-slate-300 focus:ring-indigo-500'}`} placeholder="0" />
                 </div>
                 {isOverbudget && (
-                  <p className="text-xs text-red-600 font-bold mt-1 flex items-center gap-1"><AlertTriangle size={12}/> Nominal melebihi sisa anggaran WBS!</p>
+                  <>
+                    <p className="text-xs text-red-600 font-bold mt-1 flex items-center gap-1"><AlertTriangle size={12}/> Nominal melebihi sisa anggaran WBS!</p>
+                    <div className="mt-3 bg-red-50 p-3 rounded-lg border border-red-200">
+                      <label className="block text-xs font-bold text-red-700 mb-1">Alasan Overbudget (Wajib Diisi)</label>
+                      <textarea 
+                        required 
+                        rows="2" 
+                        value={formData.overbudget_reason} 
+                        onChange={e => setFormData({...formData, overbudget_reason: e.target.value})} 
+                        placeholder="cth: Kenaikan harga material mendadak / perubahan spesifikasi di lapangan" 
+                        className="w-full border border-red-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none bg-white text-slate-800" 
+                      />
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -340,4 +362,5 @@ export default function CashFlowPage() {
     </div>
   );
 }
+
 
