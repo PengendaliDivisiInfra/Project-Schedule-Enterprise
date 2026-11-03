@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
 import { updateProjectScheduleSecure } from '../../../lib/scheduler';
@@ -211,16 +211,19 @@ export default function MasterReportPage() {
             
             <table className="data-table gantt-table">
                 <colgroup>
+                    <col style={{ width: '4%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '4%' }} />
+                    <col style={{ width: '7%' }} />
+                    <col style={{ width: '7%' }} />
+                    <col style={{ width: '6%' }} />
                     <col style={{ width: '5%' }} />
-                    <col style={{ width: '22%' }} />
-                    <col style={{ width: '6%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '8%' }} />
                     <col style={{ width: '5%' }} />
-                    <col style={{ width: '6%' }} />
-                    <col style={{ width: '6%' }} />
-                    <col style={{ width: '6%' }} />
-                    <col style={{ width: '28%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '5%' }} />
+                    <col style={{ width: '24%' }} />
                 </colgroup>
                 <thead>
                     <tr>
@@ -512,9 +515,7 @@ export default function MasterReportPage() {
         onPrint={(settings) => {
           setPrintSettings(settings);
           setIsPrintModalOpen(false);
-          setTimeout(() => {
-            window.print();
-          }, 500); // Beri jeda agar modal hilang dan CSS print aktif
+          printSettingsRef.current = 'PRINT_NOW'; // Set flag agar useEffect memicu print
         }} 
       />
 
@@ -530,5 +531,6 @@ export default function MasterReportPage() {
     </div>
   );
 }
+
 
 

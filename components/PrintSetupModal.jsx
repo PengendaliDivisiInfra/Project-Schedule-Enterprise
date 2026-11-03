@@ -1,8 +1,9 @@
 ﻿'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Printer, FileText, Layout } from 'lucide-react';
 
 export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSettings }) {
+  // Gunakan defaultSettings dari parent, atau fallback
   const [settings, setSettings] = useState(defaultSettings || {
     orientation: 'landscape',
     paperSize: 'A4',
@@ -13,9 +14,8 @@ export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSetti
     showLegend: true,
     showSignature: true,
     columns: {
-      id: false, wbs: true, name: true, duration: true, start: true, finish: true,
-      priority: false, pred: true, slack: false, critical: true, cost: true,
-      alert: false, volume: true, satuan: true, tgtHr: true
+      wbs: true, name: true, duration: true, start: true, finish: true, 
+      pred: true, slack: true, progress: true, target: true, sisa: true, tgtHr: true, cost: false
     },
     signatures: {
       created: { title: 'Dibuat Oleh', name: '', role: 'Site Engineer', instansi: 'Kontraktor' },
@@ -41,6 +41,11 @@ export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSetti
     }));
   };
 
+  const handlePrintClick = () => {
+    // Kirim setting ke parent. Parent yang akan menangani proses print-nya.
+    onPrint(settings);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -53,9 +58,8 @@ export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSetti
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
         </div>
 
-        {/* BODY (Scrollable) */}
+        {/* BODY */}
         <div className="p-6 overflow-y-auto space-y-6">
-          
           {/* KERTAS & LAYOUT */}
           <div>
             <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><Layout size={16}/> Kertas & Layout</h3>
@@ -63,8 +67,8 @@ export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSetti
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">Orientasi</label>
                 <select value={settings.orientation} onChange={e => setSettings({...settings, orientation: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-                  <option value="portrait">Portrait</option>
                   <option value="landscape">Landscape</option>
+                  <option value="portrait">Portrait</option>
                 </select>
               </div>
               <div>
@@ -111,18 +115,17 @@ export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSetti
 
           {/* KOLOM YANG DICETAK */}
           <div>
-            <h3 className="text-sm font-bold text-slate-700 mb-3">Kolom yang Dicetak</h3>
-            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <h3 className="text-sm font-bold text-slate-700 mb-3">Kolom yang Dicetak (PMP Time Schedule)</h3>
+            <div className="grid grid-cols-4 gap-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
               {[
-                { key: 'id', label: 'ID' }, { key: 'wbs', label: 'WBS' }, { key: 'name', label: 'Task Name' },
-                { key: 'duration', label: 'Duration' }, { key: 'start', label: 'Start' }, { key: 'finish', label: 'Finish' },
-                { key: 'priority', label: 'Priority' }, { key: 'pred', label: 'Predecessors' }, { key: 'cost', label: 'Cost' },
-                { key: 'slack', label: 'Total Slack' }, { key: 'critical', label: 'Critical' }, { key: 'alert', label: 'Alert' },
-                { key: 'volume', label: 'Volume', custom: true }, { key: 'satuan', label: 'Satuan', custom: true }, { key: 'tgtHr', label: 'Tgt/hr', custom: true }
+                { key: 'wbs', label: 'WBS' }, { key: 'name', label: 'Task Name' }, { key: 'duration', label: 'Duration' },
+                { key: 'start', label: 'Start' }, { key: 'finish', label: 'Finish' }, { key: 'pred', label: 'Predecessor' },
+                { key: 'slack', label: 'Total Float' }, { key: 'progress', label: '% Complete' }, { key: 'target', label: 'Target' },
+                { key: 'sisa', label: 'Sisa Vol' }, { key: 'tgtHr', label: 'Target / Hr' }, { key: 'cost', label: 'Cost (Rp)' }
               ].map(col => (
                 <label key={col.key} className="flex items-center gap-2 text-xs font-medium cursor-pointer">
                   <input type="checkbox" checked={settings.columns[col.key]} onChange={() => toggleColumn(col.key)} className="w-3.5 h-3.5 accent-indigo-600" />
-                  {col.label} {col.custom && <span className="text-[9px] text-indigo-400 bg-indigo-50 px-1 rounded">(custom)</span>}
+                  {col.label}
                 </label>
               ))}
             </div>
@@ -159,7 +162,7 @@ export default function PrintSetupModal({ isOpen, onClose, onPrint, defaultSetti
         {/* FOOTER */}
         <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0">
           <button onClick={onClose} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors">Batal</button>
-          <button onClick={() => onPrint(settings)} className="px-6 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-md transition-colors flex items-center gap-2">
+          <button onClick={handlePrintClick} className="px-6 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-md transition-colors flex items-center gap-2">
             <Printer size={16} /> Cetak / Simpan PDF
           </button>
         </div>
