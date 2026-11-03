@@ -47,8 +47,24 @@ export default function CashFlowPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Cek apakah upload file wajib (Kas Keluar + Tunai/Petty Cash)
+  const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
+
+  const handleAmountChange = (e) => {
+    // Hanya ambil angka
+    const rawValue = e.target.value.replace(/\D/g, '');
+    setFormData({ ...formData, amount: rawValue });
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
+    
+    // VALIDASI: Jika wajib upload tapi file kosong, batalkan
+    if (isUploadRequired && !file) {
+      alert("Wajib mengunggah bukti nota/kuitansi untuk pembayaran Tunai atau Petty Cash!");
+      return;
+    }
+    
     setIsSaving(true);
     
     let finalAttachmentUrl = null;
@@ -262,7 +278,17 @@ export default function CashFlowPage() {
 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">Nominal (Rp)</label>
-                <input required type="number" min="0" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" onFocus={(e) => e.target.select()} />
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Rp</span>
+                  <input 
+                    required 
+                    type="text" 
+                    value={formData.amount ? Number(formData.amount).toLocaleString('id-ID') : ''} 
+                    onChange={handleAmountChange} 
+                    className="w-full border border-slate-300 p-2 pl-10 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" 
+                    placeholder="0"
+                  />
+                </div>
               </div>
 
               <div>
@@ -271,14 +297,14 @@ export default function CashFlowPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Upload Bukti Transaksi (Nota/Kuitansi)</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Upload Bukti Transaksi (Nota/Kuitansi) {isUploadRequired && <span className="text-red-500">*</span>}</label>
                 <div className="flex items-center gap-3">
-                  <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
+                  <label className={`cursor-pointer border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isUploadRequired && !file ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'}`}>
                     <UploadCloud size={16} /> Pilih File
                     <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files[0])} className="hidden" />
                   </label>
                   <span className="text-xs text-slate-500 truncate max-w-[200px]">
-                    {file ? file.name : 'Belum ada file (Opsional)'}
+                    {file ? file.name : (isUploadRequired ? 'Wajib diisi!' : 'Belum ada file (Opsional)')}
                   </span>
                 </div>
               </div>
@@ -296,3 +322,4 @@ export default function CashFlowPage() {
     </div>
   );
 }
+
