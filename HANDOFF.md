@@ -1,34 +1,40 @@
 # Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** 🟡 Under Development (V21 - Sprint 2: Multi-Tenancy & RBAC)
+**Status Proyek:** 🟢 Production Ready (V22 - Multi-Tenancy, RBAC & Executive Dashboard)
 **Terakhir Diperbarui:** 03 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Implemented Features)
-Aplikasi **InfraControl PRO** sedang bertransisi dari aplikasi single-user menjadi SaaS Multi-Tenant.
-- **Sprint 1 (SELESAI):** Autentikasi PKCE (Google SSO), Middleware Zero Trust, Manajemen Profil User (`public.profiles`).
-- **Sprint 2 (BERJALAN):** Pembuatan struktur database Multi-Tenancy (`projects`, `project_members`), migrasi data lama ke proyek default.
-- **Modul Fungsional (V19):** Finance (Smart Delta, Approval, S-Curve), QHSE, Risk Register, CPM.
+Aplikasi **InfraControl PRO** kini telah bertransformasi menjadi **SaaS Multi-Tenant** (banyak perusahaan/proyek bisa menggunakan aplikasi ini secara terisolasi).
+
+### Sprint 1: Autentikasi & Keamanan (SELESAI)
+- PKCE Flow via Google SSO & Email/Password.
+- Middleware Next.js (Zero Trust) memblokir rute ilegal.
+- Tabel `profiles` tersinkronisasi otomatis via Trigger.
+
+### Sprint 2: Multi-Tenancy & RBAC (SELESAI)
+- **Project Switcher:** Dropdown di Header untuk berpindah proyek.
+- **Isolasi Data (RLS):** PM A tidak bisa melihat data PM B.
+- **Manajemen Tim & Undangan:** PM bisa mengundang staf (DD, QC, HSE, Site Admin) via email.
+- **UI Read-Only (RBAC):** Staf non-PM tidak bisa mengedit WBS atau menyetujui transaksi.
+- **Pengaturan Proyek (Standar PUPR):** Input data Kontrak, SPMK, Addendum, Owner, Konsultan, dll.
+
+### Sprint 3: Executive Dashboard (SELESAI)
+- **Embedded S-Curve:** Grafik Rencana vs Aktual langsung di halaman utama.
+- **Metrik Dinamis:** Kalkulasi Otomatis Total Anggaran (BAC), Progress %, SPI, dan CPI per proyek aktif.
 
 ---
 
-## 2. 🚀 ROADMAP PRIORITAS (SEDANG BERJALAN)
+## 2. 🚀 ROADMAP PRIORITAS (Next Steps)
 
-### Fase 7: Multi-Tenancy & RBAC (Sprint 2)
-*Tujuan: Memungkinkan PM mengelola banyak proyek dan mengundang anggota dengan hak akses terbatas.*
-**Konsep & Arsitektur:**
-1. **Tabel `projects`**: Menyimpan data proyek (Nama, Lokasi, Owner).
-2. **Tabel `project_members`**: Menghubungkan User dengan Proyek dan Role (PM, DD, QC, HSE, Site Admin).
-3. **Data Isolation**: Menggunakan `project_id` di semua tabel operasional (`wbs_tasks`, `cash_flows`, dll).
-4. **Row Level Security (RLS)**: Mencegah PM A melihat data PM B.
-
-**Langkah Eksekusi Tersisa:**
-*   **[SEDANG BERJALAN]** Membuat UI Project Switcher di Sidebar (Dropdown untuk berpindah proyek).
-*   Membuat Halaman `/projects` untuk melihat daftar proyek dan membuat proyek baru.
-*   Membuat Halaman `/settings/team` untuk mengundang anggota (Invite via Email).
-*   Menerapkan Aturan RLS (Row Level Security) di Supabase untuk tabel operasional.
+### Fase 8: Integrasi Cetak Laporan (PMP) & Audit Logs
+*Tujuan: Menyempurnakan output dokumen dan keamanan tingkat lanjut.*
+**Langkah Eksekusi:**
+1.  **Sinkronisasi Laporan PMP:** Pastikan data dari halaman "Pengaturan Proyek" (PUPR) otomatis masuk ke kop surat/dokumen saat mencetak *Master Project Report*.
+2.  **Audit Logs (Pilar 5):** Membuat sistem pencatatan otomatis (siapa, kapan, mengubah apa) untuk keperluan audit keuangan proyek.
+3.  **Dashboard Modul Lain:** Menampilkan ringkasan QHSE (Jumlah Temuan) dan Risiko di halaman Dashboard.
 
 ---
 
@@ -36,9 +42,9 @@ Aplikasi **InfraControl PRO** sedang bertransisi dari aplikasi single-user menja
 - **Build:** `npm run build`
 - **Deploy:** `git push origin main` (Otomatis via Vercel).
 - **Catatan Penting:**
-  - **JANGAN** menambahkan `UPDATE` manual pada tabel `wbs_tasks.cost`. Biarkan Trigger yang bekerja.
-  - Pastikan setiap user baru yang login (via Google/Email) memiliki data di `auth.users` dan `profiles`.
-  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` setelah ada perubahan struktur database.
+  - **JANGAN** mematikan RLS (Row Level Security) di tabel manapun pada tahap production.
+  - Gunakan `useProject()` Context untuk mengambil `activeProjectId` di setiap query data operasional baru.
+  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` setelah ada perubahan database.
 
 ## 4. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
