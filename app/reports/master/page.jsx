@@ -7,6 +7,7 @@ import { calculateEVM } from '../../../lib/evm';
 import { Printer, ArrowLeft, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import PrintSetupModal from '../../../components/PrintSetupModal';
+import { useProject } from '../../context/ProjectContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -496,4 +497,3 @@ export default function MasterReportPage() {
     </div>
   );
 }
-
