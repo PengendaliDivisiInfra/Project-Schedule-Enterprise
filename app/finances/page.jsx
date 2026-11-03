@@ -270,13 +270,11 @@ export default function CashFlowPage() {
                       {formatRp(f.amount)}
                     </td>
                     <td className="p-3 text-center">
-                      {f.approval_status === 'Pending' ? (
-                        {canApprove ? (
-                          <div className="flex gap-2 justify-center">
-                            <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title="Approve"><ShieldCheck size={14}/></button>
-                            <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
-                          </div>
-                        ) : '-'}
+                      {f.approval_status === 'Pending' && canApprove ? (
+                        <div className="flex gap-2 justify-center">
+                          <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title="Approve"><ShieldCheck size={14}/></button>
+                          <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
+                        </div>
                       ) : '-'}
                     </td>
                   </tr>
