@@ -1,11 +1,11 @@
-'use client';
+﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
+import {  
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
   Settings, ShieldCheck, ChevronLeft, ChevronRight, Layers , Printer // Tambah Layers
-} from 'lucide-react';
+, ShieldAlert } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   const pathname = usePathname();
@@ -20,6 +20,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     { group: 'Perencanaan', items: [
       { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin'] },
       { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pelaksana'] },
+      { name: 'Risk Register', path: '/risks', icon: ShieldAlert, roles: ['owner', 'admin'] },
     ]},
     { group: 'Pelaporan', items: [
       { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin'] },
