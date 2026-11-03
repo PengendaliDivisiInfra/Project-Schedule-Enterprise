@@ -208,12 +208,12 @@ export default function CashFlowPage() {
             <Wallet className="text-indigo-500 opacity-50" size={40} />
           </div>
         </div>        
-        {/* Navigasi Tab */}
+                {/* Navigasi Tab */}
         <div className="flex space-x-6 mb-4 border-b border-slate-200 mt-6">
-          <button onClick={() => setActiveTab('ledger')} className={pb-3 font-medium transition-colors }>
+          <button onClick={() => setActiveTab('ledger')} className={`pb-3 font-medium transition-colors ${activeTab === 'ledger' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
             Riwayat Transaksi (Ledger)
           </button>
-          <button onClick={() => setActiveTab('cost_control')} className={pb-3 font-medium transition-colors }>
+          <button onClick={() => setActiveTab('cost_control')} className={`pb-3 font-medium transition-colors ${activeTab === 'cost_control' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
             Kontrol Anggaran (Cost Control)
           </button>
         </div>
@@ -241,16 +241,21 @@ export default function CashFlowPage() {
                   <tr key={f.id} className="hover:bg-slate-50">
                     <td className="p-3 text-slate-600 text-xs">{new Date(f.transaction_date).toLocaleDateString('id-ID')}</td>
                     <td className="p-3 text-center">
-                      <span className={	ext-[9px] px-1.5 py-0.5 rounded font-bold uppercase }>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${f.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
                         {f.type === 'IN' ? 'MASUK' : 'KELUAR'}
                       </span>
                     </td>
                     <td className="p-3 text-xs font-semibold text-slate-700">{f.category}</td>
                     <td className="p-3 font-mono text-[10px]">{tasks.find(t => t.wbs_code === f.wbs_code)?.name || f.wbs_code || '-'}</td>
                     <td className="p-3 text-center">
-                      <span className={	ext-[9px] px-1.5 py-0.5 rounded font-bold uppercase }>{f.approval_status}</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                        f.approval_status === 'Approved' ? 'bg-green-100 text-green-700' : 
+                        f.approval_status === 'Rejected' ? 'bg-red-100 text-red-700' : 
+                        f.approval_status === 'Pending Overbudget' ? 'bg-orange-100 text-orange-700 border border-orange-300' : 
+                        'bg-amber-100 text-amber-700'
+                      }`}>{f.approval_status}</span>
                     </td>
-                    <td className={p-3 text-right font-bold }>
+                    <td className={`p-3 text-right font-bold ${f.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatRp(f.amount)}
                     </td>
                     <td className="p-3 text-center">
@@ -290,7 +295,7 @@ export default function CashFlowPage() {
                       <td className="p-4 text-sm font-medium text-slate-800">{item.task_name}</td>
                       <td className="p-4 text-sm text-right text-slate-600">{formatRp(item.pagu_anggaran_rap)}</td>
                       <td className="p-4 text-sm text-right text-rose-600 font-medium">{formatRp(item.total_pengeluaran_aktual)}</td>
-                      <td className={p-4 text-sm text-right font-bold }>
+                      <td className={`p-4 text-sm text-right font-bold ${item.sisa_anggaran_plafon < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                         {formatRp(item.sisa_anggaran_plafon)}
                       </td>
                       <td className="p-4 text-center">
