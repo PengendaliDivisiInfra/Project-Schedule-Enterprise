@@ -1,12 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Activity, DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
 
 export default function DashboardPage() {
   const { activeProjectId } = useProject();
   const [totalProgress, setTotalProgress] = useState(0);
+  const [sCurveData, setSCurveData] = useState([]);
 
   const fetchDashboardData = async () => {
     // Simulasi kalkulasi progres sederhana (bisa dikembangkan jadi EVM penuh)
