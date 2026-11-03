@@ -42,7 +42,7 @@ export default function CashFlowPage() {
     if (flowData) setFlows(flowData);
 
     // Fetch WBS beserta sisa anggarannya
-    const { data: taskData } = await supabase.from('view_wbs_budget_status').select('*').order('wbs_code');
+    const { data: taskData } = await supabase.from('v_cost_control_wbs').select('*').order('wbs_code');
     if (taskData) setTasks(taskData);
 
     setLoading(false);
@@ -72,7 +72,7 @@ export default function CashFlowPage() {
     setFormData({ ...formData, wbs_code: wbsCode });
     
     const wbsData = tasks.find(t => t.wbs_code === wbsCode);
-    setSelectedWbsBudget(wbsData ? (wbsData.cost - (wbsData.realisasi_cost || 0)) : null);
+    setSelectedWbsBudget(wbsData ? wbsData.sisa_anggaran_plafon : null);
   };
 
   // Fungsi Approval
@@ -246,7 +246,7 @@ export default function CashFlowPage() {
                       </span>
                     </td>
                     <td className="p-3 text-xs font-semibold text-slate-700">{f.category}</td>
-                    <td className="p-3 font-mono text-[10px]">{tasks.find(t => t.wbs_code === f.wbs_code)?.name || f.wbs_code || '-'}</td>
+                    <td className="p-3 font-mono text-[10px]">{tasks.find(t => t.wbs_code === f.wbs_code)?.task_name || f.wbs_code || '-'}</td>
                     <td className="p-3 text-center">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
                         f.approval_status === 'Approved' ? 'bg-green-100 text-green-700' : 
@@ -361,10 +361,16 @@ export default function CashFlowPage() {
                   <label className="block text-xs font-bold text-slate-600 mb-1">Relasi WBS (Budget Link)</label>
                   <select value={formData.wbs_code} onChange={handleWbsChange} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                     <option value="">-- Tanpa Relasi WBS --</option>
-                    {tasks.map(t => <option key={t.wbs_code} value={t.wbs_code}>[{t.wbs_code}] {t.name}</option>)}
+                    {tasks.map(t => <option key={t.wbs_code} value={t.wbs_code}>[{t.wbs_code}] {t.task_name}</option>)}
                   </select>
                   {selectedWbsBudget !== null && (
-                    <p className="text-[10px] mt-1 text-slate-500">Sisa Anggaran WBS ini: <strong className="text-emerald-600">{formatRp(selectedWbsBudget)}</strong></p>
+                        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><ShieldCheck size={12}/> Informasi Anggaran WBS</p>
+      <div className="flex justify-between items-center">
+        <span className="text-xs text-slate-600">Sisa Plafon Tersedia:</span>
+        <strong className={`text-sm ${selectedWbsBudget < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatRp(selectedWbsBudget)}</strong>
+      </div>
+    </div>
                   )}
                 </div>
               </div>
