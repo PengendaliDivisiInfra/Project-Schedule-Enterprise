@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { ShieldCheck, HardHat, CheckCircle2, AlertTriangle, Plus, Edit, X, Loader2, Save, Image as ImageIcon } from 'lucide-react';
+import { ShieldCheck, HardHat, CheckCircle2, AlertTriangle, Plus, Edit, X, Loader2, Save, Image as ImageIcon, UploadCloud } from 'lucide-react';
 
 export default function QhsePage() {
   const [activeTab, setActiveTab] = useState('qc'); // 'qc' | 'hse'
@@ -14,6 +14,8 @@ export default function QhsePage() {
   const [isQcModalOpen, setIsQcModalOpen] = useState(false);
   const [isHseModalOpen, setIsHseModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [qcFile, setQcFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [toast, setToast] = useState(null);
 
   // Form States (QA/QC)
@@ -49,17 +51,48 @@ export default function QhsePage() {
   const handleSaveQc = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    const payload = { ...qcForm, inspection_date: new Date().toISOString() };
-    const { error } = await supabase.from('qc_inspections').insert([payload]);
     
-    if (error) alert(error.message);
-    else {
+    let finalEvidenceUrl = qcForm.evidence_url; // Simpan url lama jika ada
+
+    try {
+      // 1. JIKA ADA FILE YANG DIPILIH, UPLOAD KE SUPABASE STORAGE
+      if (qcFile) {
+        setIsUploading(true);
+        const fileExt = qcFile.name.split('.').pop();
+        const fileName = `qc_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('evidence')
+          .upload(fileName, qcFile);
+          
+        if (uploadError) throw new Error("Gagal upload file: " + uploadError.message);
+
+        // 2. DAPATKAN LINK PUBLIC
+        const { data: urlData } = supabase.storage
+          .from('evidence')
+          .getPublicUrl(fileName);
+          
+        finalEvidenceUrl = urlData.publicUrl;
+      }
+
+      // 3. SIMPAN DATA KE DATABASE
+      const payload = { ...qcForm, evidence_url: finalEvidenceUrl, inspection_date: new Date().toISOString() };
+      const { error } = await supabase.from('qc_inspections').insert([payload]);
+      
+      if (error) throw error;
+
       setIsQcModalOpen(false);
       showToast('success', 'Data Inspeksi QA/QC berhasil disimpan!');
       setQcForm({ wbs_code: '', inspector_name: '', status: 'Pending', notes: '', testing_method: '', reference_standard: '', evidence_url: '', ncr_action: '' });
+      setQcFile(null); // Reset file
       fetchData();
+
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setIsSaving(false);
+      setIsUploading(false);
     }
-    setIsSaving(false);
   };
 
   const handleSaveHse = async (e) => {
@@ -218,9 +251,22 @@ export default function QhsePage() {
               <div><label className="block text-xs font-bold text-slate-600 mb-1">Status</label><select value={qcForm.status} onChange={e => setQcForm({...qcForm, status: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"><option value="Pending">Pending (Menunggu)</option><option value="Approved">Approved (Lulus QC)</option><option value="Rejected">Rejected (Gagal QC / NCR)</option></select></div>
               <div><label className="block text-xs font-bold text-slate-600 mb-1">Catatan Lapangan (Keterangan)</label><textarea rows="2" value={qcForm.notes} onChange={e => setQcForm({...qcForm, notes: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" /></div>
               <div><label className="block text-xs font-bold text-slate-600 mb-1">Tindakan NCR (Jika Rejected)</label><textarea rows="2" value={qcForm.ncr_action} onChange={e => setQcForm({...qcForm, ncr_action: e.target.value})} placeholder="Tindakan perbaikan yang diminta..." className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1">Link Bukti Visual (Google Drive/Imgur)</label><input type="url" value={qcForm.evidence_url} onChange={e => setQcForm({...qcForm, evidence_url: e.target.value})} placeholder="https://..." className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" /></div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Upload Bukti Visual (Foto Lapangan)</label>
+                <div className="flex items-center gap-3">
+                  <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
+                    <UploadCloud size={16} /> Pilih File Foto
+                    <input type="file" accept="image/*" onChange={(e) => setQcFile(e.target.files[0])} className="hidden" />
+                  </label>
+                  <span className="text-xs text-slate-500 truncate max-w-[200px]">
+                    {qcFile ? qcFile.name : 'Belum ada file dipilih'}
+                  </span>
+                </div>
+              </div>
               
-              <div className="flex justify-end gap-3 pt-4 border-t"><button type="button" onClick={() => setIsQcModalOpen(false)} className="px-4 py-2 text-sm font-bold border rounded-lg hover:bg-slate-50">Batal</button><button type="submit" disabled={isSaving} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 flex items-center gap-2">{isSaving ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} Simpan</button></div>
+              <div className="flex justify-end gap-3 pt-4 border-t"><button type="button" onClick={() => setIsQcModalOpen(false)} className="px-4 py-2 text-sm font-bold border rounded-lg hover:bg-slate-50">Batal</button><button type="submit" disabled={isSaving || isUploading} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:bg-blue-400">
+                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin"/> Mengunggah...</> : <><Save size={16}/> Simpan</>}
+                </button></div>
             </form>
           </div>
         </div>
@@ -262,3 +308,4 @@ export default function QhsePage() {
     </div>
   );
 }
+
