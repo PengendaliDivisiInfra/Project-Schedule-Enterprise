@@ -1,32 +1,34 @@
 # Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** ?? Under Development (V20 - Sprint 1: Authentication & RBAC)
+**Status Proyek:** 🟡 Under Development (V21 - Sprint 2: Multi-Tenancy & RBAC)
 **Terakhir Diperbarui:** 03 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Implemented Features)
-Aplikasi **InfraControl PRO** adalah platform ERP Konstruksi kelas Enterprise dengan otomasi finansial penuh dan pelaporan visual.
-- **Finance & Cost Control (V19):** Smart Delta Trigger, Hierarchical Cost Rollup, S-Curve Chart.
-- **Governance:** Approval Workflow dengan Rejection Reason.
-- **S-Curve:** Visualisasi kumulatif Plan vs Actual berbasis Window Function.
+Aplikasi **InfraControl PRO** sedang bertransisi dari aplikasi single-user menjadi SaaS Multi-Tenant.
+- **Sprint 1 (SELESAI):** Autentikasi PKCE (Google SSO), Middleware Zero Trust, Manajemen Profil User (`public.profiles`).
+- **Sprint 2 (BERJALAN):** Pembuatan struktur database Multi-Tenancy (`projects`, `project_members`), migrasi data lama ke proyek default.
+- **Modul Fungsional (V19):** Finance (Smart Delta, Approval, S-Curve), QHSE, Risk Register, CPM.
 
 ---
 
-## 2. ?? ROADMAP PRIORITAS (SEDANG BERJALAN)
+## 2. 🚀 ROADMAP PRIORITAS (SEDANG BERJALAN)
 
-### Fase 6: Autentikasi, Multi-Tenancy & RBAC (Enterprise SaaS)
-*Tujuan: Mengubah aplikasi dari single-user statis menjadi SaaS Multi-Tenant yang aman.*
+### Fase 7: Multi-Tenancy & RBAC (Sprint 2)
+*Tujuan: Memungkinkan PM mengelola banyak proyek dan mengundang anggota dengan hak akses terbatas.*
 **Konsep & Arsitektur:**
-1. **Segregation of Duties:** Role dibagi menjadi `Owner` (View), `PM` (Full Akses), `DD` (Cash Flow), `QC/HSE` (QHSE), `Site Admin` (Progress).
-2. **Invitation Flow:** Tidak ada registrasi publik. PM mengundang staf via email. Staf membuat password sendiri.
-3. **Data Isolation:** PM A tidak bisa melihat proyek PM B. (Menggunakan Row Level Security / RLS).
+1. **Tabel `projects`**: Menyimpan data proyek (Nama, Lokasi, Owner).
+2. **Tabel `project_members`**: Menghubungkan User dengan Proyek dan Role (PM, DD, QC, HSE, Site Admin).
+3. **Data Isolation**: Menggunakan `project_id` di semua tabel operasional (`wbs_tasks`, `cash_flows`, dll).
+4. **Row Level Security (RLS)**: Mencegah PM A melihat data PM B.
 
-**Rencana Eksekusi Sprint:**
-*   **[SEDANG BERJALAN] Sprint 1:** Setup Supabase Auth, pembuatan Tabel `profiles`, pembuatan Halaman `/login`, dan fungsi Logout.
-*   **Sprint 2:** Migrasi data lama ke dalam tabel `projects`. Penambahan kolom `project_id` ke seluruh tabel operasional.
-*   **Sprint 3:** Implementasi RLS (Data Isolation), Sidebar Dinamis (Hide menu by role), dan Fitur Invite Member via Email.
+**Langkah Eksekusi Tersisa:**
+*   **[SEDANG BERJALAN]** Membuat UI Project Switcher di Sidebar (Dropdown untuk berpindah proyek).
+*   Membuat Halaman `/projects` untuk melihat daftar proyek dan membuat proyek baru.
+*   Membuat Halaman `/settings/team` untuk mengundang anggota (Invite via Email).
+*   Menerapkan Aturan RLS (Row Level Security) di Supabase untuk tabel operasional.
 
 ---
 
@@ -35,7 +37,7 @@ Aplikasi **InfraControl PRO** adalah platform ERP Konstruksi kelas Enterprise de
 - **Deploy:** `git push origin main` (Otomatis via Vercel).
 - **Catatan Penting:**
   - **JANGAN** menambahkan `UPDATE` manual pada tabel `wbs_tasks.cost`. Biarkan Trigger yang bekerja.
-  - Pastikan Email Provider di Supabase Auth sudah diaktifkan (Email/Password).
+  - Pastikan setiap user baru yang login (via Google/Email) memiliki data di `auth.users` dan `profiles`.
   - Selalu jalankan `NOTIFY pgrst, 'reload schema';` setelah ada perubahan struktur database.
 
 ## 4. Akses & Kontak
