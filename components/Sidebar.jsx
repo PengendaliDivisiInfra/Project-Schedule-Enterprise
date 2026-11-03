@@ -34,6 +34,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
       { name: 'Material Requirement', path: '/materials', icon: Package, roles: ['owner', 'admin'] },
       { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Package, roles: ['owner', 'admin'] },
       { name: 'Assignments', path: '/assignments', icon: Database, roles: ['owner', 'admin'] },
+      { name: 'Cash Flow', path: '/finances', icon: Wallet, roles: ['owner', 'admin'] },
     ]},
     { group: 'SISTEM', items: [
       { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner'] },
@@ -102,5 +103,6 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     </aside>
   );
 }
+
 
 
