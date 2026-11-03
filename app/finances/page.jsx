@@ -2,19 +2,19 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud } from 'lucide-react';
+import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 export default function CashFlowPage() {
   const [flows, setFlows] = useState([]);
-  const [tasks, setTasks] = useState([]); // Untuk dropdown WBS
+  const [tasks, setTasks] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // State Upload File
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedWbsBudget, setSelectedWbsBudget] = useState(null);
 
   const [formData, setFormData] = useState({
     type: 'OUT', 
@@ -24,7 +24,8 @@ export default function CashFlowPage() {
     transaction_date: new Date().toISOString().split('T')[0],
     payment_method: 'Transfer',
     vendor_or_ref: '',
-    wbs_code: ''
+    wbs_code: '',
+    approval_status: 'Pending'
   });
 
   const showToast = (type, message) => {
@@ -34,12 +35,11 @@ export default function CashFlowPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    // Fetch transaksi
     const { data: flowData } = await supabase.from('cash_flows').select('*').order('transaction_date', { ascending: false });
     if (flowData) setFlows(flowData);
 
-    // Fetch WBS untuk dropdown
-    const { data: taskData } = await supabase.from('wbs_tasks').select('wbs_code, name').eq('summary', 'No').order('wbs_code');
+    // Fetch WBS beserta sisa anggarannya
+    const { data: taskData } = await supabase.from('view_wbs_budget_status').select('*').order('wbs_code');
     if (taskData) setTasks(taskData);
 
     setLoading(false);
@@ -47,43 +47,56 @@ export default function CashFlowPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Cek apakah upload file wajib (Kas Keluar + Tunai/Petty Cash)
-  const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
+  // Fungsi saat WBS dipilih di form
+  const handleWbsChange = (e) => {
+    const wbsCode = e.target.value;
+    setFormData({ ...formData, wbs_code: wbsCode });
+    
+    const wbsData = tasks.find(t => t.wbs_code === wbsCode);
+    setSelectedWbsBudget(wbsData ? wbsData.remaining_budget : null);
+  };
 
-  const handleAmountChange = (e) => {
-    // Hanya ambil angka
-    const rawValue = e.target.value.replace(/\D/g, '');
-    setFormData({ ...formData, amount: rawValue });
+  // Fungsi Approval
+  const handleApprove = async (id) => {
+    const { error } = await supabase.from('cash_flows').update({ approval_status: 'Approved' }).eq('id', id);
+    if (!error) {
+      showToast('success', 'Transaksi berhasil di-approve!');
+      fetchData();
+    }
+  };
+
+  const handleReject = async (id) => {
+    const { error } = await supabase.from('cash_flows').update({ approval_status: 'Rejected' }).eq('id', id);
+    if (!error) {
+      showToast('danger', 'Transaksi ditolak.');
+      fetchData();
+    }
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
     
-    // VALIDASI: Jika wajib upload tapi file kosong, batalkan
+    // Validasi wajib file
+    const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
     if (isUploadRequired && !file) {
       alert("Wajib mengunggah bukti nota/kuitansi untuk pembayaran Tunai atau Petty Cash!");
       return;
     }
     
     setIsSaving(true);
-    
     let finalAttachmentUrl = null;
 
     try {
-      // 1. Upload File jika ada
       if (file) {
         setIsUploading(true);
         const fileExt = file.name.split('.').pop();
         const fileName = `fin_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
-        
         const { error: uploadError } = await supabase.storage.from('evidence').upload(fileName, file);
         if (uploadError) throw new Error("Gagal upload nota: " + uploadError.message);
-
         const { data: urlData } = supabase.storage.from('evidence').getPublicUrl(fileName);
         finalAttachmentUrl = urlData.publicUrl;
       }
 
-      // 2. Simpan ke Database
       const payload = { 
         ...formData, 
         amount: Number(formData.amount),
@@ -94,9 +107,10 @@ export default function CashFlowPage() {
       if (error) throw error;
 
       setIsModalOpen(false);
-      showToast('success', 'Transaksi berhasil disimpan!');
-      setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '' });
+      showToast('success', 'Transaksi berhasil diajukan!');
+      setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '', approval_status: 'Pending' });
       setFile(null);
+      setSelectedWbsBudget(null);
       fetchData();
 
     } catch (error) {
@@ -107,19 +121,19 @@ export default function CashFlowPage() {
     }
   };
 
-  // Kalkulasi
-  const totalIn = flows.filter(f => f.type === 'IN').reduce((sum, f) => sum + Number(f.amount), 0);
-  const totalOut = flows.filter(f => f.type === 'OUT').reduce((sum, f) => sum + Number(f.amount), 0);
+  // Hanya transaksi APPROVED yang masuk kalkulasi total
+  const totalIn = flows.filter(f => f.type === 'IN' && f.approval_status === 'Approved').reduce((sum, f) => sum + Number(f.amount), 0);
+  const totalOut = flows.filter(f => f.type === 'OUT' && f.approval_status === 'Approved').reduce((sum, f) => sum + Number(f.amount), 0);
   const netCash = totalIn - totalOut;
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
+  const isOverbudget = selectedWbsBudget !== null && Number(formData.amount) > selectedWbsBudget;
 
   if (loading) return <LoadingSpinner text="Memuat Data Keuangan..." />;
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen relative">
       
-      {/* TOAST */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-lg shadow-xl text-white font-bold animate-fade-in-up flex items-center gap-2 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           <CheckCircle2 size={18} /> {toast.message}
@@ -128,31 +142,29 @@ export default function CashFlowPage() {
 
       <div className="max-w-6xl mx-auto space-y-6">
         
-        {/* HEADER */}
         <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200 flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <Wallet className="text-indigo-600" /> Cash Flow Management
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Pantau arus kas masuk (Termin/DP) dan pengeluaran (Material/Upah) proyek.</p>
+            <p className="text-sm text-slate-500 mt-1">Pantau arus kas aktual (Approved) dan pengajuan transaksi baru.</p>
           </div>
           <button onClick={() => setIsModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-colors flex items-center gap-2">
             <Plus size={16} /> Tambah Transaksi
           </button>
         </div>
 
-        {/* SUMMARY CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200 border-l-4 border-l-emerald-500 flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Kas Masuk</p>
+              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Kas Masuk (Approved)</p>
               <p className="text-xl font-bold text-emerald-600">{formatRp(totalIn)}</p>
             </div>
             <ArrowDownCircle className="text-emerald-500 opacity-50" size={40} />
           </div>
           <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200 border-l-4 border-l-red-500 flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Kas Keluar</p>
+              <p className="text-xs font-bold text-slate-500 uppercase mb-1">Total Kas Keluar (Approved)</p>
               <p className="text-xl font-bold text-red-600">{formatRp(totalOut)}</p>
             </div>
             <ArrowUpCircle className="text-red-500 opacity-50" size={40} />
@@ -166,46 +178,49 @@ export default function CashFlowPage() {
           </div>
         </div>
 
-        {/* TABEL TRANSAKSI */}
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
                 <tr>
-                  <th className="p-3 w-28">Tanggal</th>
-                  <th className="p-3 w-24 text-center">Tipe</th>
+                  <th className="p-3 w-24">Tanggal</th>
+                  <th className="p-3 w-20 text-center">Tipe</th>
                   <th className="p-3 w-32">Kategori</th>
-                  <th className="p-3 w-24">WBS</th>
-                  <th className="p-3">Vendor / Keterangan</th>
-                  <th className="p-3 w-32">Metode</th>
-                  <th className="p-3 w-36 text-right">Nominal (Rp)</th>
-                  <th className="p-3 w-16 text-center">Bukti</th>
+                  <th className="p-3 w-20">WBS</th>
+                  <th className="p-3 w-24 text-center">Status</th>
+                  <th className="p-3 text-right">Nominal (Rp)</th>
+                  <th className="p-3 text-center w-28">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {flows.length === 0 && (
-                  <tr><td colSpan={8} className="p-10 text-center text-slate-500 italic">Belum ada data transaksi keuangan.</td></tr>
+                  <tr><td colSpan={7} className="p-10 text-center text-slate-500 italic">Belum ada data transaksi.</td></tr>
                 )}
                 {flows.map((f) => (
                   <tr key={f.id} className="hover:bg-slate-50">
-                    <td className="p-3 text-slate-600 font-medium whitespace-nowrap">{new Date(f.transaction_date).toLocaleDateString('id-ID')}</td>
+                    <td className="p-3 text-slate-600 text-xs">{new Date(f.transaction_date).toLocaleDateString('id-ID')}</td>
                     <td className="p-3 text-center">
-                      <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${
-                        f.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
-                      }`}>{f.type === 'IN' ? 'MASUK' : 'KELUAR'}</span>
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${f.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                        {f.type === 'IN' ? 'MASUK' : 'KELUAR'}
+                      </span>
                     </td>
-                    <td className="p-3 font-semibold text-slate-700">{f.category}</td>
-                    <td className="p-3 font-mono text-xs">{f.wbs_code || '-'}</td>
-                    <td className="p-3 text-slate-600 truncate max-w-[150px]" title={f.vendor_or_ref || f.description}>
-                      {f.vendor_or_ref ? <strong>{f.vendor_or_ref}</strong> : f.description || '-'}
+                    <td className="p-3 text-xs font-semibold text-slate-700">{f.category}</td>
+                    <td className="p-3 font-mono text-[10px]">{f.wbs_code || '-'}</td>
+                    <td className="p-3 text-center">
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
+                        f.approval_status === 'Approved' ? 'bg-green-100 text-green-700' : 
+                        f.approval_status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                      }`}>{f.approval_status}</span>
                     </td>
-                    <td className="p-3 text-xs">{f.payment_method || 'Transfer'}</td>
                     <td className={`p-3 text-right font-bold ${f.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}`}>
                       {f.type === 'IN' ? '+' : '-'} {formatRp(f.amount)}
                     </td>
                     <td className="p-3 text-center">
-                      {f.attachment_url ? (
-                        <a href={f.attachment_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-xs font-bold">Lihat</a>
+                      {f.approval_status === 'Pending' ? (
+                        <div className="flex gap-2 justify-center">
+                          <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title="Approve"><ShieldCheck size={14}/></button>
+                          <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
+                        </div>
                       ) : '-'}
                     </td>
                   </tr>
@@ -221,7 +236,7 @@ export default function CashFlowPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-scale-in">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Wallet className="text-indigo-600"/> Tambah Transaksi Keuangan</h2>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Wallet className="text-indigo-600"/> Ajukan Transaksi</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20}/></button>
             </div>
             <form onSubmit={handleSave} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
@@ -253,10 +268,13 @@ export default function CashFlowPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Relasi WBS (Budget Link)</label>
-                  <select value={formData.wbs_code} onChange={e => setFormData({...formData, wbs_code: e.target.value})} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                  <select value={formData.wbs_code} onChange={handleWbsChange} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                     <option value="">-- Tanpa Relasi WBS --</option>
                     {tasks.map(t => <option key={t.wbs_code} value={t.wbs_code}>[{t.wbs_code}] {t.name}</option>)}
                   </select>
+                  {selectedWbsBudget !== null && (
+                    <p className="text-[10px] mt-1 text-slate-500">Sisa Anggaran WBS ini: <strong className="text-emerald-600">{formatRp(selectedWbsBudget)}</strong></p>
+                  )}
                 </div>
               </div>
 
@@ -280,15 +298,11 @@ export default function CashFlowPage() {
                 <label className="block text-xs font-bold text-slate-600 mb-1">Nominal (Rp)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Rp</span>
-                  <input 
-                    required 
-                    type="text" 
-                    value={formData.amount ? Number(formData.amount).toLocaleString('id-ID') : ''} 
-                    onChange={handleAmountChange} 
-                    className="w-full border border-slate-300 p-2 pl-10 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-lg" 
-                    placeholder="0"
-                  />
+                  <input required type="text" value={formData.amount ? Number(formData.amount).toLocaleString('id-ID') : ''} onChange={(e) => { const rawValue = e.target.value.replace(/\D/g, ''); setFormData({ ...formData, amount: rawValue }); }} className={`w-full border p-2 pl-10 rounded-lg text-sm focus:ring-2 outline-none font-bold text-lg ${isOverbudget ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-500' : 'border-slate-300 focus:ring-indigo-500'}`} placeholder="0" />
                 </div>
+                {isOverbudget && (
+                  <p className="text-xs text-red-600 font-bold mt-1 flex items-center gap-1"><AlertTriangle size={12}/> Nominal melebihi sisa anggaran WBS!</p>
+                )}
               </div>
 
               <div>
@@ -297,22 +311,20 @@ export default function CashFlowPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Upload Bukti Transaksi (Nota/Kuitansi) {isUploadRequired && <span className="text-red-500">*</span>}</label>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Upload Bukti Transaksi (Nota/Kuitansi) {(formData.type === 'OUT' && (formData.payment_method === 'Tunai' || formData.payment_method === 'Petty Cash')) && <span className="text-red-500">*</span>}</label>
                 <div className="flex items-center gap-3">
-                  <label className={`cursor-pointer border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${isUploadRequired && !file ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'}`}>
+                  <label className={`cursor-pointer border px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 ${(formData.type === 'OUT' && (formData.payment_method === 'Tunai' || formData.payment_method === 'Petty Cash')) && !file ? 'bg-red-50 border-red-300 text-red-600 hover:bg-red-100' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-700'}`}>
                     <UploadCloud size={16} /> Pilih File
                     <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files[0])} className="hidden" />
                   </label>
-                  <span className="text-xs text-slate-500 truncate max-w-[200px]">
-                    {file ? file.name : (isUploadRequired ? 'Wajib diisi!' : 'Belum ada file (Opsional)')}
-                  </span>
+                  <span className="text-xs text-slate-500 truncate max-w-[200px]">{file ? file.name : (formData.type === 'OUT' && (formData.payment_method === 'Tunai' || formData.payment_method === 'Petty Cash') ? 'Wajib diisi!' : 'Belum ada file (Opsional)')}</span>
                 </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
                 <button type="submit" disabled={isSaving || isUploading} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${(isSaving || isUploading) ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : <><Save size={16}/> Simpan Transaksi</>}
+                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : <><Save size={16}/> Ajukan Transaksi</>}
                 </button>
               </div>
             </form>
@@ -322,4 +334,3 @@ export default function CashFlowPage() {
     </div>
   );
 }
-
