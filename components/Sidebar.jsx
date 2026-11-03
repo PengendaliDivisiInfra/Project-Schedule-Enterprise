@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat
+  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat, Wallet
 } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
@@ -103,6 +103,3 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     </aside>
   );
 }
-
-
-
