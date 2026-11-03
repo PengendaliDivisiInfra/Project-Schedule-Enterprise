@@ -1,9 +1,13 @@
 'use client';
 import { Menu, Search, Bell, ChevronDown, UserCircle } from 'lucide-react';
+import { useProject } from '../context/ProjectContext';
 import { useState, useEffect } from 'react';
+import { useProject } from '../context/ProjectContext';
 import { supabase } from '../lib/supabase';
 
+import { useProject } from '../context/ProjectContext';
 export default function Header({ toggleSidebar, currentUser }) {
+  const { activeProjectId } = useProject();
   const [showProfile, setShowProfile] = useState(false);
   const [projectName, setProjectName] = useState('Memuat Proyek...');
 
