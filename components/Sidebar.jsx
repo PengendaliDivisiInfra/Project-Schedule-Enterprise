@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight
+  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat
 } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
@@ -21,6 +21,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
       { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin'] },
       { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pelaksana'] },
       { name: 'Risk Register', path: '/risks', icon: ShieldAlert, roles: ['owner', 'admin'] },
+      { name: 'QHSE (Mutu & K3)', path: '/qhse', icon: HardHat, roles: ['owner', 'admin', 'pelaksana'] },
     ]},
     { group: 'PELAPORAN', items: [
       { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin'] },
@@ -101,4 +102,5 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     </aside>
   );
 }
+
 
