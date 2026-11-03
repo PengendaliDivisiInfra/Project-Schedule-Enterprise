@@ -1,5 +1,5 @@
 ﻿'use client';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
 import { updateProjectScheduleSecure } from '../../../lib/scheduler';
@@ -513,9 +513,16 @@ export default function MasterReportPage() {
         isOpen={isPrintModalOpen} 
         onClose={() => setIsPrintModalOpen(false)} 
         onPrint={(settings) => {
+          // 1. Simpan setting terbaru
           setPrintSettings(settings);
+          
+          // 2. Tutup Modal
           setIsPrintModalOpen(false);
-          printSettingsRef.current = 'PRINT_NOW'; // Set flag agar useEffect memicu print
+          
+          // 3. Beri jeda 800ms agar React selesai merender ulang tabel dan modal benar-benar hilang
+          setTimeout(() => {
+            window.print();
+          }, 800); 
         }} 
       />
 
@@ -531,6 +538,7 @@ export default function MasterReportPage() {
     </div>
   );
 }
+
 
 
 
