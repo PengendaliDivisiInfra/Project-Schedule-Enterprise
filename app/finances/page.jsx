@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -54,7 +54,7 @@ export default function CashFlowPage() {
     setFormData({ ...formData, wbs_code: wbsCode });
     
     const wbsData = tasks.find(t => t.wbs_code === wbsCode);
-    setSelectedWbsBudget(wbsData ? wbsData.remaining_budget : null);
+    setSelectedWbsBudget(wbsData ? (wbsData.cost - (wbsData.realisasi_cost || 0)) : null);
   };
 
   // Fungsi Approval
