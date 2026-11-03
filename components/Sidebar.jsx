@@ -39,7 +39,9 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
       { name: 'S-Curve Chart', path: '/s-curve', icon: TrendingUp, roles: ['owner', 'admin'] },
     ]},
     { group: 'SISTEM', items: [
-      { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner'] },
+      { name: 'Pengaturan Proyek', path: '/settings/project', icon: FileText, roles: ['owner', 'admin', 'pm'] },
+    { name: 'Manajemen Tim', path: '/settings/team', icon: Users, roles: ['owner', 'admin', 'pm'] },
+    { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner'] },
       { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, roles: ['owner', 'admin'] },
       { name: 'Audit Logs', path: '/logs', icon: ShieldCheck, roles: ['owner'] },
     ]}
