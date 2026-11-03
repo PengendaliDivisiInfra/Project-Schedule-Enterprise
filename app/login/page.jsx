@@ -22,7 +22,7 @@ export default function LoginPage() {
       setErrorMsg(error.message);
       setLoading(false);
     } else {
-      router.push('/'); // Redirect ke dashboard
+      router.push('/'); 
       router.refresh();
     }
   };
@@ -72,7 +72,7 @@ export default function LoginPage() {
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all" 
-                placeholder="••••••••" 
+                placeholder="********" 
               />
             </div>
           </div>
