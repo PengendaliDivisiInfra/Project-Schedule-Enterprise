@@ -52,3 +52,12 @@ aside {
   to { transform: translateX(0); opacity: 1; }
 }
 .animate-slide-in-right { animation: slideInRight 0.3s ease-out forwards; }
+
+/* ENTERPRISE SIDEBAR SCROLLBAR (Sembunyikan scrollbar bawaan) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

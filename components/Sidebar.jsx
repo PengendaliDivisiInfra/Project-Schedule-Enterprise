@@ -1,11 +1,11 @@
 ﻿'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {  
+import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ChevronLeft, ChevronRight, Layers , Printer // Tambah Layers
-, ShieldAlert } from 'lucide-react';
+  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight
+} from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   const pathname = usePathname();
@@ -13,28 +13,28 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
 
   // Definisi Menu & RBAC Gate
   const menuItems = [
-    { group: 'Utama', items: [
+    { group: 'UTAMA', items: [
       { name: 'Dashboard S-Curve', path: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'pelaksana'] },
       { name: 'Gantt Workspace', path: '/gantt', icon: GanttChartSquare, roles: ['owner', 'admin'] },
     ]},
-    { group: 'Perencanaan', items: [
+    { group: 'PERENCANAAN', items: [
       { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin'] },
       { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pelaksana'] },
       { name: 'Risk Register', path: '/risks', icon: ShieldAlert, roles: ['owner', 'admin'] },
     ]},
-    { group: 'Pelaporan', items: [
+    { group: 'PELAPORAN', items: [
       { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin'] },
       { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin'] },
-      { name: 'Master Project Report', path: '/reports/master', icon: Printer, roles: ['owner', 'admin'] },
+      { name: 'Master Project Report', path: '/reports/master', icon: FileText, roles: ['owner', 'admin'] },
     ]},
-    { group: 'Manajemen Biaya', items: [
+    { group: 'MANAJEMEN BIAYA', items: [
       { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin'] },
       { name: 'Resources', path: '/resources', icon: Users, roles: ['owner', 'admin'] },
-      { name: 'Material Requirement', path: '/materials', icon: Layers, roles: ['owner', 'admin'] }, // MENU BARU
+      { name: 'Material Requirement', path: '/materials', icon: Package, roles: ['owner', 'admin'] },
       { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Package, roles: ['owner', 'admin'] },
       { name: 'Assignments', path: '/assignments', icon: Database, roles: ['owner', 'admin'] },
     ]},
-    { group: 'Sistem', items: [
+    { group: 'SISTEM', items: [
       { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner'] },
       { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, roles: ['owner', 'admin'] },
       { name: 'Audit Logs', path: '/logs', icon: ShieldCheck, roles: ['owner'] },
@@ -42,11 +42,17 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   ];
 
   return (
-    <aside className={`print:hidden bg-[#0F172A] text-slate-300 flex flex-col shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
-      {/* Brand Logo */}
+    <aside className={`bg-[#0F172A] text-slate-300 flex flex-col h-screen shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
+      
+      {/* 1. BRAND LOGO (Fixed di Atas) */}
       <div className="h-[64px] flex items-center px-4 border-b border-slate-800 shrink-0">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 overflow-hidden p-0.5">
-          <img src="/logo-infrastruktur.jpeg" alt="InfraControl Logo" className="w-full h-full object-cover rounded-lg" />
+        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0">
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 24C4 24 10 10 16 10C22 10 28 24 28 24" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M16 10V24" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/>
+            <path d="M8 24L24 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3"/>
+            <path d="M24 24L8 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="3 3"/>
+          </svg>
         </div>
         {!isCollapsed && (
           <div className="ml-3 flex items-center animate-fade-in">
@@ -56,8 +62,8 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
         )}
       </div>
 
-      {/* Menu Items */}
-      <div className="flex-1 overflow-y-auto py-4 px-3 space-y-6 custom-scrollbar">
+      {/* 2. MENU ITEMS (Scrollable & Scrollbar Disembunyikan) */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-6 no-scrollbar">
         {menuItems.map((group, idx) => {
           const visibleItems = group.items.filter(item => item.roles.includes(role));
           if (visibleItems.length === 0) return null;
@@ -90,12 +96,13 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
         })}
       </div>
 
-      {/* Toggle Button (Mini Mode) */}
+      {/* 3. FOOTER (Fixed di Bawah) */}
       <div className="p-3 border-t border-slate-800 shrink-0">
         <button onClick={toggleSidebar} className="w-full flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors text-slate-400 hover:text-white">
           {isCollapsed ? <ChevronRight size={18} /> : <div className="flex items-center gap-2"><ChevronLeft size={18} /><span className="text-xs font-bold">Collapse Sidebar</span></div>}
         </button>
       </div>
+
     </aside>
   );
 }
