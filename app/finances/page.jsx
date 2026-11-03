@@ -285,7 +285,7 @@ export default function CashFlowPage() {
                   <label className="block text-xs font-bold text-slate-600 mb-1">Relasi WBS (Budget Link)</label>
                   <select value={tasks.find(t => t.wbs_code === formData.wbs_code)?.name || formData.wbs_code} onChange={handleWbsChange} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                     <option value="">-- Tanpa Relasi WBS --</option>
-                    {tasks.map(t => <option key={tasks.find(t => t.wbs_code === t.wbs_code)?.name || t.wbs_code} value={tasks.find(t => t.wbs_code === t.wbs_code)?.name || t.wbs_code}>[{tasks.find(t => t.wbs_code === t.wbs_code)?.name || t.wbs_code}] {t.name}</option>)}
+                    {tasks.map(t => <option key={t.wbs_code} value={t.wbs_code}>[{t.wbs_code}] {t.name}</option>)}
                   </select>
                   {selectedWbsBudget !== null && (
                     <p className="text-[10px] mt-1 text-slate-500">Sisa Anggaran WBS ini: <strong className="text-emerald-600">{formatRp(selectedWbsBudget)}</strong></p>
