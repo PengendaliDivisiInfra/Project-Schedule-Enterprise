@@ -60,7 +60,7 @@ export default function ProjectsPage() {
   };
 
   const handleSelectProject = (proj) => {
-    selectProject(proj.id);
+    selectProject(proj.id, proj.role);
     router.push('/tasks');
   };
 
