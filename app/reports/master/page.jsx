@@ -237,7 +237,7 @@ export default function MasterReportPage() {
                         {printSettings.columns.duration && <th>DUR</th>}
                         {printSettings.columns.pred && <th>PRED</th>}
                         {printSettings.columns.slack && <th>FLOAT</th>}
-                        {printSettings.columns.progress && <th>%</th>}
+                        {printSettings.columns.progress && <th>% COMPLETE</th>}
                         {printSettings.columns.target && <th>TARGET</th>}
                         {printSettings.columns.sisa && <th>SISA</th>}
                         {printSettings.columns.tgtHr && <th>T/HR</th>}
@@ -337,7 +337,7 @@ export default function MasterReportPage() {
                 <thead>
                     <tr>
                         <th>WBS</th><th>TASK NAME</th><th>RESOURCE / CREW</th>
-                        <th>VOL</th><th>DUR</th><th>KOEF</th><th>TOTAL TR</th><th>KEBUTUHAN HARIAN</th>
+                        <th>VOL</th><th>DUR</th><th>KOEF</th><th>TOTAL TR</th><th>KEBUTUHAN / HARI</th>
                     </tr>
                 </thead>
                 <tbody>
