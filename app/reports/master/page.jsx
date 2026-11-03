@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../../../lib/supabase';
@@ -47,7 +47,7 @@ export default function MasterReportPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data: projData } = await supabase.from('projects').select('*').limit(1).single();
+    const { data: projData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
     if (projData) setProject(projData);
 
     let workingDays = [1,2,3,4,5];
@@ -190,7 +190,7 @@ export default function MasterReportPage() {
                     <td className={`card ${health.varian < 0 ? 'bg-red' : 'bg-emerald'}`}>
                         <p>STATUS VARIAN</p>
                         <h3>
-                            {health.varian < 0 ? '▼' : '▲'}
+                            {health.varian < 0 ? '?' : '?'}
                             {health.varian > 0 ? '+' : ''}{health.varian.toFixed(2)}%
                         </h3>
                     </td>

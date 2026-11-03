@@ -235,7 +235,7 @@ export default function TasksPage() {
 
     } else {
       const newTaskData = { ...saveData, wbs_code: '99.' + Math.floor(Math.random() * 100), summary: 'No' };
-      const { data: insertedData, error } = await supabase.from('wbs_tasks').insert([newTaskData]).select().single();
+      const { data: insertedData, error } = await supabase.from('wbs_tasks').insert([newTaskData]).select().maybeSingle();
 
       if (error) {
         showToast('Gagal: ' + error.message, 'error');

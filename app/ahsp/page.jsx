@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
@@ -122,7 +122,7 @@ export default function AhspPage() {
           unit: formAhsp.unit
         })
         .eq('id', editingAhsp.id)
-        .select().single();
+        .select().maybeSingle();
       error = res.error; data = res.data;
     } else {
       const res = await supabase.from('ahsp_templates')
@@ -133,7 +133,7 @@ export default function AhspPage() {
           total_direct_cost: 0,
           total_harga_ahsp: 0
         }])
-        .select().single();
+        .select().maybeSingle();
       error = res.error; data = res.data;
     }
 
@@ -487,7 +487,7 @@ export default function AhspPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in print-hidden">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
             <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h2 className="text-lg font-bold text-slate-800">{editingAhsp ? '✏️ Edit Master AHSP' : '📁 Buat Master AHSP Baru'}</h2>
+              <h2 className="text-lg font-bold text-slate-800">{editingAhsp ? '?? Edit Master AHSP' : '?? Buat Master AHSP Baru'}</h2>
               <button onClick={() => setIsAhspModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
             </div>
             <form onSubmit={handleSaveNewAhsp} className="p-6 space-y-4">
