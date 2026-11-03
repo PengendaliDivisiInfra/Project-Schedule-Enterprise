@@ -1,52 +1,59 @@
 # Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** 🟢 Production Ready (V22 - Multi-Tenancy, RBAC & Executive Dashboard)
-**Terakhir Diperbarui:** 03 November 2026
+**Status Proyek:** 🟢 Production Ready (V24 - Enterprise PMP & Reporting Engine)
+**Terakhir Diperbarui:** 04 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Implemented Features)
-Aplikasi **InfraControl PRO** kini telah bertransformasi menjadi **SaaS Multi-Tenant** (banyak perusahaan/proyek bisa menggunakan aplikasi ini secara terisolasi).
+Aplikasi **InfraControl PRO** kini telah memiliki modul pelaporan eksekutif (PMP) yang terintegrasi secara *real-time* dengan basis data proyek. Sistem telah lulus audit arsitektur data tanpa duplikasi (Double Sum).
 
-### Sprint 1: Autentikasi & Keamanan (SELESAI)
-- PKCE Flow via Google SSO & Email/Password.
-- Middleware Next.js (Zero Trust) memblokir rute ilegal.
-- Tabel `profiles` tersinkronisasi otomatis via Trigger.
-
-### Sprint 2: Multi-Tenancy & RBAC (SELESAI)
-- **Project Switcher:** Dropdown di Header untuk berpindah proyek.
-- **Isolasi Data (RLS):** PM A tidak bisa melihat data PM B.
-- **Manajemen Tim & Undangan:** PM bisa mengundang staf (DD, QC, HSE, Site Admin) via email.
-- **UI Read-Only (RBAC):** Staf non-PM tidak bisa mengedit WBS atau menyetujui transaksi.
-- **Pengaturan Proyek (Standar PUPR):** Input data Kontrak, SPMK, Addendum, Owner, Konsultan, dll.
-
-### Sprint 3: Executive Dashboard (SELESAI)
-- **Embedded S-Curve:** Grafik Rencana vs Aktual langsung di halaman utama.
-- **Metrik Dinamis:** Kalkulasi Otomatis Total Anggaran (BAC), Progress %, SPI, dan CPI per proyek aktif.
+### Fitur Utama yang Sudah Selesai (V24 Updates):
+- **Database Optimization (SQL Views):**
+  - `v_resource_plan`: Menggunakan `STRING_AGG` dan filter `HAVING > 0`. Berhasil menggabungkan baris resource/crew menjadi satu baris per WBS (Single-row WBS) dan mengeliminasi baris kosong (Rp 0).
+  - `v_material_plan`: Memisahkan agregasi AHSP ke dalam CTE (Common Table Expression) untuk mencegah *Double Join Sum*. Kalkulasi Waste 5% dan Estimasi Biaya akurat.
+- **Sinkronisasi CPM ke Database:**
+  - Fungsi `syncScheduleToDB` pada modul Tasks memastikan setiap kalkulasi CPM (ES, EF, LS, LF, Total Float, Critical Path) tersimpan otomatis ke tabel `wbs_tasks`. Data di Master Report kini 100% sinkron dengan input lapangan.
+- **Executive Reporting UI (Tabbed Interface):**
+  - Halaman `/reports/master` dirombak menjadi **Tabbed Navigation** (Time Schedule, EVM Matrix, Resource Plan, Material Plan) untuk mencegah *scroll fatigue*.
+  - Header laporan (Target Rencana, Aktual Realisasi, Status Varian) kini bersifat **Dinamis** (dihitung dari bobot biaya WBS).
+  - **Early Warning System:** Kolom Varian pada EVM dilengkapi dengan *Status Badges* (Oranye untuk Warning, Merah + Ikon Alert untuk Critical Delay).
+- **Print Setup & Gantt Chart:**
+  - Modal Print Setup untuk memilih Orientasi (A3/A4), Ukuran Kertas, Filter Tanggal (Khusus Gantt), dan Toggle Tanda Tangan.
+  - Render Gantt Chart Matriks (Bar Chart berwarna) di layar dan *Print Preview*.
 
 ---
 
-## 2. 🚀 ROADMAP PRIORITAS (Next Steps)
+## 2. Gap Analysis (Sisa Pekerjaan / Next Steps)
+Berdasarkan audit PMO terakhir, sistem sudah sangat matang, namun tersisa beberapa perbaikan minor pada *Printing Engine* yang harus dieksekusi sebelum rilis final:
 
-### Fase 8: Integrasi Cetak Laporan (PMP) & Audit Logs
-*Tujuan: Menyempurnakan output dokumen dan keamanan tingkat lanjut.*
-**Langkah Eksekusi:**
-1.  **Sinkronisasi Laporan PMP:** Pastikan data dari halaman "Pengaturan Proyek" (PUPR) otomatis masuk ke kop surat/dokumen saat mencetak *Master Project Report*.
-2.  **Audit Logs (Pilar 5):** Membuat sistem pencatatan otomatis (siapa, kapan, mengubah apa) untuk keperluan audit keuangan proyek.
-3.  **Dashboard Modul Lain:** Menampilkan ringkasan QHSE (Jumlah Temuan) dan Risiko di halaman Dashboard.
+1.  **Header Tabel Berulang:** Memastikan elemen `<thead>` otomatis tercetak ulang di setiap halaman baru saat diekspor ke PDF.
+2.  **Paksa Warna Cetak:** Memastikan Gantt Chart berwarna tanpa bergantung pada centang manual "Grafis latar belakang" di browser user.
+3.  **Lock A3 Landscape:** Memaksa orientasi kertas menjadi A3 Landscape secara mutlak saat tombol Cetak ditekan.
+4.  **Authentication & RBAC:** Menerapkan Login/Register (Supabase Auth) dan pembatasan hak akses (Owner, PM, Site Admin) pada level UI dan RLS (Row Level Security).
+5.  **Audit Logs:** Mencatat setiap perubahan data (siapa, kapan, apa yang diubah).
 
 ---
 
-## 3. Panduan Developer Selanjutnya
+## 3. 🚀 ROADMAP PRIORITAS (Next Steps)
+
+### Fase 10: Finalisasi Print CSS & Autentikasi
+- [ ] **Fix Print CSS:** Eksekusi *patch* untuk `@media print` (A3 Landscape, `print-color-adjust: exact`, dan `display: table-header-group`).
+- [ ] **Auth & RBAC:** Implementasi `supabase.auth`, halaman Login/Register, dan Middleware keamanan Next.js.
+- [ ] **Audit Logs:** Pembuatan tabel `audit_logs` dan trigger PostgreSQL.
+
+---
+
+## 4. Panduan Developer Selanjutnya
 - **Build:** `npm run build`
 - **Deploy:** `git push origin main` (Otomatis via Vercel).
 - **Catatan Penting:**
-  - **JANGAN** mematikan RLS (Row Level Security) di tabel manapun pada tahap production.
-  - Gunakan `useProject()` Context untuk mengambil `activeProjectId` di setiap query data operasional baru.
-  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` setelah ada perubahan database.
+  - **JANGAN** mengubah logika `GROUP BY` pada View SQL tanpa melakukan *Drop View* terlebih dahulu.
+  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` setelah mengubah View/Trigger.
+  - Pastikan `activeProjectId` selalu terkirim di setiap query data operasional.
 
-## 4. Akses & Kontak
+## 5. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
 - **Supabase Dashboard:** [Link Supabase]
 - **Repository GitHub:** [Link GitHub]
