@@ -2,12 +2,16 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { updateProjectScheduleSecure, addWorkingDays, countWorkingDays } from '../../lib/scheduler';
+import { useProject } from '../../context/ProjectContext';
 import { 
   ListTree, Plus, Edit, Trash2, X, Settings, Pin, CheckCircle, XCircle, 
   TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder, FileText
 } from 'lucide-react';
 
 export default function TasksPage() {
+  const { userRole } = useProject();
+  // Tentukan siapa yang boleh edit (Owner dan PM)
+  const canEdit = userRole === 'pm' || userRole === 'owner'; 
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
@@ -273,9 +277,11 @@ export default function TasksPage() {
               {showCPM ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               {showCPM ? 'Sembunyikan Matriks CPM' : 'Tampilkan Matriks CPM'}
             </button>
-            <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md">
-              <Plus className="w-4 h-4" /> Tambah Task
-            </button>
+            {canEdit && (
+              <button onClick={() => openModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md">
+                <Plus className="w-4 h-4" /> Tambah Task
+              </button>
+            )}
           </div>
         </div>
 
@@ -374,7 +380,8 @@ export default function TasksPage() {
                           type="number" 
                           defaultValue={t.actual_vol.toFixed(2)}
                           onBlur={(e) => handleVolumeUpdate(t.id, e.target.value)}
-                          className="w-20 px-1 py-1 text-center font-mono font-bold border border-slate-300 rounded focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 bg-white"
+                          disabled={!canEdit}
+                          className={`w-20 px-1 py-1 text-center font-mono font-bold border border-slate-300 rounded focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 ${!canEdit ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`}
                           step="0.01"
                         />
                       )}
@@ -409,10 +416,14 @@ export default function TasksPage() {
                     </td>
 
                     <td className="p-2 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => openModal(t)} className="text-blue-600 p-1 bg-blue-50 rounded"><Edit className="w-3 h-3" /></button>
-                        <button onClick={() => handleDelete(t.id)} className="text-red-600 p-1 bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
-                      </div>
+                      {canEdit ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => openModal(t)} className="text-blue-600 p-1 bg-blue-50 rounded"><Edit className="w-3 h-3" /></button>
+                          <button onClick={() => handleDelete(t.id)} className="text-red-600 p-1 bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic font-semibold">Read-Only</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -618,10 +629,10 @@ export default function TasksPage() {
                     <h3 className="font-bold text-blue-700 text-base flex items-center gap-2"><Info className="w-5 h-5"/> Fungsi Constraint</h3>
                     <p>Constraint = batasan waktu yang memaksa kapan task harus mulai/selesai.</p>
                     <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>ASAP</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Ikuti jadwal predecessor murni (Default).</li>
-                      <li><strong>SNET</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Tugas baru boleh mulai SETELAH tanggal X.</li>
-                      <li><strong>MSO</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Tugas HARUS mulai TEPAT tanggal X.</li>
-                      <li><strong>MFO</strong> ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â Tugas HARUS selesai TEPAT tanggal X.</li>
+                      <li><strong>ASAP</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ikuti jadwal predecessor murni (Default).</li>
+                      <li><strong>SNET</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Tugas baru boleh mulai SETELAH tanggal X.</li>
+                      <li><strong>MSO</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Tugas HARUS mulai TEPAT tanggal X.</li>
+                      <li><strong>MFO</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Tugas HARUS selesai TEPAT tanggal X.</li>
                     </ul>
                   </div>
                 )}
