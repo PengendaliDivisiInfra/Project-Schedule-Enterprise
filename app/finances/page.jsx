@@ -97,8 +97,12 @@ export default function CashFlowPage() {
         finalAttachmentUrl = urlData.publicUrl;
       }
 
+      // Tentukan status berdasarkan ketersediaan anggaran
+      const finalStatus = isOverbudget ? 'Pending Overbudget' : 'Pending';
+
       const payload = { 
         ...formData, 
+        approval_status: finalStatus, // Status otomatis di-escalate
         amount: Number(formData.amount),
         attachment_url: finalAttachmentUrl 
       };
@@ -209,7 +213,9 @@ export default function CashFlowPage() {
                     <td className="p-3 text-center">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
                         f.approval_status === 'Approved' ? 'bg-green-100 text-green-700' : 
-                        f.approval_status === 'Rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                        f.approval_status === 'Rejected' ? 'bg-red-100 text-red-700' : 
+                        f.approval_status === 'Pending Overbudget' ? 'bg-orange-100 text-orange-700 border border-orange-300' : 
+                        'bg-amber-100 text-amber-700'
                       }`}>{f.approval_status}</span>
                     </td>
                     <td className={`p-3 text-right font-bold ${f.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -323,8 +329,8 @@ export default function CashFlowPage() {
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
-                <button type="submit" disabled={isSaving || isUploading} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${(isSaving || isUploading) ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : <><Save size={16}/> Ajukan Transaksi</>}
+                <button type="submit" disabled={isSaving || isUploading} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${(isSaving || isUploading) ? 'bg-indigo-400 cursor-not-allowed' : isOverbudget ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : isOverbudget ? <><AlertTriangle size={16}/> Ajukan (Overbudget)</> : <><Save size={16}/> Ajukan Transaksi</>}
                 </button>
               </div>
             </form>
@@ -334,3 +340,4 @@ export default function CashFlowPage() {
     </div>
   );
 }
+
