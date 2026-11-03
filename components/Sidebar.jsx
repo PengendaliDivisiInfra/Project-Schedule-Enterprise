@@ -45,6 +45,11 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     ]}
   ];
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  };
+
   return (
     <aside className={`bg-[#0F172A] text-slate-300 flex flex-col h-screen shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
       
@@ -67,14 +72,24 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
           const visibleItems = group.items.filter(item => item.roles.includes(role));
           if (visibleItems.length === 0) return null;
 
-          return (
+          const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  };
+
+  return (
             <div key={idx}>
               {!isCollapsed && <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{group.group}</p>}
               <div className="space-y-1">
                 {visibleItems.map((item) => {
                   const isActive = pathname === item.path;
                   const Icon = item.icon;
-                  return (
+                  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  };
+
+  return (
                     <Link 
                       key={item.path} 
                       href={item.path}
