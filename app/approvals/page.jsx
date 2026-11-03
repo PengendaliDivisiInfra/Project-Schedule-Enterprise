@@ -2,12 +2,17 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { ShieldCheck, X, FileText, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, X, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 export default function ApprovalsPage() {
   const [pendingFlows, setPendingFlows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  // State untuk Rejection Modal
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectId, setRejectId] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const fetchPending = async () => {
     setLoading(true);
@@ -23,12 +28,22 @@ export default function ApprovalsPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleAction = async (id, status) => {
-    const { error } = await supabase.from('cash_flows').update({ approval_status: status }).eq('id', id);
+  const handleAction = async (id, status, reason = null) => {
+    const payload = { approval_status: status };
+    if (reason) payload.rejection_reason = reason;
+
+    const { error } = await supabase.from('cash_flows').update(payload).eq('id', id);
     if (!error) {
       showToast('success', `Transaksi berhasil di-${status}!`);
+      setIsRejectModalOpen(false);
+      setRejectReason('');
       fetchPending();
     }
+  };
+
+  const confirmReject = () => {
+    if (!rejectReason.trim()) return alert("Alasan penolakan wajib diisi!");
+    handleAction(rejectId, 'Rejected', rejectReason);
   };
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
@@ -77,7 +92,7 @@ export default function ApprovalsPage() {
                   <td className="p-3 text-center">
                     <div className="flex gap-2 justify-center">
                       <button onClick={() => handleAction(f.id, 'Approved')} className="bg-green-100 text-green-700 hover:bg-green-200 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1"><ShieldCheck size={14}/> Approve</button>
-                      <button onClick={() => handleAction(f.id, 'Rejected')} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1"><X size={14}/> Reject</button>
+                      <button onClick={() => { setRejectId(f.id); setIsRejectModalOpen(true); }} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded text-xs font-bold flex items-center gap-1"><X size={14}/> Reject</button>
                     </div>
                   </td>
                 </tr>
@@ -86,6 +101,36 @@ export default function ApprovalsPage() {
           </table>
         </div>
       </div>
+
+      {/* MODAL ALASAN PENOLAKAN */}
+      {isRejectModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-red-50">
+              <h2 className="text-lg font-bold text-red-700 flex items-center gap-2"><AlertTriangle size={18}/> Tolak Pengajuan</h2>
+              <button onClick={() => setIsRejectModalOpen(false)} className="text-slate-400 hover:text-slate-700"><X size={20}/></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">Silakan berikan alasan mengapa pengajuan kas ini ditolak agar tim lapangan dapat memperbaikinya.</p>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Alasan Penolakan <span className="text-red-500">*</span></label>
+                <textarea 
+                  required 
+                  rows="3" 
+                  value={rejectReason} 
+                  onChange={e => setRejectReason(e.target.value)} 
+                  placeholder="cth: Nota buram, volume tidak sesuai fisik, dll." 
+                  className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none" 
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button onClick={() => setIsRejectModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50">Batal</button>
+                <button onClick={confirmReject} className="px-6 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md">Tolak Transaksi</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
