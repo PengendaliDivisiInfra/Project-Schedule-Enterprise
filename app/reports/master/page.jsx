@@ -11,6 +11,8 @@ import PrintSetupModal from '../../../components/PrintSetupModal';
 export const dynamic = 'force-dynamic';
 
 export default function MasterReportPage() {
+  const { activeProjectId } = useProject();
+  const [projectInfo, setProjectInfo] = useState(null);
   const router = useRouter();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -57,7 +59,7 @@ export default function MasterReportPage() {
       if (projData.exceptions) exceptions = projData.exceptions;
     }
 
-    const { data: taskData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
+    const { data: taskData } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code');
     if (taskData) {
         const formattedTasks = taskData.map(t => ({ ...t, volume: Number(t.volume) || 0, duration: Number(t.duration) || 1 }));
         const cpmResult = updateProjectScheduleSecure(formattedTasks, workingDays, exceptions);
