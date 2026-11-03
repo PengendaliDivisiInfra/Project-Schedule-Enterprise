@@ -14,7 +14,15 @@ export const dynamic = 'force-dynamic';
 export default function MasterReportPage() {
   const { activeProjectId } = useProject();
   const [projectInfo, setProjectInfo] = useState(null);
-  const router = useRouter();
+  
+  useEffect(() => {
+    const fetchProjectInfo = async () => {
+      if (!activeProjectId) return;
+      const { data } = await supabase.from('projects').select('*').eq('id', activeProjectId).maybeSingle();
+      if (data) setProjectInfo(data);
+    };
+    fetchProjectInfo();
+  }, [activeProjectId]);const router = useRouter();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [ganttData, setGanttData] = useState([]);
