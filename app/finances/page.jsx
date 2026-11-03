@@ -15,6 +15,8 @@ export default function CashFlowPage() {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedWbsBudget, setSelectedWbsBudget] = useState(null);
+  const [activeTab, setActiveTab] = useState('ledger');
+  const [costControlData, setCostControlData] = useState([]);
 
   const [formData, setFormData] = useState({
     type: 'OUT', 
@@ -47,6 +49,22 @@ export default function CashFlowPage() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  useEffect(() => {
+    if (activeTab === 'cost_control') {
+      const fetchCostControl = async () => {
+        const { data, error } = await supabase
+          .from('v_cost_control_wbs')
+          .select('*')
+          .order('wbs_code', { ascending: true });
+        
+        if (!error && data) {
+          setCostControlData(data);
+        }
+      };
+      fetchCostControl();
+    }
+  }, [activeTab]);
 
   // Fungsi saat WBS dipilih di form
   const handleWbsChange = (e) => {
@@ -191,6 +209,17 @@ export default function CashFlowPage() {
           </div>
         </div>
 
+        {/* Navigasi Tab */}
+        <div className="flex space-x-6 mb-4 border-b border-slate-200 mt-6">
+          <button onClick={() => setActiveTab('ledger')} className={pb-3 font-medium transition-colors }>
+            Riwayat Transaksi (Ledger)
+          </button>
+          <button onClick={() => setActiveTab('cost_control')} className={pb-3 font-medium transition-colors }>
+            Kontrol Anggaran (Cost Control)
+          </button>
+        </div>
+
+        {activeTab === 'ledger' && (
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -244,6 +273,49 @@ export default function CashFlowPage() {
             </table>
           </div>
         </div>
+        )}
+
+        {activeTab === 'cost_control' && (
+          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="p-4 font-semibold">Kode WBS</th>
+                    <th className="p-4 font-semibold">Nama Pekerjaan</th>
+                    <th className="p-4 font-semibold text-right">Pagu RAP (Rp)</th>
+                    <th className="p-4 font-semibold text-right">Terpakai (Rp)</th>
+                    <th className="p-4 font-semibold text-right">Sisa Plafon (Rp)</th>
+                    <th className="p-4 font-semibold text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {costControlData.map((item, index) => (
+                    <tr key={index} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-4 text-sm font-mono text-slate-600">{item.wbs_code}</td>
+                      <td className="p-4 text-sm font-medium text-slate-800">{item.task_name}</td>
+                      <td className="p-4 text-sm text-right text-slate-600">{formatRp(item.pagu_anggaran_rap)}</td>
+                      <td className="p-4 text-sm text-right text-rose-600 font-medium">{formatRp(item.total_pengeluaran_aktual)}</td>
+                      <td className={p-4 text-sm text-right font-bold }>
+                        {formatRp(item.sisa_anggaran_plafon)}
+                      </td>
+                      <td className="p-4 text-center">
+                        {item.sisa_anggaran_plafon < 0 ? (
+                          <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold">?? Overbudget</span>
+                        ) : (
+                          <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">?? Aman</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {costControlData.length === 0 && (
+                    <tr><td colSpan="6" className="p-8 text-center text-slate-500">Belum ada data kontrol anggaran.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL TAMBAH TRANSAKSI */}
@@ -283,7 +355,7 @@ export default function CashFlowPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Relasi WBS (Budget Link)</label>
-                  <select value={tasks.find(t => t.wbs_code === formData.wbs_code)?.name || formData.wbs_code} onChange={handleWbsChange} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+                  <select value={formData.wbs_code} onChange={handleWbsChange} className="w-full border border-slate-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
                     <option value="">-- Tanpa Relasi WBS --</option>
                     {tasks.map(t => <option key={t.wbs_code} value={t.wbs_code}>[{t.wbs_code}] {t.name}</option>)}
                   </select>
