@@ -218,7 +218,7 @@ export default function CashFlowPage() {
                       </span>
                     </td>
                     <td className="p-3 text-xs font-semibold text-slate-700">{f.category}</td>
-                    <td className="p-3 font-mono text-[10px]">{f.wbs_code || '-'}</td>
+                    <td className="p-3 font-mono text-[10px]">{tasks.find(t => t.wbs_code === f.wbs_code)?.name || f.wbs_code || '-'}</td>
                     <td className="p-3 text-center">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
                         f.approval_status === 'Approved' ? 'bg-green-100 text-green-700' : 
