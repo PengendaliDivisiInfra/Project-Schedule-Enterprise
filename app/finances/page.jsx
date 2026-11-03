@@ -3,8 +3,12 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { useProject } from '../../context/ProjectContext';
 
 export default function CashFlowPage() {
+  const { userRole } = useProject();
+  const canAddTransaction = userRole === 'pm' || userRole === 'dd' || userRole === 'owner';
+  const canApprove = userRole === 'pm' || userRole === 'owner';
   const [flows, setFlows] = useState([]);
   const [tasks, setTasks] = useState([]); 
   const [loading, setLoading] = useState(true);
@@ -180,9 +184,11 @@ export default function CashFlowPage() {
             </h1>
             <p className="text-sm text-slate-500 mt-1">Pantau arus kas aktual (Approved) dan pengajuan transaksi baru.</p>
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-colors flex items-center gap-2">
-            <Plus size={16} /> Tambah Transaksi
-          </button>
+          {canAddTransaction && (
+            <button onClick={() => setIsModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-colors flex items-center gap-2">
+              <Plus size={16} /> Tambah Transaksi
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -265,10 +271,12 @@ export default function CashFlowPage() {
                     </td>
                     <td className="p-3 text-center">
                       {f.approval_status === 'Pending' ? (
-                        <div className="flex gap-2 justify-center">
-                          <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title="Approve"><ShieldCheck size={14}/></button>
-                          <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
-                        </div>
+                        {canApprove ? (
+                          <div className="flex gap-2 justify-center">
+                            <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title="Approve"><ShieldCheck size={14}/></button>
+                            <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
+                          </div>
+                        ) : '-'}
                       ) : '-'}
                     </td>
                   </tr>
