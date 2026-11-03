@@ -29,20 +29,26 @@ export default function LoginPage() {
     }
   };
 
+  // Pastikan kode Anda seperti ini:
   const handleGoogleLogin = async () => {
     setGoogleLoading(true);
     setErrorMsg('');
+    
+    // Menggunakan origin dinamis
+    const redirectUrl = `${window.location.origin}/auth/callback`;
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://project-schedule-navy.vercel.app/auth/callback'
+        redirectTo: redirectUrl
       }
     });
+    
     if (error) {
       setErrorMsg(error.message);
       setGoogleLoading(false);
     }
-  };
+  };  
 
   return (
     <div 

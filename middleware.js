@@ -58,7 +58,7 @@ export async function middleware(req) {
   const { data: { session } } = await supabase.auth.getSession()
   
   // Daftar halaman yang boleh diakses tanpa login
-  const isAuthRoute = req.nextUrl.pathname.startsWith('/login')
+  const isAuthRoute = req.nextUrl.pathname.startsWith('/login') || req.nextUrl.pathname.startsWith('/auth/callback')
 
   // JIKA BELUM LOGIN DAN MENCOBA AKSES HALAMAN LAIN -> TENDANG KE /login
   if (!session && !isAuthRoute) {

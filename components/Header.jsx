@@ -10,7 +10,7 @@ export default function Header({ toggleSidebar, currentUser }) {
   // --- FETCH & REALTIME NAMA PROYEK ---
   useEffect(() => {
     const fetchProject = async () => {
-      const { data } = await supabase.from('projects').select('name').limit(1).single();
+      const { data } = await supabase.from('projects').select('name').limit(1).maybeSingle();
       if (data) setProjectName(data.name);
     };
     

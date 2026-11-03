@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Loader2 } from 'lucide-react';
@@ -57,7 +57,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
           .from('master_hsd')
           .insert([payloadHsd])
           .select()
-          .single();
+          .maybeSingle();
 
         if (errHsd) throw new Error("Gagal simpan ke Master HSD: " + errHsd.message);
         finalHsdId = newHsd.id;
@@ -185,7 +185,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
 
           {errorMsg && (
               <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-lg flex items-start gap-2 mb-4">
-                <span>⚠️</span>
+                <span>??</span>
                 <span>{errorMsg}</span>
               </div>
             )}
