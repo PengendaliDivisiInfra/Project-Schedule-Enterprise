@@ -1,50 +1,48 @@
 # Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** 🟢 Production Ready (V14 - Enterprise Reporting)
+**Status Proyek:** 🟢 Production Ready (V15 - Enterprise Risk & Reporting)
 **Terakhir Diperbarui:** 03 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Implemented Features)
-Aplikasi **InfraControl PRO** kini dilengkapi dengan pelaporan eksekutif multi-halaman (Print-Ready) yang mencakup standar komprehensif manajemen proyek.
+Aplikasi **InfraControl PRO** kini dilengkapi dengan modul Manajemen Risiko (Risk Register) dan Pelaporan Eksekutif (PMP Time Schedule) yang komprehensif.
 
 ### Fitur Utama yang Sudah Selesai:
-- **Master Project Report (NEW V14):**
-  - Laporan Eksekutif A4 Landscape yang mencakup Dashboard EVM (Varians/Target/Aktual), Gantt Chart Visual (berbasis CSS Grid), Matriks Task Management, Resource Requirement Plan, dan Material Requirement Plan.
-  - Dilengkapi dengan blok Tanda Tangan digital (PM, SE, Owner).
+- **Risk Register (NEW V15):**
+  - Matriks Probabilitas vs Dampak (3x3) dengan indikator warna (Low/Medium/High/Extreme).
+  - Formulir identifikasi risiko (Kode, Deskripsi, Kategori, Skor, Rencana Mitigasi, Status).
+- **Master Project Report (PMP Time Schedule):**
+  - Laporan multi-halaman (Print-Ready) mencakup Gantt Chart Visual, Matriks EVM, Resource Plan, dan Material Plan.
+  - Fitur Print Setup Modal (Pengaturan kertas, kolom dinamis, dan tanda tangan).
 - **CPM & Scheduling Engine:**
   - Forward Pass (FS, SS, FF, SF), Lag/Lead, Circular Dependency Check.
-  - Auto-Schedule, Summary Rollup, Virtual Scrolling (Anti-lag).
+  - Auto-Schedule, Summary Rollup, Virtual Scrolling.
 - **UI/UX Enterprise:**
-  - Right-Side Transparent Drawer, Global Command Palette (Ctrl+K), Top Loading Bar, Live Presence.
+  - Sidebar dengan Fixed Layout (Logo & Footer diam, menu tengah scrollable, tanpa scrollbar kotor).
+  - Right-Side Transparent Drawer, Global Command Palette (Ctrl+K), Live Presence.
 - **Costing & Resources:**
   - Master HSD & AHSP Standar PUPR.
-  - Auto-Generate Task Assignments.
+  - Auto-Generate Task Assignments (DB Trigger).
   - Inline Edit (Volume, Koefisien, Tanggal, Pred).
-- **Laporan Lainnya:** Dashboard S-Curve (EVM), Laporan Harian & Mingguan (PUPR).
 
 ---
 
 ## 2. Gap Analysis (Apa yang BELUM Diimplementasikan)
-Meskipun pelaporan eksekutif sudah sangat lengkap, modul operasional lapangan berikut **masih belum ada**:
+Berdasarkan 8 Pilar Action Plan, modul berikut **masih belum ada**:
 
-1.  **Risk Register (Manajemen Risiko):** Modul pencatatan probabilitas, dampak, dan mitigasi risiko.
-2.  **QA/QC Plan (Kendali Mutu):** Formulir inspeksi lapangan (slump test, dll) dan NCR (Non-Conformance Report).
-3.  **HSE Plan (K3L):** Laporan *Safety Briefing*, *Hazard Identification*, dan laporan insiden.
-4.  **Cash Flow Forecast:** Proyeksi arus kas (Kas Masuk vs Kas Keluar) per termin/bulan.
+1.  **QA/QC Plan (Kendali Mutu):** Formulir inspeksi lapangan (slump test, dll) dan NCR (Non-Conformance Report).
+2.  **HSE Plan (K3L):** Laporan *Safety Briefing*, *Hazard Identification*, dan laporan insiden.
+3.  **Cash Flow Forecast:** Proyeksi arus kas (Kas Masuk vs Kas Keluar) per termin/bulan.
 
 ---
 
 ## 3. 🚀 ROADMAP PRIORITAS (Next Steps)
 
-### Fase 1: Risk Register (Melengkapi Pilar Manajemen Risiko)
-*Tujuan: Proaktif terhadap ketidakpastian proyek.*
-*   **Cara Eksekusi:** Buat tabel `project_risks` di Supabase. Buat halaman UI `/risks` dengan matriks Probabilitas vs Dampak (3x3) dan tabel daftar risiko beserta rencana mitigasinya.
-
 ### Fase 2: QA/QC & HSE Modules (Melengkapi Pilar Mutu & K3L)
 *Tujuan: Standarisasi inspeksi lapangan dan keselamatan kerja.*
-*   **Cara Eksekusi:** Buat tabel `inspections` dan `safety_reports`. Buat formulir digital (mobile-friendly) yang bisa diisi oleh pelaksana lapangan, lalu rekap hasilnya di dashboard.
+*   **Cara Eksekusi:** Buat tabel `inspections` dan `safety_reports` di Supabase. Buat formulir digital (mobile-friendly) yang bisa diisi oleh pelaksana lapangan, lalu rekap hasilnya di dashboard.
 
 ### Fase 3: Cash Flow Forecast (Melengkapi Pilar Keuangan)
 *Tujuan: Memastikan likuiditas dana proyek.*
@@ -55,9 +53,9 @@ Meskipun pelaporan eksekutif sudah sangat lengkap, modul operasional lapangan be
 ## 4. Panduan Developer Selanjutnya
 - **Build:** `npm run build`
 - **Deploy:** `git push origin main` (Otomatis via Vercel).
-- **Catatan Penting Database:** 
-  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` di Supabase setelah menambah kolom/tabel baru.
-  - Scheduling Engine murni berjalan di Frontend (`lib/scheduler.js`). Trigger DB hanya untuk *Auto-Assign Resource*.
+- **Catatan Penting:** 
+  - Selalu jalankan `NOTIFY pgrst, 'reload schema';` di Supabase setelah menambah tabel/kolom.
+  - Scheduling Engine murni berjalan di Frontend (`lib/scheduler.js`). 
 
 ## 5. Akses & Kontak
 - **Vercel Dashboard:** [Link Vercel]
