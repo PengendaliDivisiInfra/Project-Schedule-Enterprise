@@ -1,17 +1,23 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { useProject } from '../../context/ProjectContext';
 import { supabase } from '../../lib/supabase';
+import { useProject } from '../../context/ProjectContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { useProject } from '../../context/ProjectContext';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useProject } from '../../context/ProjectContext';
 import { TrendingUp, AlertCircle } from 'lucide-react';
 
+import { useProject } from '../../context/ProjectContext';
 export default function SCurvePage() {
+  const { activeProjectId } = useProject();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: viewData } = await supabase.from('v_s_curve_data').select('*');
+      const { data: viewData } = await supabase.from('v_s_curve_data').select('*').eq('project_id', activeProjectId);
       if (viewData) setData(viewData);
       setLoading(false);
     };

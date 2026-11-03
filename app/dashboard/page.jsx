@@ -1,9 +1,13 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
+import { useProject } from '../../context/ProjectContext';
 import { Activity, DollarSign, TrendingUp, AlertTriangle } from 'lucide-react';
+import { useProject } from '../../context/ProjectContext';
 import { supabase } from '../../lib/supabase';
 
+import { useProject } from '../../context/ProjectContext';
 export default function DashboardPage() {
+  const { activeProjectId } = useProject();
   const [totalProgress, setTotalProgress] = useState(0);
 
   const fetchDashboardData = async () => {
