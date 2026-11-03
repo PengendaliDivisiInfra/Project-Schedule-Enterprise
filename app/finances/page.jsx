@@ -289,24 +289,30 @@ export default function CashFlowPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {costControlData.map((item, index) => (
-                    <tr key={index} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4 text-sm font-mono text-slate-600">{item.wbs_code}</td>
-                      <td className="p-4 text-sm font-medium text-slate-800">{item.task_name}</td>
-                      <td className="p-4 text-sm text-right text-slate-600">{formatRp(item.pagu_anggaran_rap)}</td>
-                      <td className="p-4 text-sm text-right text-rose-600 font-medium">{formatRp(item.total_pengeluaran_aktual)}</td>
+                                    {costControlData.map((item, index) => {
+                    const isParent = !item.wbs_code.includes('.');
+                    return (
+                    <tr key={index} className={`transition-colors ${isParent ? 'bg-slate-50 border-t-2 border-slate-200' : 'hover:bg-slate-50'}`}>
+                      <td className={`p-4 text-sm font-mono ${isParent ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>{item.wbs_code}</td>
+                      <td className={`p-4 text-sm ${isParent ? 'text-slate-900 font-bold' : 'text-slate-800 font-medium'}`}>{item.task_name}</td>
+                      <td className={`p-4 text-sm text-right ${isParent ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{formatRp(item.pagu_anggaran_rap)}</td>
+                      <td className={`p-4 text-sm text-right ${isParent ? 'font-bold text-rose-700' : 'text-rose-600 font-medium'}`}>{formatRp(item.total_pengeluaran_aktual)}</td>
                       <td className={`p-4 text-sm text-right font-bold ${item.sisa_anggaran_plafon < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
                         {formatRp(item.sisa_anggaran_plafon)}
                       </td>
                       <td className="p-4 text-center">
                         {item.sisa_anggaran_plafon < 0 ? (
-                          <span className="px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold">?? Overbudget</span>
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold">
+                            <AlertTriangle size={12} /> Overbudget
+                          </span>
                         ) : (
-                          <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">?? Aman</span>
+                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold">
+                            <ShieldCheck size={12} /> Aman
+                          </span>
                         )}
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {costControlData.length === 0 && (
                     <tr><td colSpan="6" className="p-8 text-center text-slate-500">Belum ada data kontrol anggaran.</td></tr>
                   )}
