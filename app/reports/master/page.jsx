@@ -373,6 +373,53 @@ export default function MasterReportPage() {
     });
   };
 
+  // 🟢 FUNGSI BARU: Menghitung ulang Resource & Material berdasarkan Sisa Volume
+  const processDynamicPlans = (rawResources, rawMaterials, tasks) => {
+    const dynamicResources = rawResources.map(res => {
+      const task = tasks.find(t => t.wbs_code === res.wbs_code);
+      if (task && task.volume > 0) {
+        const proporsiSisa = task.sisa_vol / task.volume; 
+        const sisaTotalKebutuhan = res.total_kebutuhan * proporsiSisa; 
+        
+        let sisaHariAktual = 1;
+        if (task.end_date) {
+          const sisaHariMs = new Date(task.end_date) - new Date();
+          sisaHariAktual = Math.max(1, Math.ceil(sisaHariMs / (1000 * 60 * 60 * 24))); 
+        }
+
+        const butuhPerHariDinamis = sisaTotalKebutuhan / sisaHariAktual;
+
+        return {
+          ...res,
+          total_kebutuhan: sisaTotalKebutuhan,
+          kebutuhan_harian: butuhPerHariDinamis,
+          is_delayed: new Date(task.end_date) < new Date()
+        };
+      }
+      return res;
+    });
+
+    const dynamicMaterials = rawMaterials.map(mat => {
+      const task = tasks.find(t => t.wbs_code === mat.wbs_code);
+      if (task && task.volume > 0) {
+        const proporsiSisa = task.sisa_vol / task.volume;
+        const sisaTotalDibeli = mat.total_dibeli * proporsiSisa;
+        
+        const hargaSatuan = mat.total_dibeli > 0 ? (mat.estimasi_biaya / mat.total_dibeli) : 0;
+        const sisaEstimasiBiaya = sisaTotalDibeli * hargaSatuan;
+
+        return {
+          ...mat,
+          total_dibeli: sisaTotalDibeli,
+          estimasi_biaya: sisaEstimasiBiaya
+        };
+      }
+      return mat;
+    });
+
+    return { dynamicResources, dynamicMaterials };
+  };
+
   const fetchData = async (isBackground = false) => {
     if (!activeProjectId) { 
       setLoading(false); 
@@ -393,7 +440,7 @@ export default function MasterReportPage() {
       let cex = [];
       
       if (projRes.data) {
-        setProjectInfo(projRes.data); 
+        setProjectInfo(projRes.data);
         if (projRes.data.working_days && Array.isArray(projRes.data.working_days) && projRes.data.working_days.length > 0) {
           cwd = projRes.data.working_days.map(Number);
           setWorkingDays(cwd);
@@ -404,6 +451,7 @@ export default function MasterReportPage() {
         }
       }
       
+      let processedTasks = [];
       if (taskRes.data) {
         const engineResult = updateProjectScheduleSecure(taskRes.data, cwd, cex);
         let finalTasks = taskRes.data;
@@ -413,10 +461,20 @@ export default function MasterReportPage() {
         }
 
         const fixedTasks = recalculateRollupDates(finalTasks);
-        setAllTasks(calculateEVM(fixedTasks, cwd, cex));
+        processedTasks = calculateEVM(fixedTasks, cwd, cex);
+        setAllTasks(processedTasks);
       }
-      if (resRes.data) setResources(resRes.data);
-      if (matRes.data) setMaterials(matRes.data);
+
+      // 🟢 TERAPKAN KALKULASI DINAMIS
+      if (resRes.data && matRes.data) {
+        const { dynamicResources, dynamicMaterials } = processDynamicPlans(resRes.data, matRes.data, processedTasks);
+        setResources(dynamicResources);
+        setMaterials(dynamicMaterials);
+      } else {
+        if (resRes.data) setResources(resRes.data);
+        if (matRes.data) setMaterials(matRes.data);
+      }
+
     } catch (err) { 
       console.error("Fetch Data Error:", err); 
     } finally { 
@@ -521,11 +579,9 @@ export default function MasterReportPage() {
             margin: 10mm 10mm 15mm 10mm; 
           }
           
-          /* 🟢 PERBAIKAN: Hapus break-inside: avoid agar tabel bisa mengalir natural */
           .print-page-gantt { page: gantt_layout; break-before: page; width: 100%; }
           .print-page-matrix { page: matrix_layout; break-before: page; width: 100%; }
           
-          /* 🟢 PERBAIKAN: Header Seragam untuk semua halaman */
           .header { 
             position: relative; 
             border-bottom: 2px solid #e2e8f0; 
@@ -548,7 +604,6 @@ export default function MasterReportPage() {
           .kpi-label { font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase; margin: 0 0 6px 0; }
           .kpi-value { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1; }
           
-          /* 🟢 PERBAIKAN: Izinkan tabel melintasi halaman, tapi cegah baris terpotong */
           table { border-collapse: collapse; margin-bottom: 12px; font-size: 11px; table-layout: fixed; width: 100%; break-inside: auto; }
           th, td { border: 1px solid #cbd5e1; padding: 8px 12px; vertical-align: middle; }
           th { background-color: #1e3a8a !important; color: #fff !important; text-align: center !important; vertical-align: middle !important; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
@@ -816,8 +871,8 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
                     <th className="p-1 border border-slate-700">Resource / Crew</th>
-                    <th className="p-1 border border-slate-700 text-right">Total TR</th>
-                    <th className="p-1 border border-slate-700 text-right">Kebutuhan / Hari</th>
+                    <th className="p-1 border border-slate-700 text-right">Sisa TR (Jam)</th>
+                    <th className="p-1 border border-slate-700 text-right">Butuh TR / Hari</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -827,7 +882,9 @@ export default function MasterReportPage() {
                       <td className="p-1 border border-slate-300 truncate max-w-[150px]">{r.task_name}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[200px]">{r.resource_crew}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-indigo-700">{formatNum(r.total_kebutuhan)} Jam</td>
-                      <td className="p-1 border border-slate-300 text-right font-bold text-emerald-700">{formatNum(r.kebutuhan_harian)} Jam</td>
+                      <td className={`p-1 border border-slate-300 text-right font-bold ${r.is_delayed ? 'text-red-600' : 'text-emerald-700'}`}>
+                        {formatNum(r.kebutuhan_harian)} Jam
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -843,8 +900,8 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
                     <th className="p-1 border border-slate-700">Material</th>
-                    <th className="p-1 border border-slate-700 text-right">Total Dibeli</th>
-                    <th className="p-1 border border-slate-700 text-right">Estimasi Biaya</th>
+                    <th className="p-1 border border-slate-700 text-right">Sisa Dibutuhkan</th>
+                    <th className="p-1 border border-slate-700 text-right">Estimasi Sisa Biaya</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -927,6 +984,12 @@ export default function MasterReportPage() {
         {/* HALAMAN 2: EVM MATRIX */}
         <div className="print-page-matrix">
           <div className="header">
+            {/* 🟢 PERBAIKAN: Tambahkan Logo di Header Halaman 2 */}
+            {projectInfo?.logo_url ? (
+              <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
+            ) : (
+              <div style={{ height: '50px', width: '50px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px' }}>LOGO</div>
+            )}
             <div>
               <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
               <h1>PROJECT MASTER PROGRAM (PMP) - EVM MATRIX</h1>
@@ -989,6 +1052,12 @@ export default function MasterReportPage() {
         {/* HALAMAN 3: RESOURCES */}
         <div className="print-page-matrix">
           <div className="header">
+            {/* 🟢 PERBAIKAN: Tambahkan Logo di Header Halaman 3 */}
+            {projectInfo?.logo_url ? (
+              <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
+            ) : (
+              <div style={{ height: '50px', width: '50px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px' }}>LOGO</div>
+            )}
             <div>
               <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
               <h1>PROJECT MASTER PROGRAM (PMP) - RESOURCES</h1>
@@ -1016,8 +1085,8 @@ export default function MasterReportPage() {
                 <th className="text-center">RESOURCE / CREW</th>
                 <th className="text-center">VOL</th>
                 <th className="text-center">DUR</th>
-                <th className="text-center">TOTAL TR (JAM)</th>
-                <th className="text-center">KEBUTUHAN / HARI (JAM)</th>
+                <th className="text-center">SISA TR (JAM)</th>
+                <th className="text-center">BUTUH TR / HARI (JAM)</th>
               </tr>
             </thead>
             <tbody>
@@ -1029,7 +1098,9 @@ export default function MasterReportPage() {
                   <td className="text-center">{r.volume}</td>
                   <td className="text-center">{r.durasi} hr</td>
                   <td className="text-right font-bold">{formatNum(r.total_kebutuhan)}</td>
-                  <td className="text-right font-bold">{formatNum(r.kebutuhan_harian)}</td>
+                  <td className={`text-right font-bold ${r.is_delayed ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {formatNum(r.kebutuhan_harian)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1039,6 +1110,12 @@ export default function MasterReportPage() {
         {/* HALAMAN 4: MATERIALS + SIGNATURES */}
         <div className="print-page-matrix">
           <div className="header">
+             {/* 🟢 PERBAIKAN: Tambahkan Logo di Header Halaman 4 */}
+             {projectInfo?.logo_url ? (
+              <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
+            ) : (
+              <div style={{ height: '50px', width: '50px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px' }}>LOGO</div>
+            )}
             <div>
               <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
               <h1>PROJECT MASTER PROGRAM (PMP) - MATERIALS</h1>
@@ -1068,8 +1145,8 @@ export default function MasterReportPage() {
                 <th className="text-center">KEBUTUHAN IDEAL</th>
                 <th className="text-center">SATUAN</th>
                 <th className="text-center">WASTE</th>
-                <th className="text-center">TOTAL DIBELI</th>
-                <th className="text-center">ESTIMASI BIAYA</th>
+                <th className="text-center">SISA DIBELI</th>
+                <th className="text-center">ESTIMASI SISA BIAYA</th>
               </tr>
             </thead>
             <tbody>
