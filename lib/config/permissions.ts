@@ -1,0 +1,52 @@
+// lib/config/permissions.ts
+
+export const ROLES = {
+  OWNER: 'Owner',
+  PM: 'Project Manager',
+  SITE_ADMIN: 'Site Admin',
+  DCC: 'DCC/Logistic',
+  QC: 'Quality Control (QC)',
+  HSE: 'HSE (K3)',
+};
+
+// Matriks Hak Akses
+export const PERMISSIONS = {
+  // Material & Info
+  VIEW_MATERIAL_INFO: [ROLES.OWNER, ROLES.PM, ROLES.SITE_ADMIN, ROLES.DCC, ROLES.QC, ROLES.HSE],
+  VIEW_PRICE: [ROLES.OWNER, ROLES.PM], // Hanya Owner & PM yang bisa lihat harga
+  
+  // Aksi PO
+  CREATE_PO: [ROLES.OWNER, ROLES.PM, ROLES.SITE_ADMIN, ROLES.DCC],
+  EDIT_PO: [ROLES.OWNER, ROLES.PM, ROLES.SITE_ADMIN, ROLES.DCC],
+  DELETE_PO: [ROLES.OWNER], // Hanya Owner
+  RECEIVE_PO: [ROLES.OWNER, ROLES.PM, ROLES.SITE_ADMIN, ROLES.DCC],
+
+  VOID_PAYMENT: [ROLES.OWNER, ROLES.PM],
+  
+  // Aksi Progress (DD/DCC bisa edit)
+  EDIT_PROGRESS: [ROLES.OWNER, ROLES.PM, ROLES.SITE_ADMIN, ROLES.DCC],
+};
+
+// Fungsi Pengecekan Hak Akses (Case-Insensitive)
+export function checkPermission(userRole: string | null | undefined, permissionKey: keyof typeof PERMISSIONS): boolean {
+  if (!userRole) return false;
+  
+  // Normalisasi input role user
+  let currentRole = userRole.toLowerCase().trim();
+  
+  // Handle alias (PM vs Project Manager, DCC vs Logistic, dll)
+  if (currentRole === 'pm') currentRole = 'project manager';
+  if (currentRole === 'dcc' || currentRole === 'logistic') currentRole = 'dcc/logistic';
+
+  // Owner selalu bisa semuanya
+  if (currentRole === 'owner') return true;
+
+  const allowedRoles = PERMISSIONS[permissionKey];
+  
+  return allowedRoles.some(role => {
+    let allowed = role.toLowerCase().trim();
+    if (allowed === 'project manager') allowed = 'project manager'; // standar
+    if (allowed === 'pm') allowed = 'project manager';
+    return currentRole === allowed;
+  });
+}

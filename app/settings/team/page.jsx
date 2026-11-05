@@ -9,7 +9,10 @@ export default function TeamPage() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('dd');
+  
+  // DEFAULT ROLE: Ubah dari 'dd' menjadi 'DCC/Logistic'
+  const [inviteRole, setInviteRole] = useState('DCC/Logistic');
+  
   const [isInviting, setIsInviting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -54,13 +57,13 @@ export default function TeamPage() {
     const { error: insertError } = await supabase.from('project_members').insert([{
       project_id: activeProjectId,
       user_id: profileData.id,
-      role: inviteRole
+      role: inviteRole // Menyimpan string utuh: 'DCC/Logistic', 'Project Manager', dll.
     }]);
 
     if (insertError) {
       setErrorMsg(insertError.message.includes('unique') ? 'User sudah ada di dalam proyek ini.' : insertError.message);
     } else {
-      setSuccessMsg(`Berhasil mengundang ${inviteEmail} sebagai ${inviteRole.toUpperCase()}`);
+      setSuccessMsg(`Berhasil mengundang ${inviteEmail} sebagai ${inviteRole}`);
       setInviteEmail('');
       fetchMembers();
     }
@@ -71,6 +74,17 @@ export default function TeamPage() {
     if (!confirm('Yakin ingin mengeluarkan anggota ini dari proyek?')) return;
     await supabase.from('project_members').delete().eq('id', memberId);
     fetchMembers();
+  };
+
+  // Helper untuk format tampilan badge role
+  const formatRoleBadge = (role) => {
+    const r = role.toLowerCase();
+    if (r === 'pm' || r === 'project manager') return 'Project Manager';
+    if (r === 'dcc' || r === 'logistic' || r === 'data entry (dd)' || r === 'dcc/logistic') return 'DCC / Logistic';
+    if (r === 'qc' || r === 'quality control (qc)') return 'Quality Control';
+    if (r === 'hse' || r === 'hse (k3)') return 'HSE (K3)';
+    if (r === 'site_admin' || r === 'site admin') return 'Site Admin';
+    return role;
   };
 
   if (!activeProjectId) return <div className="p-10 text-center">Pilih proyek terlebih dahulu.</div>;
@@ -84,7 +98,7 @@ export default function TeamPage() {
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <ShieldCheck className="text-indigo-600" /> Manajemen Tim Proyek
           </h1>
-          <p className="text-sm text-slate-500 mt-1">Kelola akses anggota lapangan (DD, QC, HSE, Site Admin).</p>
+          <p className="text-sm text-slate-500 mt-1">Kelola akses anggota lapangan (DCC, QC, HSE, Site Admin).</p>
         </div>
 
         {/* Form Undang Anggota */}
@@ -98,12 +112,17 @@ export default function TeamPage() {
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input required type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email.staf@gmail.com" className="w-full pl-10 pr-4 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
             </div>
-            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} className="border rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-              <option value="dd">Data Entry (DD)</option>
-              <option value="qc">Quality Control (QC)</option>
-              <option value="hse">HSE (K3)</option>
-              <option value="site_admin">Site Admin</option>
-              <option value="pm">Project Manager</option>
+            <select 
+              value={inviteRole} 
+              onChange={e => setInviteRole(e.target.value)} 
+              className="border rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
+            >
+              {/* UPDATE: Value dan Text disesuaikan dengan standar permissions.ts */}
+              <option value="DCC/Logistic">DCC / Logistic</option>
+              <option value="Quality Control (QC)">Quality Control (QC)</option>
+              <option value="HSE (K3)">HSE (K3)</option>
+              <option value="Site Admin">Site Admin</option>
+              <option value="Project Manager">Project Manager</option>
             </select>
             <button type="submit" disabled={isInviting} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md flex items-center justify-center gap-2">
               {isInviting ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />} Undang
@@ -129,10 +148,13 @@ export default function TeamPage() {
                     <div className="text-xs text-slate-500">{m.profiles?.email}</div>
                   </td>
                   <td className="p-4 text-center">
-                    <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase">{m.role}</span>
+                    <span className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full text-xs font-bold uppercase">
+                      {formatRoleBadge(m.role)}
+                    </span>
                   </td>
                   <td className="p-4 text-center">
-                    {m.user_id !== members.find(x => x.role === 'pm')?.user_id && (
+                    {/* Cegah PM menghapus dirinya sendiri, atau Owner menghapus PM utama */}
+                    {m.role.toLowerCase() !== 'project manager' && m.role.toLowerCase() !== 'pm' && (
                       <button onClick={() => handleRemove(m.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Keluarkan"><Trash2 size={16}/></button>
                     )}
                   </td>

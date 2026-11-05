@@ -1,11 +1,23 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingCart, Plus, X, Truck, CheckCircle, AlertTriangle, Info, Edit, Trash2, XCircle } from 'lucide-react';
-import { getPurchaseOrders, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder, getVendors, receiveGoods } from '@/lib/services/purchase-order-service';
+import { ShoppingCart, Plus, X, Truck, CheckCircle, AlertTriangle, Info, Edit, Trash2, XCircle, EyeOff, Wallet, CreditCard, Undo2 } from 'lucide-react';
+import { 
+  getPurchaseOrders, 
+  createPurchaseOrder, 
+  updatePurchaseOrder, 
+  deletePurchaseOrder, 
+  getVendors, 
+  receiveGoods, 
+  markPOAsPaid,
+  voidPOPayment 
+} from '@/lib/services/purchase-order-service';
+import { useRole } from '@/lib/hooks/useRole';
 import type { PurchaseOrder, Vendor, POItem } from '@/types/purchase-order';
 
 export function PurchaseOrderManager({ projectId }: { projectId: string }) {
+  const { can } = useRole(projectId);
+
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [materials, setMaterials] = useState<any[]>([]);
@@ -14,7 +26,7 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   // State Modal Buat/Edit PO
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPoId, setEditingPoId] = useState<string | null>(null);
-  const [poNumber, setPoNumber] = useState(''); // State Baru untuk No. PO
+  const [poNumber, setPoNumber] = useState('');
   const [vendorId, setVendorId] = useState('');
   const [poDate, setPoDate] = useState(new Date().toISOString().split('T')[0]);
   const [shippingAddress, setShippingAddress] = useState(''); 
@@ -27,7 +39,7 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   const [orderedQty, setOrderedQty] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   
-  // State Modal Penerimaan
+  // State Modal Penerimaan Barang
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [selectedPoForReceipt, setSelectedPoForReceipt] = useState<PurchaseOrder | null>(null);
   const [doNumber, setDoNumber] = useState('');
@@ -35,7 +47,14 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   const [receiptQtys, setReceiptQtys] = useState<{ [itemId: string]: string }>({});
   const [isSavingReceipt, setIsSavingReceipt] = useState(false);
 
-  // State Custom Toast & Confirm Modal
+  // State Modal Pembayaran & Pembatalan
+  const [confirmPay, setConfirmPay] = useState<{ show: boolean; po: PurchaseOrder | null } | null>(null);
+  const [isPaying, setIsPaying] = useState(false);
+  
+  const [confirmVoid, setConfirmVoid] = useState<{ show: boolean; po: PurchaseOrder | null } | null>(null);
+  const [isVoiding, setIsVoiding] = useState(false);
+
+  // State Custom Toast & Confirm Delete Modal
   const [toast, setToast] = useState<{ show: boolean; msg: string; type: 'success' | 'error' } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ show: boolean; poId: string; poNumber: string } | null>(null);
 
@@ -68,7 +87,6 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
 
   useEffect(() => { loadData(); }, [projectId]);
 
-  // KALKULASI PAJAK
   const subtotal = poItems.reduce((acc, item) => acc + item.total_price, 0);
   const ppnAmount = (subtotal * ppnPercent) / 100;
   const pphAmount = (subtotal * pphPercent) / 100;
@@ -106,10 +124,8 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     setSelectedHsdId(''); setOrderedQty(''); setUnitPrice('');
   };
 
-  // --- MODAL OPEN (CREATE / EDIT) ---
   const handleOpenCreateModal = () => {
     setEditingPoId(null);
-    // Generate No. PO otomatis sebagai saran awal
     const generatedPo = `PO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
     setPoNumber(generatedPo); 
     setVendorId('');
@@ -147,7 +163,7 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     const header: Partial<PurchaseOrder> = {
       project_id: projectId,
       vendor_id: vendorId,
-      po_number: poNumber, // Menggunakan No. PO dari input user
+      po_number: poNumber,
       po_date: poDate,
       status: 'Ordered',
       subtotal,
@@ -174,7 +190,6 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     }
   };
 
-  // FUNGSI HAPUS (Memicu Modal Konfirmasi)
   const triggerDelete = (poId: string, poNumber: string) => {
     setConfirmDelete({ show: true, poId, poNumber });
   };
@@ -229,6 +244,38 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     }
   };
 
+  // --- HANDLER PEMBAYARAN ---
+  const handlePayPO = async () => {
+    if (!confirmPay || !confirmPay.po) return;
+    setIsPaying(true);
+    try {
+      await markPOAsPaid(confirmPay.po.id, projectId, confirmPay.po.grand_total, confirmPay.po.po_number);
+      showToast('PO Berhasil Dibayar & Masuk ke Arus Kas!');
+      setConfirmPay(null);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
+  // --- HANDLER PEMBATALAN PEMBAYARAN ---
+  const handleVoidPO = async () => {
+    if (!confirmVoid || !confirmVoid.po) return;
+    setIsVoiding(true);
+    try {
+      await voidPOPayment(confirmVoid.po.id, projectId, confirmVoid.po.grand_total, confirmVoid.po.po_number);
+      showToast('Pembayaran Dibatalkan (Jurnal Pembalik Tercatat)!');
+      setConfirmVoid(null);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsVoiding(false);
+    }
+  };
+
   return (
     <div className="space-y-4 relative">
       {/* CUSTOM TOAST NOTIFICATION */}
@@ -239,6 +286,7 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
         </div>
       )}
 
+      {/* HEADER SECTION */}
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -246,11 +294,14 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
           </h3>
           <p className="text-sm text-slate-500">Kelola pengadaan material dan tracking penerimaan barang.</p>
         </div>
-        <button onClick={handleOpenCreateModal} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> Buat PO Baru
-        </button>
+        {can('CREATE_PO') && (
+          <button onClick={handleOpenCreateModal} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> Buat PO Baru
+          </button>
+        )}
       </div>
 
+      {/* TABLE LIST PO */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left text-sm">
           <thead>
@@ -259,21 +310,34 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
               <th className="p-4 font-bold">Vendor</th>
               <th className="p-4 font-bold">Tanggal</th>
               <th className="p-4 font-bold text-right">Grand Total</th>
-              <th className="p-4 font-bold text-center">Status</th>
-              <th className="p-4 font-bold text-center w-64">Aksi</th>
+              <th className="p-4 font-bold text-center">Status PO</th>
+              <th className="p-4 font-bold text-center">Status Bayar</th>
+              <th className="p-4 font-bold text-center w-72">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading ? <tr><td colSpan={6} className="p-8 text-center text-slate-500">Memuat data PO...</td></tr> : 
-              pos.length === 0 ? <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada Purchase Order.</td></tr> :
+            {loading ? <tr><td colSpan={7} className="p-8 text-center text-slate-500">Memuat data PO...</td></tr> : 
+              pos.length === 0 ? <tr><td colSpan={7} className="p-8 text-center text-slate-500">Belum ada Purchase Order.</td></tr> :
               pos.map(po => {
                 const hasReceipt = po.items?.some((i: any) => i.received_qty > 0);
+                const isPaid = po.payment_status === 'Paid';
+                
                 return (
                   <tr key={po.id} className="hover:bg-slate-50">
                     <td className="p-4 font-mono font-semibold">{po.po_number}</td>
                     <td className="p-4 font-medium">{po.vendor?.name}</td>
                     <td className="p-4 text-slate-500">{new Date(po.po_date).toLocaleDateString('id-ID')}</td>
-                    <td className="p-4 text-right font-mono font-bold text-slate-700">Rp {po.grand_total.toLocaleString('id-ID')}</td>
+                    
+                    <td className="p-4 text-right font-mono font-bold text-slate-700">
+                      {can('VIEW_PRICE') ? (
+                        `Rp ${po.grand_total.toLocaleString('id-ID')}`
+                      ) : (
+                        <span className="text-slate-400 italic flex items-center justify-end gap-1">
+                          <EyeOff className="w-3 h-3" /> Rp ***
+                        </span>
+                      )}
+                    </td>
+
                     <td className="p-4 text-center">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${
                         po.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 
@@ -282,21 +346,53 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
                         {po.status}
                       </span>
                     </td>
+
+                    {/* STATUS BAYAR & TOMBOL PEMBATALAN YANG LEBIH JELAS */}
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => handleOpenReceiptModal(po)} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200 text-xs font-semibold flex items-center gap-1 transition-colors">
-                          <Truck className="w-3 h-3" /> Terima
-                        </button>
+                        <span className={`px-2 py-1 rounded text-xs font-bold ${
+                          isPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                        }`}>
+                          {isPaid ? 'Lunas' : 'Belum Bayar'}
+                        </span>
                         
-                        {!hasReceipt && (
+                        {/* Tombol Batalkan yang sudah diperjelas */}
+                        {isPaid && can('VOID_PAYMENT') && (
+                          <button 
+                            onClick={() => setConfirmVoid({ show: true, po })} 
+                            className="text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 px-2 py-1 rounded text-[10px] font-bold transition-all flex items-center gap-1" 
+                            title="Batalkan Pembayaran"
+                          >
+                            <Undo2 className="w-3 h-3" /> Batalkan
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* AKSI TOMBOL */}
+                    <td className="p-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {can('RECEIVE_PO') && (
+                          <button onClick={() => handleOpenReceiptModal(po)} className="text-blue-600 hover:bg-blue-50 px-3 py-1.5 rounded-md border border-blue-200 text-xs font-semibold flex items-center gap-1 transition-colors" title="Terima Barang">
+                            <Truck className="w-3 h-3" /> Terima
+                          </button>
+                        )}
+                        
+                        {!hasReceipt && can('EDIT_PO') && (
                           <button onClick={() => handleOpenEditModal(po)} className="text-amber-600 hover:bg-amber-50 p-1.5 rounded transition-colors" title="Edit PO">
                             <Edit className="w-4 h-4" />
                           </button>
                         )}
 
-                        {!hasReceipt && (
+                        {!hasReceipt && can('DELETE_PO') && (
                           <button onClick={() => triggerDelete(po.id, po.po_number)} className="text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors" title="Hapus PO">
                             <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {!isPaid && can('VIEW_PRICE') && (
+                          <button onClick={() => setConfirmPay({ show: true, po })} className="text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-md border border-emerald-200 text-xs font-semibold flex items-center gap-1 transition-colors" title="Bayar PO">
+                            <Wallet className="w-3 h-3" /> Bayar
                           </button>
                         )}
                       </div>
@@ -308,6 +404,61 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
           </tbody>
         </table>
       </div>
+
+      {/* MODAL KONFIRMASI PEMBAYARAN */}
+      {confirmPay && confirmPay.show && confirmPay.po && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CreditCard className="w-8 h-8 text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Konfirmasi Pembayaran</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Tandai PO <b>{confirmPay.po.po_number}</b> sebagai Lunas?<br/>
+                Sebesar <b>Rp {confirmPay.po.grand_total.toLocaleString('id-ID')}</b>.
+                <br/><br/>
+                <span className="text-xs text-rose-500 italic">*Tindakan ini akan mencatat Pengeluaran Kas (Cash Out) pada Arus Kas proyek.</span>
+              </p>
+              <div className="flex justify-center gap-3">
+                <button onClick={() => setConfirmPay(null)} className="px-5 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors w-full" disabled={isPaying}>
+                  Batal
+                </button>
+                <button onClick={handlePayPO} disabled={isPaying} className="px-5 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors w-full flex items-center justify-center gap-2">
+                  {isPaying ? 'Memproses...' : 'Ya, Bayar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KONFIRMASI PEMBATALAN PEMBAYARAN (VOID) */}
+      {confirmVoid && confirmVoid.show && confirmVoid.po && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Undo2 className="w-8 h-8 text-rose-600" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">Batalkan Pembayaran?</h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Anda akan membatalkan pembayaran PO <b>{confirmVoid.po.po_number}</b>.<br/>
+                <br/>
+                <span className="text-xs text-rose-500 italic">*Sistem akan membuat Jurnal Pembalik (Uang Masuk) di Arus Kas dan mengubah status PO menjadi Belum Bayar.</span>
+              </p>
+              <div className="flex justify-center gap-3">
+                <button onClick={() => setConfirmVoid(null)} className="px-5 py-2 text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors w-full" disabled={isVoiding}>
+                  Batal
+                </button>
+                <button onClick={handleVoidPO} disabled={isVoiding} className="px-5 py-2 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-50 rounded-lg shadow-sm transition-colors w-full flex items-center justify-center gap-2">
+                  {isVoiding ? 'Memproses...' : 'Ya, Batalkan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CUSTOM KONFIRMASI HAPUS */}
       {confirmDelete && confirmDelete.show && (
@@ -346,7 +497,6 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
             </div>
             
             <form onSubmit={handleSavePO} className="p-6 space-y-6">
-              {/* UPDATE: Grid 3 kolom untuk No PO, Vendor, Tanggal */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">No. PO *</label>
@@ -391,24 +541,38 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
                     <label className="block text-xs text-slate-500 mb-1">Qty</label>
                     <input type="number" value={orderedQty} onChange={e => setOrderedQty(e.target.value)} className="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500" placeholder="0" />
                   </div>
-                  <div className="w-full md:w-40">
-                    <label className="block text-xs text-slate-500 mb-1">Harga Satuan (Rp)</label>
-                    <input type="number" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} className="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500" placeholder="0" />
-                  </div>
+                  {can('VIEW_PRICE') && (
+                    <div className="w-full md:w-40">
+                      <label className="block text-xs text-slate-500 mb-1">Harga Satuan (Rp)</label>
+                      <input type="number" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} className="w-full border rounded p-2 text-sm focus:ring-1 focus:ring-blue-500" placeholder="0" />
+                    </div>
+                  )}
                   <button type="button" onClick={handleAddItem} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded text-sm h-[38px] w-full md:w-auto">Tambah</button>
                 </div>
                 
                 <div className="mt-4 bg-white rounded border overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-slate-100 border-b"><tr><th className="text-left py-2 px-3">Material</th><th className="text-right px-3">Qty</th><th className="text-right px-3">Harga</th><th className="text-right px-3">Total</th><th className="px-3"></th></tr></thead>
+                    <thead className="bg-slate-100 border-b">
+                      <tr>
+                        <th className="text-left py-2 px-3">Material</th>
+                        <th className="text-right px-3">Qty</th>
+                        {can('VIEW_PRICE') && <th className="text-right px-3">Harga</th>}
+                        {can('VIEW_PRICE') && <th className="text-right px-3">Total</th>}
+                        <th className="px-3"></th>
+                      </tr>
+                    </thead>
                     <tbody>
-                      {poItems.length === 0 ? <tr><td colSpan={5} className="text-center py-4 text-slate-400">Belum ada item</td></tr> :
+                      {poItems.length === 0 ? <tr><td colSpan={can('VIEW_PRICE') ? 5 : 3} className="text-center py-4 text-slate-400">Belum ada item</td></tr> :
                         poItems.map((item, idx) => (
                         <tr key={idx} className="border-b border-slate-100">
                           <td className="py-2 px-3 font-medium">{item.master_hsd?.nama_item}</td>
                           <td className="text-right px-3">{item.ordered_qty} {item.master_hsd?.satuan}</td>
-                          <td className="text-right px-3 font-mono">Rp {item.unit_price.toLocaleString('id-ID')}</td>
-                          <td className="text-right px-3 font-mono font-bold">Rp {item.total_price.toLocaleString('id-ID')}</td>
+                          {can('VIEW_PRICE') && (
+                            <td className="text-right px-3 font-mono">Rp {item.unit_price.toLocaleString('id-ID')}</td>
+                          )}
+                          {can('VIEW_PRICE') && (
+                            <td className="text-right px-3 font-mono font-bold">Rp {item.total_price.toLocaleString('id-ID')}</td>
+                          )}
                           <td className="text-center px-3"><button type="button" onClick={() => setPoItems(poItems.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700"><X className="w-4 h-4"/></button></td>
                         </tr>
                       ))}
@@ -417,23 +581,25 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <div className="w-full md:w-1/2 space-y-2 text-sm bg-white p-4 rounded-lg border shadow-sm">
-                  <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">Rp {subtotal.toLocaleString('id-ID')}</span></div>
-                  <div className="flex justify-between items-center text-blue-600">
-                    <span>PPN <input type="number" value={ppnPercent} onChange={e => setPpnPercent(Number(e.target.value))} className="w-12 border-b border-blue-300 text-center bg-transparent focus:outline-none" />%:</span> 
-                    <span className="font-mono">+ Rp {ppnAmount.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-amber-600">
-                    <span>PPh <input type="number" value={pphPercent} onChange={e => setPphPercent(Number(e.target.value))} className="w-12 border-b border-amber-300 text-center bg-transparent focus:outline-none" />%:</span> 
-                    <span className="font-mono">- Rp {pphAmount.toLocaleString('id-ID')}</span>
-                  </div>
-                  <div className="flex justify-between font-bold text-lg border-t pt-2 text-slate-800 mt-2">
-                    <span>Grand Total:</span> 
-                    <span className="font-mono">Rp {grandTotal.toLocaleString('id-ID')}</span>
+              {can('VIEW_PRICE') && (
+                <div className="flex justify-end">
+                  <div className="w-full md:w-1/2 space-y-2 text-sm bg-white p-4 rounded-lg border shadow-sm">
+                    <div className="flex justify-between"><span>Subtotal:</span> <span className="font-mono">Rp {subtotal.toLocaleString('id-ID')}</span></div>
+                    <div className="flex justify-between items-center text-blue-600">
+                      <span>PPN <input type="number" value={ppnPercent} onChange={e => setPpnPercent(Number(e.target.value))} className="w-12 border-b border-blue-300 text-center bg-transparent focus:outline-none" />%:</span> 
+                      <span className="font-mono">+ Rp {ppnAmount.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-amber-600">
+                      <span>PPh <input type="number" value={pphPercent} onChange={e => setPphPercent(Number(e.target.value))} className="w-12 border-b border-amber-300 text-center bg-transparent focus:outline-none" />%:</span> 
+                      <span className="font-mono">- Rp {pphAmount.toLocaleString('id-ID')}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-lg border-t pt-2 text-slate-800 mt-2">
+                      <span>Grand Total:</span> 
+                      <span className="font-mono">Rp {grandTotal.toLocaleString('id-ID')}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-2 border-t">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded text-sm font-semibold hover:bg-slate-50">Batal</button>
