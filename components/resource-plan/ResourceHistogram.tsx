@@ -26,7 +26,7 @@ export function ResourceHistogram({ data, threshold: propThreshold }: Props) {
 
     const chartMax = Math.max(Math.ceil(max), Math.ceil(dynamicThreshold) + 1);
 
-    const y = [];
+    const y: number[] = [];
     if (chartMax <= 10) {
       for (let i = chartMax; i >= 0; i--) y.push(i);
     } else {
