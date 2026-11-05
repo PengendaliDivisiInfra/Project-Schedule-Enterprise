@@ -368,12 +368,13 @@ export default function MasterReportPage() {
         actual_vol: actualVol, 
         sisa_vol: sisaVol, 
         varian_pct: varianPct, 
-        butuh_t_hr: butuhTHr 
+        butuh_t_hr: butuhTHr,
+        sisa_hari: sisaHari
       };
     });
   };
 
-  // 🟢 FUNGSI BARU: Menghitung ulang Resource & Material berdasarkan Sisa Volume
+  // 🟢 FUNGSI KALKULASI DINAMIS ENTERPRISE
   const processDynamicPlans = (rawResources, rawMaterials, tasks) => {
     const dynamicResources = rawResources.map(res => {
       const task = tasks.find(t => t.wbs_code === res.wbs_code);
@@ -381,18 +382,21 @@ export default function MasterReportPage() {
         const proporsiSisa = task.sisa_vol / task.volume; 
         const sisaTotalKebutuhan = res.total_kebutuhan * proporsiSisa; 
         
-        let sisaHariAktual = 1;
-        if (task.end_date) {
-          const sisaHariMs = new Date(task.end_date) - new Date();
-          sisaHariAktual = Math.max(1, Math.ceil(sisaHariMs / (1000 * 60 * 60 * 24))); 
-        }
+        const targetHarian = task.sisa_hari > 0 ? (task.sisa_vol / task.sisa_hari) : 0;
+        const kapasitasNyata = 10; // Standar PUPR
+        const jumlahTim = targetHarian > 0 ? (targetHarian / kapasitasNyata) : 0;
 
-        const butuhPerHariDinamis = sisaTotalKebutuhan / sisaHariAktual;
+        let rekomendasi = 'Normal';
+        if (jumlahTim > 3) rekomendasi = 'Shift';
+        else if (jumlahTim > 2) rekomendasi = 'Lembur';
 
         return {
           ...res,
           total_kebutuhan: sisaTotalKebutuhan,
-          kebutuhan_harian: butuhPerHariDinamis,
+          kebutuhan_harian: task.sisa_hari > 0 ? (sisaTotalKebutuhan / task.sisa_hari) : 0,
+          target_harian_vol: targetHarian,
+          jumlah_tim: jumlahTim,
+          rekomendasi: rekomendasi,
           is_delayed: new Date(task.end_date) < new Date()
         };
       }
@@ -403,15 +407,24 @@ export default function MasterReportPage() {
       const task = tasks.find(t => t.wbs_code === mat.wbs_code);
       if (task && task.volume > 0) {
         const proporsiSisa = task.sisa_vol / task.volume;
-        const sisaTotalDibeli = mat.total_dibeli * proporsiSisa;
+        const sisaKebutuhanIdeal = mat.kebutuhan_ideal * proporsiSisa;
+        const sisaWaste = (mat.waste || 0) * proporsiSisa;
+        const sisaTotalDibeli = sisaKebutuhanIdeal + sisaWaste;
         
         const hargaSatuan = mat.total_dibeli > 0 ? (mat.estimasi_biaya / mat.total_dibeli) : 0;
         const sisaEstimasiBiaya = sisaTotalDibeli * hargaSatuan;
 
+        const leadTimeDays = 14; // Standar pengiriman 2 minggu
+        const isLeadTimeWarning = task.sisa_hari <= leadTimeDays;
+
         return {
           ...mat,
+          sisa_kebutuhan_ideal: sisaKebutuhanIdeal,
+          sisa_waste: sisaWaste,
           total_dibeli: sisaTotalDibeli,
-          estimasi_biaya: sisaEstimasiBiaya
+          estimasi_biaya: sisaEstimasiBiaya,
+          lead_time_days: leadTimeDays,
+          is_lead_time_warning: isLeadTimeWarning
         };
       }
       return mat;
@@ -465,7 +478,7 @@ export default function MasterReportPage() {
         setAllTasks(processedTasks);
       }
 
-      // 🟢 TERAPKAN KALKULASI DINAMIS
+      // 🟢 TERAPKAN KALKULASI DINAMIS ENTERPRISE
       if (resRes.data && matRes.data) {
         const { dynamicResources, dynamicMaterials } = processDynamicPlans(resRes.data, matRes.data, processedTasks);
         setResources(dynamicResources);
@@ -871,8 +884,10 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
                     <th className="p-1 border border-slate-700">Resource / Crew</th>
-                    <th className="p-1 border border-slate-700 text-right">Sisa TR (Jam)</th>
-                    <th className="p-1 border border-slate-700 text-right">Butuh TR / Hari</th>
+                    <th className="p-1 border border-slate-700 text-right">Sisa Kebutuhan (Jam)</th>
+                    <th className="p-1 border border-slate-700 text-right">Target Vol / Hari</th>
+                    <th className="p-1 border border-slate-700 text-right text-emerald-400">Jumlah Tim</th>
+                    <th className="p-1 border border-slate-700 text-center">Rekomendasi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -882,8 +897,10 @@ export default function MasterReportPage() {
                       <td className="p-1 border border-slate-300 truncate max-w-[150px]">{r.task_name}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[200px]">{r.resource_crew}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-indigo-700">{formatNum(r.total_kebutuhan)} Jam</td>
-                      <td className={`p-1 border border-slate-300 text-right font-bold ${r.is_delayed ? 'text-red-600' : 'text-emerald-700'}`}>
-                        {formatNum(r.kebutuhan_harian)} Jam
+                      <td className="p-1 border border-slate-300 text-right font-bold text-blue-700">{formatNum(r.target_harian_vol)}</td>
+                      <td className="p-1 border border-slate-300 text-right font-bold text-emerald-700">{formatNum(r.jumlah_tim)}</td>
+                      <td className={`p-1 border border-slate-300 text-center font-bold ${r.rekomendasi === 'Normal' ? 'text-slate-500' : 'text-red-600 bg-red-50'}`}>
+                        {r.rekomendasi}
                       </td>
                     </tr>
                   ))}
@@ -900,18 +917,26 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
                     <th className="p-1 border border-slate-700">Material</th>
-                    <th className="p-1 border border-slate-700 text-right">Sisa Dibutuhkan</th>
+                    <th className="p-1 border border-slate-700 text-right">Sisa Total Dibeli</th>
                     <th className="p-1 border border-slate-700 text-right">Estimasi Sisa Biaya</th>
+                    <th className="p-1 border border-slate-700 text-center text-red-400">Status Lead Time</th>
                   </tr>
                 </thead>
                 <tbody>
                   {materials.map((m, i) => (
-                    <tr key={i} className="hover:bg-slate-50">
+                    <tr key={i} className={`hover:bg-slate-50 ${m.is_lead_time_warning ? 'bg-red-50/30' : ''}`}>
                       <td className="p-1 border border-slate-300 font-mono text-center">{m.wbs_code}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[150px]">{m.task_name}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[200px]">{m.material_name}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-blue-700">{formatNum(m.total_dibeli)}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold whitespace-nowrap">{formatRp(m.estimasi_biaya)}</td>
+                      <td className="p-1 border border-slate-300 text-center">
+                        {m.is_lead_time_warning ? (
+                          <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">⚠️ Lead Time H-{m.lead_time_days}</span>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">Aman</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -984,7 +1009,6 @@ export default function MasterReportPage() {
         {/* HALAMAN 2: EVM MATRIX */}
         <div className="print-page-matrix">
           <div className="header">
-            {/* 🟢 PERBAIKAN: Tambahkan Logo di Header Halaman 2 */}
             {projectInfo?.logo_url ? (
               <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
             ) : (
@@ -1052,7 +1076,6 @@ export default function MasterReportPage() {
         {/* HALAMAN 3: RESOURCES */}
         <div className="print-page-matrix">
           <div className="header">
-            {/* 🟢 PERBAIKAN: Tambahkan Logo di Header Halaman 3 */}
             {projectInfo?.logo_url ? (
               <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
             ) : (
@@ -1072,21 +1095,21 @@ export default function MasterReportPage() {
             <colgroup>
               <col style={{ width: '6%' }} />
               <col style={{ width: '25%' }} />
-              <col style={{ width: '30%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '13%' }} />
+              <col style={{ width: '25%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '14%' }} />
             </colgroup>
             <thead>
               <tr>
                 <th className="text-center">WBS</th>
                 <th className="text-center">URAIAN</th>
                 <th className="text-center">RESOURCE / CREW</th>
-                <th className="text-center">VOL</th>
-                <th className="text-center">DUR</th>
                 <th className="text-center">SISA TR (JAM)</th>
-                <th className="text-center">BUTUH TR / HARI (JAM)</th>
+                <th className="text-center">TARGET VOL / HARI</th>
+                <th className="text-center">JUMLAH TIM</th>
+                <th className="text-center">REKOMENDASI</th>
               </tr>
             </thead>
             <tbody>
@@ -1095,11 +1118,11 @@ export default function MasterReportPage() {
                   <td className="text-center">{r.wbs_code}</td>
                   <td className="text-left">{r.task_name}</td>
                   <td className="text-left">{r.resource_crew}</td>
-                  <td className="text-center">{r.volume}</td>
-                  <td className="text-center">{r.durasi} hr</td>
                   <td className="text-right font-bold">{formatNum(r.total_kebutuhan)}</td>
-                  <td className={`text-right font-bold ${r.is_delayed ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {formatNum(r.kebutuhan_harian)}
+                  <td className="text-right font-bold">{formatNum(r.target_harian_vol)}</td>
+                  <td className="text-right font-bold">{formatNum(r.jumlah_tim)}</td>
+                  <td className={`text-center font-bold ${r.rekomendasi === 'Normal' ? 'text-slate-500' : 'text-red-600 bg-red-50'}`}>
+                    {r.rekomendasi}
                   </td>
                 </tr>
               ))}
@@ -1110,7 +1133,6 @@ export default function MasterReportPage() {
         {/* HALAMAN 4: MATERIALS + SIGNATURES */}
         <div className="print-page-matrix">
           <div className="header">
-             {/* 🟢 PERBAIKAN: Tambahkan Logo di Header Halaman 4 */}
              {projectInfo?.logo_url ? (
               <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '50px', width: 'auto', objectFit: 'contain' }} />
             ) : (
@@ -1131,35 +1153,38 @@ export default function MasterReportPage() {
               <col style={{ width: '6%' }} />
               <col style={{ width: '20%' }} />
               <col style={{ width: '24%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '6%' }} />
+              <col style={{ width: '12%' }} />
               <col style={{ width: '8%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '16%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '15%' }} />
             </colgroup>
             <thead>
               <tr>
                 <th className="text-center">WBS</th>
                 <th className="text-center">URAIAN</th>
                 <th className="text-center">MATERIAL</th>
-                <th className="text-center">KEBUTUHAN IDEAL</th>
+                <th className="text-center">SISA KEBUTUHAN</th>
                 <th className="text-center">SATUAN</th>
-                <th className="text-center">WASTE</th>
-                <th className="text-center">SISA DIBELI</th>
-                <th className="text-center">ESTIMASI SISA BIAYA</th>
+                <th className="text-center">SISA TOTAL DIBELI</th>
+                <th className="text-center">STATUS LEAD TIME</th>
               </tr>
             </thead>
             <tbody>
               {materials.map((m, i) => (
-                <tr key={i}>
+                <tr key={i} className={`${m.is_lead_time_warning ? 'bg-red-50/30' : ''}`}>
                   <td className="text-center">{m.wbs_code}</td>
                   <td className="text-left">{m.task_name}</td>
                   <td className="text-left">{m.material_name}</td>
-                  <td className="text-right">{formatNum(m.kebutuhan_ideal)}</td>
+                  <td className="text-right">{formatNum(m.sisa_kebutuhan_ideal)}</td>
                   <td style={{ textAlign: 'center' }}>{m.satuan}</td>
-                  <td className="text-right" style={{ color: '#d97706' }}>{formatNum(m.waste)}</td>
                   <td className="text-right font-bold" style={{ color: '#1d4ed8' }}>{formatNum(m.total_dibeli)}</td>
-                  <td className="text-right font-bold">{formatRp(m.estimasi_biaya)}</td>
+                  <td className="text-center">
+                    {m.is_lead_time_warning ? (
+                      <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-[10px] font-bold">⚠️ Lead Time H-{m.lead_time_days}</span>
+                    ) : (
+                      <span className="text-slate-400 text-[10px]">Aman</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

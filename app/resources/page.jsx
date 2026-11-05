@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Users, Search, Plus, Edit, Trash2, Calculator, CheckCircle, XCircle, X } from 'lucide-react';
+import { useProject } from '../../context/ProjectContext';
+import { Users, Search, Plus, Edit, Trash2, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info } from 'lucide-react';
 
 export default function ResourcesPage() {
+  const { activeProjectId } = useProject();
   const [activeTab, setActiveTab] = useState('master'); 
   const [resources, setResources] = useState([]);
   const [planData, setPlanData] = useState([]);
@@ -24,7 +26,7 @@ export default function ResourcesPage() {
   useEffect(() => {
     if (activeTab === 'master') fetchResources();
     else fetchPlanData();
-  }, [activeTab]);
+  }, [activeTab, activeProjectId]);
 
   const fetchResources = async () => {
     setLoading(true);
@@ -35,11 +37,68 @@ export default function ResourcesPage() {
   };
 
   const fetchPlanData = async () => {
+    if (!activeProjectId) return;
     setLoading(true);
-    const { data, error } = await supabase.from('v_resource_requirements').select('*').order('wbs_code').order('resource_type');
-    if (data) setPlanData(data);
-    if (error) console.error(error);
-    setLoading(false);
+
+    try {
+      // 1. Ambil data task untuk mendapatkan Sisa Volume & Sisa Hari
+      const { data: tasks } = await supabase
+        .from('wbs_tasks')
+        .select('*')
+        .eq('project_id', activeProjectId);
+
+      // 2. Ambil data resource requirement
+      const { data: resReq } = await supabase
+        .from('v_resource_requirements')
+        .select('*')
+        .order('wbs_code')
+        .order('resource_type');
+
+      if (tasks && resReq) {
+        // Proses Logika Enterprise (Gambar 3 & 4)
+        const processedPlan = resReq.map(req => {
+          const task = tasks.find(t => t.wbs_code === req.wbs_code);
+          
+          if (task && task.volume > 0) {
+            const sisaVolume = task.volume - (task.volume * (task.progress_percent / 100));
+            const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
+            
+            // A. Target Volume Harian
+            const targetHarianVol = sisaVolume / sisaHari;
+            
+            // B. Sisa Total Kebutuhan (Jam)
+            const proporsiSisa = sisaVolume / task.volume;
+            const sisaTotalKebutuhan = req.total_kebutuhan * proporsiSisa;
+            
+            // C. Jumlah Tim (Asumsi Kapasitas 1 tim = 10 unit/hari)
+            const kapasitasNyata = 10; 
+            const jumlahTim = targetHarianVol / kapasitasNyata;
+
+            // D. Rekomendasi
+            let rekomendasi = 'Normal';
+            if (jumlahTim > 3) rekomendasi = 'Shift';
+            else if (jumlahTim > 2) rekomendasi = 'Lembur';
+
+            return {
+              ...req,
+              sisa_volume: sisaVolume,
+              sisa_hari: sisaHari,
+              target_harian_vol: targetHarianVol,
+              sisa_total_kebutuhan: sisaTotalKebutuhan,
+              jumlah_tim: jumlahTim,
+              rekomendasi: rekomendasi
+            };
+          }
+          return req;
+        });
+
+        setPlanData(processedPlan);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOpenEdit = (res) => {
@@ -69,7 +128,7 @@ export default function ResourcesPage() {
     } else {
       showToast('Resource berhasil diperbarui!', 'success');
       setIsModalOpen(false);
-      fetchResources(); // Refresh tabel
+      fetchResources();
     }
     setLoading(false);
   };
@@ -79,6 +138,11 @@ export default function ResourcesPage() {
   const filteredResources = resources.filter(r => 
     r.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.role?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredPlan = planData.filter(p => 
+    p.task_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.resource_type?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -97,7 +161,7 @@ export default function ResourcesPage() {
               <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                 <Users className="text-indigo-600" /> Resource Management
               </h1>
-              <p className="text-sm text-slate-500 mt-1">Kelola Master Data dan Kalkulasi Kebutuhan Resource berdasarkan AHSP.</p>
+              <p className="text-sm text-slate-500 mt-1">Kelola Master Data dan Kalkulasi Kebutuhan Resource berdasarkan AHSP & Sisa Volume.</p>
             </div>
             
             <div className="flex items-center gap-3">
@@ -113,7 +177,7 @@ export default function ResourcesPage() {
 
           <div className="flex gap-2 border-b border-slate-200">
             <button onClick={() => { setActiveTab('master'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 ${activeTab === 'master' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Master Data</button>
-            <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 flex items-center gap-2 ${activeTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><Calculator className="w-4 h-4" /> Requirement Plan</button>
+            <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 flex items-center gap-2 ${activeTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><Calculator className="w-4 h-4" /> Requirement Plan (Sisa Volume)</button>
           </div>
         </div>
 
@@ -151,6 +215,58 @@ export default function ResourcesPage() {
             </table>
           </div>
         )}
+
+        {activeTab === 'plan' && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-max text-sm">
+              <thead>
+                <tr className="bg-slate-100 text-slate-600 text-xs uppercase border-b border-slate-200">
+                  <th className="p-3 font-bold text-center">WBS</th>
+                  <th className="p-3 font-bold">Uraian Pekerjaan</th>
+                  <th className="p-3 font-bold">Resource / Crew</th>
+                  <th className="p-3 font-bold text-right">Sisa Vol</th>
+                  <th className="p-3 font-bold text-center">Sisa Hari</th>
+                  <th className="p-3 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Kebutuhan (Jam)</th>
+                  <th className="p-3 font-bold text-right bg-blue-50 text-blue-700">Target Vol / Hari</th>
+                  <th className="p-3 font-bold text-right bg-emerald-50 text-emerald-700">Jumlah Tim</th>
+                  <th className="p-3 font-bold text-center">Rekomendasi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr><td colSpan="9" className="p-8 text-center text-slate-500">Memuat data plan...</td></tr>
+                ) : filteredPlan.map((r, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="p-3 font-mono text-center text-slate-500">{r.wbs_code}</td>
+                    <td className="p-3 font-medium text-slate-800">{r.task_name}</td>
+                    <td className="p-3 text-slate-600">{r.resource_type || r.resource_crew}</td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-700">{r.sisa_volume?.toFixed(2)}</td>
+                    <td className="p-3 text-center font-mono font-bold text-slate-600">{r.sisa_hari} hr</td>
+                    <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">{r.sisa_total_kebutuhan?.toFixed(2)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{r.target_harian_vol?.toFixed(2)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{r.jumlah_tim?.toFixed(1)}</td>
+                    <td className="p-3 text-center">
+                      {r.rekomendasi === 'Normal' ? (
+                        <span className="text-xs text-slate-400 font-semibold">Normal</span>
+                      ) : (
+                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1">
+                          <AlertTriangle className="w-3 h-3" /> {r.rekomendasi}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {activeTab === 'plan' && (
+          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3 text-sm text-blue-800 mt-4">
+            <Info className="w-5 h-5 shrink-0" />
+            <p><b>Logika Enterprise:</b> Kolom <b>Jumlah Tim</b> dihitung dari (Target Vol/Hari) dibagi (Kapasitas Nyata 1 Tim = 10 unit/hari). Jika hasilnya &gt; 2, sistem merekomendasikan Lembur/Shift.</p>
+          </div>
+        )}
       </div>
 
       {/* MODAL EDIT RESOURCE */}
@@ -181,7 +297,6 @@ export default function ResourcesPage() {
                   <div>
                     <label className="block text-xs font-bold text-indigo-600 mb-1">Kapasitas (Jam/Hari)</label>
                     <input type="number" step="0.1" value={formData.daily_capacity} onChange={(e) => setFormData({...formData, daily_capacity: e.target.value})} className="w-full px-3 py-2 border border-indigo-300 rounded-md text-sm font-mono font-bold text-indigo-700 bg-indigo-50" />
-                    <p className="text-[10px] text-indigo-500 mt-1">Ubah menjadi 80.0 jika menyewa 10 unit.</p>
                   </div>
                 </div>
               </div>
