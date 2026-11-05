@@ -2,12 +2,15 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Package, Search, AlertTriangle, Info, HelpCircle, Box, ClipboardList, Filter } from 'lucide-react';
+import { Package, AlertTriangle, Info, HelpCircle, Box, ClipboardList, Filter, ShoppingCart, Store } from 'lucide-react';
 import { InventoryManager } from '@/components/inventory/InventoryManager';
+import { PurchaseOrderManager } from '@/components/purchase-order/PurchaseOrderManager';
+import { VendorManager } from '@/components/vendor/VendorManager'; // Import baru
 
 export default function MaterialsPage() {
   const { activeProjectId } = useProject();
-  const [activeTab, setActiveTab] = useState('plan'); // 'plan' atau 'inventory'
+  // Tambahkan state untuk tab vendor
+  const [activeTab, setActiveTab] = useState('plan'); 
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,6 +21,7 @@ export default function MaterialsPage() {
     }
   }, [activeProjectId, activeTab]);
 
+  // ... (fungsi fetchMaterials tetap sama persis) ...
   const fetchMaterials = async () => {
     if (!activeProjectId) return;
     setLoading(true);
@@ -41,7 +45,6 @@ export default function MaterialsPage() {
           const stokTersedia = inventoryData?.find(inv => inv.hsd_id === mat.master_hsd?.id)?.stok_on_hand || 0;
 
           if (task && task.volume > 0) {
-            // RUMUS ENTERPRISE (Diambil dari Sisa Volume)
             const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
             const sisaVolume = Math.max(0, task.volume - actualVol);
             const sisaHari = task.end_date ? Math.max(0, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
@@ -73,7 +76,16 @@ export default function MaterialsPage() {
             };
           }
           return { 
-            ...mat, stok_tersedia: stokTersedia, sisa_volume: 0, sisa_hari: 1, sisa_kebutuhan_ideal: 0, sisa_waste: 0, sisa_total_dibeli: 0, sisa_pengadaan: 0, sisa_estimasi_biaya: 0, is_lead_time_warning: false 
+            ...mat, 
+            stok_tersedia: stokTersedia, 
+            sisa_volume: 0, 
+            sisa_hari: 1, 
+            sisa_kebutuhan_ideal: 0, 
+            sisa_waste: 0, 
+            sisa_total_dibeli: 0, 
+            sisa_pengadaan: 0, 
+            sisa_estimasi_biaya: 0, 
+            is_lead_time_warning: false 
           };
         });
 
@@ -95,7 +107,6 @@ export default function MaterialsPage() {
       isActive ? 'border-blue-600 text-blue-700 bg-blue-50/50' : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100'
     }`;
 
-  // Helper Component untuk Header dengan Tooltip
   const ThWithInfo = ({ title, tooltip, className = "" }) => (
     <th className={`p-4 font-bold ${className}`}>
       <div className="flex items-center gap-1.5 cursor-help" title={tooltip}>
@@ -113,7 +124,7 @@ export default function MaterialsPage() {
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
               <Package className="text-blue-600 w-6 h-6" /> Material Management
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Kelola Kebutuhan Material berdasarkan AHSP (Sisa Volume & Waste) serta Pantau Stok Gudang.</p>
+            <p className="text-sm text-slate-500 mt-1">Kelola Kebutuhan Material, Pantau Stok Gudang, dan Proses Pengadaan (PO).</p>
           </div>
           
           {activeTab === 'plan' && (
@@ -130,65 +141,39 @@ export default function MaterialsPage() {
           )}
         </div>
 
+        {/* NAVIGATION TABS (DITAMBAH VENDOR) */}
         <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
           <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={tabClass(activeTab === 'plan')}>
             <ClipboardList className="w-4 h-4" /> Requirement Plan
           </button>
           <button onClick={() => { setActiveTab('inventory'); setSearchTerm(''); }} className={tabClass(activeTab === 'inventory')}>
-            <Box className="w-4 h-4" /> Stok Gudang (Inventory)
+            <Box className="w-4 h-4" /> Stok Gudang
+          </button>
+          <button onClick={() => { setActiveTab('po'); setSearchTerm(''); }} className={tabClass(activeTab === 'po')}>
+            <ShoppingCart className="w-4 h-4" /> Purchase Order
+          </button>
+          <button onClick={() => { setActiveTab('vendor'); setSearchTerm(''); }} className={tabClass(activeTab === 'vendor')}>
+            <Store className="w-4 h-4" /> Master Vendor
           </button>
         </div>
 
+        {/* CONTENT: REQUIREMENT PLAN */}
         {activeTab === 'plan' && (
           <>
+            {/* ... (Tabel Requirement Plan tetap sama persis) ... */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-max">
                 <thead>
                   <tr className="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200">
                     <th className="p-4 font-bold">WBS / Pekerjaan</th>
                     <th className="p-4 font-bold">Nama Material</th>
-                    
-                    <ThWithInfo 
-                      title="Sisa Kebutuhan Ideal" 
-                      tooltip="Rumus: Total Kebutuhan AHSP × (Sisa Volume Pekerjaan / Volume Total). Referensi: Tabel task_material_requirements."
-                      className="text-right bg-orange-50 text-orange-700" 
-                    />
-                    
-                    <ThWithInfo 
-                      title="Sisa Waste" 
-                      tooltip="Rumus: Sisa Kebutuhan Ideal × Faktor Waste (%). Referensi: Kolom waste_factor di database."
-                      className="text-right" 
-                    />
-                    
-                    <ThWithInfo 
-                      title="Sisa Total Dibeli" 
-                      tooltip="Rumus: Sisa Kebutuhan Ideal + Sisa Waste. Ini adalah total material fisik yang harus ada untuk menyelesaikan sisa pekerjaan."
-                      className="text-right bg-indigo-50 text-indigo-700" 
-                    />
-                    
-                    <ThWithInfo 
-                      title="Stok Gudang" 
-                      tooltip="Referensi: Total Barang Masuk (IN) dikurangi Barang Keluar (OUT) dari tabel inventory_transactions."
-                      className="text-right bg-emerald-50 text-emerald-700" 
-                    />
-                    
-                    <ThWithInfo 
-                      title="Net Pengadaan" 
-                      tooltip="Rumus: Sisa Total Dibeli - Stok Gudang. Jika hasilnya 0, berarti stok di gudang sudah cukup."
-                      className="text-right bg-rose-50 text-rose-700" 
-                    />
-                    
-                    <ThWithInfo 
-                      title="Estimasi Biaya" 
-                      tooltip="Rumus: Net Pengadaan × Harga Satuan. Referensi harga diambil dari master_hsd (harga_dasar)."
-                      className="text-right" 
-                    />
-                    
-                    <ThWithInfo 
-                      title="Status" 
-                      tooltip="Peringatan Merah jika Sisa Hari < 14 Hari DAN Net Pengadaan > 0. Referensi: Tanggal selesai pekerjaan di tabel wbs_tasks."
-                      className="text-center bg-slate-200 text-slate-800" 
-                    />
+                    <ThWithInfo title="Sisa Kebutuhan Ideal" tooltip="Rumus: Total Kebutuhan AHSP × (Sisa Volume Pekerjaan / Volume Total)." className="text-right bg-orange-50 text-orange-700" />
+                    <ThWithInfo title="Sisa Waste" tooltip="Rumus: Sisa Kebutuhan Ideal × Faktor Waste (%)." className="text-right" />
+                    <ThWithInfo title="Sisa Total Dibeli" tooltip="Rumus: Sisa Kebutuhan Ideal + Sisa Waste." className="text-right bg-indigo-50 text-indigo-700" />
+                    <ThWithInfo title="Stok Gudang" tooltip="Total Barang Masuk (IN) dikurangi Barang Keluar (OUT)." className="text-right bg-emerald-50 text-emerald-700" />
+                    <ThWithInfo title="Net Pengadaan" tooltip="Rumus: Sisa Total Dibeli - Stok Gudang." className="text-right bg-rose-50 text-rose-700" />
+                    <ThWithInfo title="Estimasi Biaya" tooltip="Rumus: Net Pengadaan × Harga Satuan." className="text-right" />
+                    <ThWithInfo title="Status" tooltip="Peringatan Merah jika Sisa Hari < 14 Hari DAN Net Pengadaan > 0." className="text-center bg-slate-200 text-slate-800" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-sm">
@@ -230,14 +215,29 @@ export default function MaterialsPage() {
 
             <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3 text-sm text-blue-800 mt-4 shadow-sm">
               <Info className="w-5 h-5 shrink-0 text-blue-600" />
-              <p><b>Transparansi Perhitungan:</b> Arahkan kursor Anda ke ikon <HelpCircle className="w-4 h-4 inline mx-1" /> pada header tabel untuk melihat rumus dan asal data. Sistem ini 100% dinamis, memotong kebutuhan berdasarkan *Progress* pekerjaan terkini dan *Stok Fisik* di gudang.</p>
+              <p><b>Transparansi Perhitungan:</b> Arahkan kursor Anda ke ikon <HelpCircle className="w-4 h-4 inline mx-1" /> pada header tabel untuk melihat rumus dan asal data.</p>
             </div>
           </>
         )}
 
+        {/* CONTENT: INVENTORY MANAGER */}
         {activeTab === 'inventory' && (
           <div className="mt-2 animate-in fade-in">
             <InventoryManager projectId={activeProjectId} />
+          </div>
+        )}
+
+        {/* CONTENT: PURCHASE ORDER MANAGER */}
+        {activeTab === 'po' && (
+          <div className="mt-2 animate-in fade-in">
+            <PurchaseOrderManager projectId={activeProjectId} />
+          </div>
+        )}
+
+        {/* CONTENT: VENDOR MANAGER */}
+        {activeTab === 'vendor' && (
+          <div className="mt-2 animate-in fade-in">
+            <VendorManager projectId={activeProjectId} />
           </div>
         )}
 
