@@ -64,7 +64,7 @@ export default function MaterialsPage() {
               is_lead_time_warning: isLeadTimeWarning
             };
           }
-          return mat;
+          return { ...mat, sisa_volume: 0, sisa_hari: 1, sisa_kebutuhan_ideal: 0, sisa_waste: 0, sisa_total_dibeli: 0, sisa_estimasi_biaya: 0, is_lead_time_warning: false };
         });
 
         setMaterials(processedMat);
@@ -78,6 +78,7 @@ export default function MaterialsPage() {
 
   const filteredMaterials = materials.filter(m => m.master_hsd?.nama_item?.toLowerCase().includes(searchTerm.toLowerCase()) || m.wbs_tasks?.name?.toLowerCase().includes(searchTerm.toLowerCase()));
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num || 0);
+  const formatNum = (num) => new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0);
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen">
@@ -123,10 +124,10 @@ export default function MaterialsPage() {
                         <div className="text-[10px] text-slate-400 font-mono">{m.wbs_tasks?.wbs_code}</div>
                       </td>
                       <td className="p-4 font-medium text-slate-800">{namaMat}</td>
-                      <td className="p-4 text-right font-mono text-slate-500">{m.sisa_volume?.toFixed(2)}</td>
-                      <td className="p-4 text-right font-mono font-bold text-orange-700 bg-orange-50/30">{m.sisa_kebutuhan_ideal?.toFixed(2)}</td>
-                      <td className="p-4 text-right font-mono text-slate-500">{m.sisa_waste?.toFixed(2)}</td>
-                      <td className="p-4 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30 text-base">{m.sisa_total_dibeli?.toFixed(2)} <span className="text-xs font-normal">{satuan}</span></td>
+                      <td className="p-4 text-right font-mono text-slate-500">{formatNum(m.sisa_volume)}</td>
+                      <td className="p-4 text-right font-mono font-bold text-orange-700 bg-orange-50/30">{formatNum(m.sisa_kebutuhan_ideal)}</td>
+                      <td className="p-4 text-right font-mono text-slate-500">{formatNum(m.sisa_waste)}</td>
+                      <td className="p-4 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30 text-base">{formatNum(m.sisa_total_dibeli)} <span className="text-xs font-normal">{satuan}</span></td>
                       <td className="p-4 text-right font-semibold text-slate-700">{formatRp(m.sisa_estimasi_biaya)}</td>
                       <td className="p-4 text-center">
                         {m.is_lead_time_warning ? (

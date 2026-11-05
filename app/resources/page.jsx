@@ -44,24 +44,26 @@ export default function ResourcesPage() {
       const { data: resReq } = await supabase.from('v_resource_requirements').select('*').order('wbs_code');
 
       if (tasks && resReq) {
-        const uniqueResReq = resReq.filter((v, i, a) => a.findIndex(t => (t.wbs_code === v.wbs_code && t.resource_type === v.resource_type)) === i);
+        // Filter duplikasi
+        const uniqueResReq = resReq.filter((v, i, a) => a.findIndex(t => (t.wbs_code === v.wbs_code && t.resource_name === v.resource_name && t.unit === v.unit)) === i);
 
         const processedPlan = uniqueResReq.map(req => {
           const task = tasks.find(t => t.wbs_code === req.wbs_code);
           
           if (task && task.volume > 0) {
-            // 🟢 PERBAIKAN: Vol Total dikurangi Vol Realisasi (Actual Vol)
+            // Vol Total dikurangi Vol Realisasi
             const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
             const sisaVolume = Math.max(0, task.volume - actualVol);
             
             const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             const targetHarianVol = sisaVolume / sisaHari;
             
-            // 🟢 PERBAIKAN: Memperluas kemungkinan nama kolom di Database
-            // Jika di DB Anda nama kolomnya 'total_jam' atau 'total', tambahkan di sini.
-            const totalKebutuhanRaw = req.total_kebutuhan || req.total_kebutuhan_jam || req.total_jam || req.total_requirement || req.jumlah || 0;
+            // 🟢 PERBAIKAN: Menggunakan nama kolom yang benar dari Supabase
+            const totalRequirement = Number(req.total_requirement) || 0;
+            
             const proporsiSisa = sisaVolume / task.volume;
-            const sisaTotalKebutuhan = Number(totalKebutuhanRaw) * proporsiSisa;
+            // Menghitung sisa kebutuhan berdasarkan proporsi volume sisa
+            const sisaTotalKebutuhan = totalRequirement * proporsiSisa;
             
             const kapasitasNyataPerTim = 10; 
             const jumlahTim = targetHarianVol / kapasitasNyataPerTim;
@@ -80,7 +82,7 @@ export default function ResourcesPage() {
               rekomendasi: rekomendasi
             };
           }
-          return req;
+          return { ...req, sisa_volume: 0, sisa_hari: 1, target_harian_vol: 0, sisa_total_kebutuhan: 0, jumlah_tim: 0, rekomendasi: 'Normal' };
         });
 
         setPlanData(processedPlan);
@@ -111,6 +113,7 @@ export default function ResourcesPage() {
   };
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num || 0);
+  const formatNum = (num) => new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0);
 
   const filteredResources = resources.filter(r => r.name?.toLowerCase().includes(searchTerm.toLowerCase()) || r.role?.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredPlan = planData.filter(p => p.task_name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.resource_type?.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -139,7 +142,7 @@ export default function ResourcesPage() {
 
           <div className="flex gap-2 border-b border-slate-200">
             <button onClick={() => { setActiveTab('master'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 ${activeTab === 'master' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Master Data</button>
-            <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 flex items-center gap-2 ${activeTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><Calculator className="w-4 h-4" /> Requirement Plan (Sisa Volume)</button>
+            <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 flex items-center gap-2 ${activeTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><Calculator className="w-4 h-4" /> Requirement Plan</button>
           </div>
         </div>
 
@@ -183,7 +186,7 @@ export default function ResourcesPage() {
                   <th className="p-3 font-bold">Resource / Crew</th>
                   <th className="p-3 font-bold text-right">Sisa Vol</th>
                   <th className="p-3 font-bold text-center">Sisa Hari</th>
-                  <th className="p-3 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Kebutuhan (Jam)</th>
+                  <th className="p-3 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Kebutuhan</th>
                   <th className="p-3 font-bold text-right bg-blue-50 text-blue-700">Target Vol / Hari</th>
                   <th className="p-3 font-bold text-right bg-emerald-50 text-emerald-700 flex items-center justify-end gap-1" title="Dihitung berdasarkan Asumsi Kapasitas 1 Tim = 10 unit/hari">
                     Jumlah Tim <HelpCircle className="w-3 h-3 text-slate-400" />
@@ -197,16 +200,14 @@ export default function ResourcesPage() {
                   <tr key={i} className="hover:bg-slate-50">
                     <td className="p-3 font-mono text-center text-slate-500">{r.wbs_code}</td>
                     <td className="p-3 font-medium text-slate-800">{r.task_name}</td>
-                    <td className="p-3 text-slate-600">{r.resource_type || r.resource_crew}</td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-700">{r.sisa_volume?.toFixed(2)}</td>
+                    <td className="p-3 text-slate-600">{r.resource_name} ({r.resource_type})</td>
+                    <td className="p-3 text-right font-mono font-bold text-slate-700">{formatNum(r.sisa_volume)}</td>
                     <td className="p-3 text-center font-mono font-bold text-slate-600">{r.sisa_hari} hr</td>
                     <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
-                      {r.sisa_total_kebutuhan?.toFixed(2)}
-                      {/* Menampilkan peringatan jika 0 melulu */}
-                      {r.sisa_total_kebutuhan === 0 && <span className="block text-[9px] text-red-500">Cek Kolom DB</span>}
+                      {formatNum(r.sisa_total_kebutuhan)} <span className="text-[10px] text-slate-500">{r.unit}</span>
                     </td>
-                    <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{r.target_harian_vol?.toFixed(2)}</td>
-                    <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{r.jumlah_tim?.toFixed(1)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{formatNum(r.target_harian_vol)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{formatNum(r.jumlah_tim)}</td>
                     <td className="p-3 text-center">
                       {r.rekomendasi === 'Normal' ? (<span className="text-xs text-slate-400 font-semibold">Normal</span>) : (
                         <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1"><AlertTriangle className="w-3 h-3" /> {r.rekomendasi}</span>
@@ -222,7 +223,7 @@ export default function ResourcesPage() {
         {activeTab === 'plan' && (
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3 text-sm text-blue-800 mt-4">
             <Info className="w-5 h-5 shrink-0" />
-            <p><b>Logika Enterprise:</b> Kolom <b>Jumlah Tim</b> dihitung dari (Target Vol/Hari) dibagi (Kapasitas Nyata 1 Tim = 10 unit/hari). Jika hasilnya &gt; 2, sistem merekomendasikan Lembur/Shift. Sistem belum mendefinisikan jumlah pekerja per tim.</p>
+            <p><b>Logika Enterprise:</b> Kolom <b>Sisa Kebutuhan</b> dihitung dari (Total Requirement x Proporsi Sisa Volume). Kolom <b>Jumlah Tim</b> dihitung dari (Target Vol/Hari) dibagi (Kapasitas Nyata 1 Tim = 10 unit/hari).</p>
           </div>
         )}
       </div>
