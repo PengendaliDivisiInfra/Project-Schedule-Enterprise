@@ -608,7 +608,9 @@ export default function MasterReportPage() {
         </html>
       `;
 
-      const response = await fetch('/api/generate-pdf', {
+      const PDF_SERVER_URL = 'https://pdf-service-repo-production.up.railway.app/generate-pdf'; // Ganti dengan URL Render Anda
+
+      const response = await fetch(PDF_SERVER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: htmlString, scale: pdfScale })
