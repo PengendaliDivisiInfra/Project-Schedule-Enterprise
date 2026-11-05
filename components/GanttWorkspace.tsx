@@ -1,10 +1,11 @@
 'use client';
 
-import { Gantt } from '@blueemllstudio/gantt';
-import type { GanttTask, GanttLink } from '@blueemllstudio/gantt';
+// 🟢 PERBAIKAN: Nama paket yang benar adalah @bluemillstudio/gantt
+import { Gantt } from '@bluemillstudio/gantt';
+import type { GanttTask, GanttLink } from '@bluemillstudio/gantt';
 import { supabase } from '@/lib/supabase';
 
-export default function GanttWorkspace({ tasks = [], links = [], readOnly = false }) {
+export default function GanttWorkspace({ tasks = [], links = [], readOnly = false }: { tasks?: GanttTask[], links?: GanttLink[], readOnly?: boolean }) {
   if (!tasks || tasks.length === 0) {
     return (
       <div className="h-[400px] w-full flex items-center justify-center text-slate-500">
@@ -18,7 +19,6 @@ export default function GanttWorkspace({ tasks = [], links = [], readOnly = fals
       <Gantt
         tasks={tasks}
         links={links}
-        // 🟢 PERBAIKAN: rowHeight dipindah ke sini sebagai props langsung
         rowHeight={32}
         onTaskUpdate={async (task) => {
           if (readOnly) return;
@@ -31,7 +31,6 @@ export default function GanttWorkspace({ tasks = [], links = [], readOnly = fals
         }}
         config={{
           showCriticalPath: true,
-          // rowHeight: 32, <--- HAPUS DARI SINI agar TypeScript tidak error
         }}
       />
     </div>
