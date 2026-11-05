@@ -34,6 +34,13 @@ export interface ResourceRequirement {
   crew_composition_id?: string | null;
   remaining_volume?: number;
   remaining_days?: number;
+  
+  // TAMBAHKAN BARIS INI:
+  jumlah_tim?: number;
+  sisa_volume?: number;
+  sisa_hari?: number;
+  sisa_total_kebutuhan?: number;
+  target_harian_vol?: number;
 }
 
 export interface ResourceCostResult {
