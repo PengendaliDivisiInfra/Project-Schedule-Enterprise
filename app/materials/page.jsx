@@ -33,7 +33,6 @@ export default function MaterialsPage() {
           const task = tasks.find(t => t.wbs_code === mat.wbs_tasks?.wbs_code);
           
           if (task && task.volume > 0) {
-            // 🟢 PERBAIKAN: Menggunakan Vol Total dikurangi Vol Realisasi
             const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
             const sisaVolume = Math.max(0, task.volume - actualVol);
             
@@ -44,15 +43,12 @@ export default function MaterialsPage() {
             const sisaWaste = sisaKebutuhanIdeal * (mat.waste_factor || 0);
             const sisaTotalDibeli = sisaKebutuhanIdeal + sisaWaste;
 
-            // 🟢 CATATAN: Stok On-Hand belum ada di DB, jadi asumsi 0. 
-            // Jika nanti ada tabel inventory, kurangi dengan stok di sini.
             const stokOnHand = 0; 
             const sisaPengadaan = Math.max(0, sisaTotalDibeli - stokOnHand);
 
             const hargaSatuan = mat.master_hsd?.harga_dasar || 0;
             const sisaEstimasiBiaya = sisaPengadaan * hargaSatuan;
 
-            // Asumsi Lead Time default 14 hari (2 minggu) karena belum ada di master_hsd
             const leadTimeDays = 14;
             const isLeadTimeWarning = (sisaPengadaan > 0) && (sisaHari <= leadTimeDays);
 
@@ -62,7 +58,7 @@ export default function MaterialsPage() {
               sisa_hari: sisaHari,
               sisa_kebutuhan_ideal: sisaKebutuhanIdeal,
               sisa_waste: sisaWaste,
-              sisa_total_dibeli: sisaPengadaan, // Ini yang harus dibeli
+              sisa_total_dibeli: sisaPengadaan,
               sisa_estimasi_biaya: sisaEstimasiBiaya,
               lead_time_days: leadTimeDays,
               is_lead_time_warning: isLeadTimeWarning

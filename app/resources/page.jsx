@@ -44,25 +44,25 @@ export default function ResourcesPage() {
       const { data: resReq } = await supabase.from('v_resource_requirements').select('*').order('wbs_code');
 
       if (tasks && resReq) {
-        // Menghilangkan duplikasi data berdasarkan WBS & Resource Type
         const uniqueResReq = resReq.filter((v, i, a) => a.findIndex(t => (t.wbs_code === v.wbs_code && t.resource_type === v.resource_type)) === i);
 
         const processedPlan = uniqueResReq.map(req => {
           const task = tasks.find(t => t.wbs_code === req.wbs_code);
           
           if (task && task.volume > 0) {
-            // 🟢 PERBAIKAN: Menggunakan Vol Total dikurangi Vol Realisasi (Actual Vol)
+            // 🟢 PERBAIKAN: Vol Total dikurangi Vol Realisasi (Actual Vol)
             const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
             const sisaVolume = Math.max(0, task.volume - actualVol);
             
             const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             const targetHarianVol = sisaVolume / sisaHari;
             
-            const totalKebutuhanRaw = req.total_kebutuhan || req.total_kebutuhan_jam || req.jumlah || 0;
+            // 🟢 PERBAIKAN: Memperluas kemungkinan nama kolom di Database
+            // Jika di DB Anda nama kolomnya 'total_jam' atau 'total', tambahkan di sini.
+            const totalKebutuhanRaw = req.total_kebutuhan || req.total_kebutuhan_jam || req.total_jam || req.total_requirement || req.jumlah || 0;
             const proporsiSisa = sisaVolume / task.volume;
             const sisaTotalKebutuhan = Number(totalKebutuhanRaw) * proporsiSisa;
             
-            // Asumsi 1 Tim = Kapasitas Nyata 10 unit/hari
             const kapasitasNyataPerTim = 10; 
             const jumlahTim = targetHarianVol / kapasitasNyataPerTim;
 
@@ -200,7 +200,11 @@ export default function ResourcesPage() {
                     <td className="p-3 text-slate-600">{r.resource_type || r.resource_crew}</td>
                     <td className="p-3 text-right font-mono font-bold text-slate-700">{r.sisa_volume?.toFixed(2)}</td>
                     <td className="p-3 text-center font-mono font-bold text-slate-600">{r.sisa_hari} hr</td>
-                    <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">{r.sisa_total_kebutuhan?.toFixed(2)}</td>
+                    <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
+                      {r.sisa_total_kebutuhan?.toFixed(2)}
+                      {/* Menampilkan peringatan jika 0 melulu */}
+                      {r.sisa_total_kebutuhan === 0 && <span className="block text-[9px] text-red-500">Cek Kolom DB</span>}
+                    </td>
                     <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{r.target_harian_vol?.toFixed(2)}</td>
                     <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{r.jumlah_tim?.toFixed(1)}</td>
                     <td className="p-3 text-center">
