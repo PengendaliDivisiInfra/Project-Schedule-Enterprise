@@ -283,7 +283,6 @@ export default function MasterReportPage() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isGeneratingPrint, setIsGeneratingPrint] = useState(false);
   
-  // 🟢 STATE UNTUK WATERMARK
   const [watermarkText, setWatermarkText] = useState('DRAFT'); 
 
   const [printConfig, setPrintConfig] = useState({
@@ -384,6 +383,7 @@ export default function MasterReportPage() {
 
     try {
       const [projRes, taskRes, resRes, matRes] = await Promise.all([
+        // 🟢 Pastikan select('*') agar logo_url otomatis terambil
         supabase.from('projects').select('*').eq('id', activeProjectId).maybeSingle(),
         supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code'),
         supabase.from('v_resource_plan').select('*').eq('project_id', activeProjectId).order('wbs_code'),
@@ -394,7 +394,7 @@ export default function MasterReportPage() {
       let cex = [];
       
       if (projRes.data) {
-        setProjectInfo(projRes.data);
+        setProjectInfo(projRes.data); // Data proyek termasuk logo_url disimpan di sini
         if (projRes.data.working_days && Array.isArray(projRes.data.working_days) && projRes.data.working_days.length > 0) {
           cwd = projRes.data.working_days.map(Number);
           setWorkingDays(cwd);
@@ -497,7 +497,6 @@ export default function MasterReportPage() {
             width: 100%;
           }
 
-          /* 🟢 WATERMARK DRAFT/FINAL */
           body::before {
             content: "${watermarkText}"; 
             position: fixed;
@@ -533,7 +532,7 @@ export default function MasterReportPage() {
             border-bottom: 2px solid #e2e8f0; 
             padding-bottom: 6px; 
             margin-bottom: 12px; 
-            display: flex; /* 🟢 Flexbox untuk Logo dan Teks */
+            display: flex; 
             align-items: center;
             gap: 15px;
           }
@@ -873,12 +872,18 @@ export default function MasterReportPage() {
         {/* HALAMAN 1: TIME SCHEDULE */}
         <div className="print-page-gantt">
           <div className="header">
-            {/* 🟢 LOGO BASE64 - GANTI SRC DENGAN LOGO ASLI ANDA */}
-            <img 
-              src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzFkNGVkOCIvPjx0ZXh0IHg9IjUwIiB5PSI1NSIgZm9udC1zaXplPSIyMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkxPR088L3RleHQ+PC9zdmc+" 
-              alt="Logo" 
-              style={{ height: '50px', width: 'auto' }} 
-            />
+            {/* 🟢 LOGO DINAMIS DARI DATABASE */}
+            {projectInfo?.logo_url ? (
+              <img 
+                src={projectInfo.logo_url} 
+                alt="Logo Proyek" 
+                style={{ height: '60px', width: 'auto', objectFit: 'contain' }} 
+              />
+            ) : (
+              <div style={{ height: '60px', width: '60px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
+                LOGO
+              </div>
+            )}
             <div>
               <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
               <h1>PROJECT MASTER PROGRAM (PMP) - TIME SCHEDULE</h1>
@@ -1158,7 +1163,6 @@ export default function MasterReportPage() {
                 </div>
               </div>
 
-              {/* 🟢 OPSI WATERMARK */}
               <div>
                 <h3 className="font-bold text-slate-700 mb-2 border-b pb-1">Watermark Dokumen</h3>
                 <div className="flex gap-4">
