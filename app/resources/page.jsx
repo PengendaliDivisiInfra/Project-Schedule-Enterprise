@@ -12,7 +12,6 @@ export default function ResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // State untuk Modal Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingResource, setEditingResource] = useState(null);
   const [formData, setFormData] = useState({ name: '', role: '', daily_rate: 0, daily_capacity: 8 });
@@ -41,40 +40,30 @@ export default function ResourcesPage() {
     setLoading(true);
 
     try {
-      // 1. Ambil data task untuk mendapatkan Sisa Volume & Sisa Hari
-      const { data: tasks } = await supabase
-        .from('wbs_tasks')
-        .select('*')
-        .eq('project_id', activeProjectId);
-
-      // 2. Ambil data resource requirement
-      const { data: resReq } = await supabase
-        .from('v_resource_requirements')
-        .select('*')
-        .order('wbs_code')
-        .order('resource_type');
+      const { data: tasks } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId);
+      const { data: resReq } = await supabase.from('v_resource_requirements').select('*').order('wbs_code');
 
       if (tasks && resReq) {
-        // Proses Logika Enterprise (Gambar 3 & 4)
-        const processedPlan = resReq.map(req => {
+        // Menghilangkan duplikasi data berdasarkan WBS & Resource Type
+        const uniqueResReq = resReq.filter((v, i, a) => a.findIndex(t => (t.wbs_code === v.wbs_code && t.resource_type === v.resource_type)) === i);
+
+        const processedPlan = uniqueResReq.map(req => {
           const task = tasks.find(t => t.wbs_code === req.wbs_code);
           
           if (task && task.volume > 0) {
             const sisaVolume = task.volume - (task.volume * (task.progress_percent / 100));
             const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             
-            // A. Target Volume Harian
             const targetHarianVol = sisaVolume / sisaHari;
             
-            // B. Sisa Total Kebutuhan (Jam)
+            // 🟢 PERBAIKAN: Cek nama kolom yang benar & fallback ke 0 jika undefined
+            const totalKebutuhanRaw = req.total_kebutuhan || req.total_kebutuhan_jam || req.jumlah || 0;
             const proporsiSisa = sisaVolume / task.volume;
-            const sisaTotalKebutuhan = req.total_kebutuhan * proporsiSisa;
+            const sisaTotalKebutuhan = Number(totalKebutuhanRaw) * proporsiSisa;
             
-            // C. Jumlah Tim (Asumsi Kapasitas 1 tim = 10 unit/hari)
             const kapasitasNyata = 10; 
             const jumlahTim = targetHarianVol / kapasitasNyata;
 
-            // D. Rekomendasi
             let rekomendasi = 'Normal';
             if (jumlahTim > 3) rekomendasi = 'Shift';
             else if (jumlahTim > 2) rekomendasi = 'Lembur';
@@ -84,7 +73,7 @@ export default function ResourcesPage() {
               sisa_volume: sisaVolume,
               sisa_hari: sisaHari,
               target_harian_vol: targetHarianVol,
-              sisa_total_kebutuhan: sisaTotalKebutuhan,
+              sisa_total_kebutuhan: isNaN(sisaTotalKebutuhan) ? 0 : sisaTotalKebutuhan,
               jumlah_tim: jumlahTim,
               rekomendasi: rekomendasi
             };
@@ -103,52 +92,31 @@ export default function ResourcesPage() {
 
   const handleOpenEdit = (res) => {
     setEditingResource(res);
-    setFormData({
-      name: res.name,
-      role: res.role,
-      daily_rate: res.daily_rate,
-      daily_capacity: res.daily_capacity
-    });
+    setFormData({ name: res.name, role: res.role, daily_rate: res.daily_rate, daily_capacity: res.daily_capacity });
     setIsModalOpen(true);
   };
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
     const { error } = await supabase.from('project_resources').update({
-      name: formData.name,
-      role: formData.role,
-      daily_rate: Number(formData.daily_rate),
-      daily_capacity: Number(formData.daily_capacity)
+      name: formData.name, role: formData.role, daily_rate: Number(formData.daily_rate), daily_capacity: Number(formData.daily_capacity)
     }).eq('id', editingResource.id);
 
-    if (error) {
-      showToast('Gagal menyimpan: ' + error.message, 'error');
-    } else {
-      showToast('Resource berhasil diperbarui!', 'success');
-      setIsModalOpen(false);
-      fetchResources();
-    }
+    if (error) showToast('Gagal menyimpan: ' + error.message, 'error');
+    else { showToast('Resource berhasil diperbarui!', 'success'); setIsModalOpen(false); fetchResources(); }
     setLoading(false);
   };
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num || 0);
 
-  const filteredResources = resources.filter(r => 
-    r.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.role?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredPlan = planData.filter(p => 
-    p.task_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.resource_type?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredResources = resources.filter(r => r.name?.toLowerCase().includes(searchTerm.toLowerCase()) || r.role?.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filteredPlan = planData.filter(p => p.task_name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.resource_type?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen relative">
       {toast.show && (
-        <div className={`fixed top-5 right-5 z-[10000] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border animate-in slide-in-from-top-4 fade-in ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+        <div className={`fixed top-5 right-5 z-[10000] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
           <span className="font-semibold text-sm">{toast.message}</span>
         </div>
@@ -158,20 +126,12 @@ export default function ResourcesPage() {
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex justify-between items-end">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                <Users className="text-indigo-600" /> Resource Management
-              </h1>
+              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-600" /> Resource Management</h1>
               <p className="text-sm text-slate-500 mt-1">Kelola Master Data dan Kalkulasi Kebutuhan Resource berdasarkan AHSP & Sisa Volume.</p>
             </div>
-            
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input 
-                  type="text" placeholder="Cari resource..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 w-72 shadow-sm"
-                />
-              </div>
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input type="text" placeholder="Cari resource..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 w-72 shadow-sm" />
             </div>
           </div>
 
@@ -194,20 +154,15 @@ export default function ResourcesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {loading ? (
-                  <tr><td colSpan="5" className="p-8 text-center text-slate-500">Memuat data...</td></tr>
-                ) : filteredResources.map((r) => (
+                {loading ? (<tr><td colSpan="5" className="p-8 text-center text-slate-500">Memuat data...</td></tr>) : 
+                  filteredResources.map((r) => (
                   <tr key={r.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4 font-semibold text-slate-800">{r.name}</td>
                     <td className="p-4 text-slate-600">{r.role}</td>
                     <td className="p-4 text-right font-mono text-slate-700">{formatRp(r.daily_rate)}</td>
                     <td className="p-4 text-center font-mono font-bold text-indigo-600 bg-indigo-50/50">{r.daily_capacity || 8.0}</td>
                     <td className="p-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => handleOpenEdit(r)} className="text-blue-600 hover:text-blue-800 p-1.5 bg-blue-50 hover:bg-blue-100 rounded transition-colors" title="Edit Resource">
-                          <Edit className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button onClick={() => handleOpenEdit(r)} className="text-blue-600 hover:text-blue-800 p-1.5 bg-blue-50 hover:bg-blue-100 rounded transition-colors"><Edit className="w-4 h-4" /></button>
                     </td>
                   </tr>
                 ))}
@@ -233,9 +188,8 @@ export default function ResourcesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {loading ? (
-                  <tr><td colSpan="9" className="p-8 text-center text-slate-500">Memuat data plan...</td></tr>
-                ) : filteredPlan.map((r, i) => (
+                {loading ? (<tr><td colSpan="9" className="p-8 text-center text-slate-500">Memuat data plan...</td></tr>) : 
+                  filteredPlan.map((r, i) => (
                   <tr key={i} className="hover:bg-slate-50">
                     <td className="p-3 font-mono text-center text-slate-500">{r.wbs_code}</td>
                     <td className="p-3 font-medium text-slate-800">{r.task_name}</td>
@@ -246,12 +200,8 @@ export default function ResourcesPage() {
                     <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{r.target_harian_vol?.toFixed(2)}</td>
                     <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{r.jumlah_tim?.toFixed(1)}</td>
                     <td className="p-3 text-center">
-                      {r.rekomendasi === 'Normal' ? (
-                        <span className="text-xs text-slate-400 font-semibold">Normal</span>
-                      ) : (
-                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> {r.rekomendasi}
-                        </span>
+                      {r.rekomendasi === 'Normal' ? (<span className="text-xs text-slate-400 font-semibold">Normal</span>) : (
+                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1"><AlertTriangle className="w-3 h-3" /> {r.rekomendasi}</span>
                       )}
                     </td>
                   </tr>
@@ -269,14 +219,11 @@ export default function ResourcesPage() {
         )}
       </div>
 
-      {/* MODAL EDIT RESOURCE */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-white">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Edit className="w-5 h-5 text-indigo-600" /> Edit Resource
-              </h2>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Edit className="w-5 h-5 text-indigo-600" /> Edit Resource</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 p-2 rounded-full transition-colors"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleSaveEdit}>

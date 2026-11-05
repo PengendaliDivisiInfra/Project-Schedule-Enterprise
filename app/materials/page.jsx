@@ -19,51 +19,35 @@ export default function MaterialsPage() {
     setLoading(true);
 
     try {
-      // 1. Ambil data task untuk sisa volume & sisa hari
-      const { data: tasks } = await supabase
-        .from('wbs_tasks')
-        .select('*')
-        .eq('project_id', activeProjectId);
-
-      // 2. Ambil data material requirement
-      const { data, error } = await supabase
-        .from('task_material_requirements')
+      const { data: tasks } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId);
+      const { data, error } = await supabase.from('task_material_requirements')
         .select(`
-          id,
-          volume_requirement,
-          waste_factor,
-          actual_requirement,
+          id, volume_requirement, waste_factor, actual_requirement,
           wbs_tasks ( name, wbs_code, duration ),
           master_hsd ( nama_item, satuan, harga_dasar )
         `)
         .order('created_at', { ascending: false });
 
       if (data && tasks) {
-        // Proses Logika Enterprise (Gambar 2)
         const processedMat = data.map(mat => {
           const task = tasks.find(t => t.wbs_code === mat.wbs_tasks?.wbs_code);
           
           if (task && task.volume > 0) {
             const sisaVolume = task.volume - (task.volume * (task.progress_percent / 100));
-            const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
+            const sisaHari = task.end_date ? Math.max(0, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             
-            // A. Sisa Kebutuhan Ideal
             const proporsiSisa = sisaVolume / task.volume;
             const sisaKebutuhanIdeal = mat.volume_requirement * proporsiSisa;
-
-            // B. Sisa Waste
             const sisaWaste = sisaKebutuhanIdeal * (mat.waste_factor || 0);
-            
-            // C. Sisa Total Dibeli
             const sisaTotalDibeli = sisaKebutuhanIdeal + sisaWaste;
 
-            // D. Estimasi Biaya Sisa
             const hargaSatuan = mat.master_hsd?.harga_dasar || 0;
             const sisaEstimasiBiaya = sisaTotalDibeli * hargaSatuan;
 
-            // E. Lead Time Warning (Asumsi default 14 hari untuk pengiriman)
             const leadTimeDays = 14;
-            const isLeadTimeWarning = sisaHari <= leadTimeDays;
+            
+            // 🟢 PERBAIKAN: Lead time hanya menyala jika Sisa Total Dibeli > 0 DAN Sisa Hari <= 14
+            const isLeadTimeWarning = (sisaTotalDibeli > 0) && (sisaHari <= leadTimeDays);
 
             return {
               ...mat,
@@ -89,25 +73,16 @@ export default function MaterialsPage() {
     }
   };
 
-  const filteredMaterials = materials.filter(m => 
-    m.master_hsd?.nama_item?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    m.wbs_tasks?.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
+  const filteredMaterials = materials.filter(m => m.master_hsd?.nama_item?.toLowerCase().includes(searchTerm.toLowerCase()) || m.wbs_tasks?.name?.toLowerCase().includes(searchTerm.toLowerCase()));
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num || 0);
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        
         <div className="flex justify-between items-end mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-              <Package className="text-indigo-600" /> Material Requirement Plan
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Daftar kebutuhan material aktual (Sisa Volume & Waste) dengan peringatan Lead Time.
-            </p>
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Package className="text-indigo-600" /> Material Requirement Plan</h1>
+            <p className="text-sm text-slate-500 mt-1">Daftar kebutuhan material aktual (Sisa Volume & Waste) dengan peringatan Lead Time.</p>
           </div>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -130,11 +105,8 @@ export default function MaterialsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
-              {loading ? (
-                <tr><td colSpan="8" className="p-8 text-center text-slate-500">Memuat data material...</td></tr>
-              ) : filteredMaterials.length === 0 ? (
-                <tr><td colSpan="8" className="p-8 text-center text-slate-500">Belum ada data material. Pastikan Task sudah di-assign AHSP dan memiliki Volume.</td></tr>
-              ) : (
+              {loading ? (<tr><td colSpan="8" className="p-8 text-center text-slate-500">Memuat data material...</td></tr>) : 
+                filteredMaterials.length === 0 ? (<tr><td colSpan="8" className="p-8 text-center text-slate-500">Belum ada data material.</td></tr>) : 
                 filteredMaterials.map((m) => {
                   const namaMat = m.master_hsd?.nama_item || 'Unknown';
                   const satuan = m.master_hsd?.satuan || '';
@@ -153,26 +125,21 @@ export default function MaterialsPage() {
                       <td className="p-4 text-right font-semibold text-slate-700">{formatRp(m.sisa_estimasi_biaya)}</td>
                       <td className="p-4 text-center">
                         {m.is_lead_time_warning ? (
-                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1">
-                            <AlertTriangle className="w-3 h-3" /> Butuh Pengiriman (&lt; {m.lead_time_days} Hari)
-                          </span>
-                        ) : (
-                          <span className="text-xs text-emerald-600 font-semibold">Aman</span>
-                        )}
+                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1"><AlertTriangle className="w-3 h-3" /> Butuh Pengiriman (&lt; {m.lead_time_days} Hari)</span>
+                        ) : (<span className="text-xs text-emerald-600 font-semibold">Aman</span>)}
                       </td>
                     </tr>
                   );
                 })
-              )}
+              }
             </tbody>
           </table>
         </div>
 
         <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg flex gap-3 text-sm text-orange-800 mt-4">
           <Info className="w-5 h-5 shrink-0" />
-          <p><b>Logika Enterprise:</b> Tabel ini menghitung <b>Sisa Total Dibeli</b> berdasarkan proporsi Sisa Volume ditambah Waste. Jika <b>Sisa Hari &lt; Lead Time Pengiriman</b> (14 hari), sistem memberikan peringatan merah agar segera dilakukan Purchase Order (PO).</p>
+          <p><b>Logika Enterprise:</b> Tabel ini menghitung <b>Sisa Total Dibeli</b> berdasarkan proporsi Sisa Volume ditambah Waste. Jika <b>Sisa Hari &lt; Lead Time Pengiriman</b> (14 hari) DAN sisa barang &gt; 0, sistem memberikan peringatan merah agar segera dilakukan Purchase Order (PO).</p>
         </div>
-
       </div>
     </div>
   );
