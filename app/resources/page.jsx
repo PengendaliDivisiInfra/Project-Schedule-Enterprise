@@ -1,8 +1,11 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Users, Search, Plus, Edit, Trash2, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info, HelpCircle } from 'lucide-react';
+import { Users, Search, Edit, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info, HelpCircle, BarChart3, Filter, ShieldCheck, Settings2 } from 'lucide-react';
+import { ResourceCostHeader, ResourceCostCells, useCostSummary } from '@/components/resource-plan/ResourceCostColumns';
+import { ResourceHistogram } from '@/components/resource-plan/ResourceHistogram';
+import { generateResourceHistogram } from '@/lib/utils/resource-histogram';
 
 export default function ResourcesPage() {
   const { activeProjectId } = useProject();
@@ -12,10 +15,15 @@ export default function ResourcesPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
+  const [manualLimit, setManualLimit] = useState(''); 
+  const [isEditingLimit, setIsEditingLimit] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingResource, setEditingResource] = useState(null);
   const [formData, setFormData] = useState({ name: '', role: '', daily_rate: 0, daily_capacity: 8 });
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  const costSummary = useCostSummary(planData);
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -44,29 +52,25 @@ export default function ResourcesPage() {
       const { data: resReq } = await supabase.from('v_resource_requirements').select('*').order('wbs_code');
 
       if (tasks && resReq) {
-        // Filter duplikasi
         const uniqueResReq = resReq.filter((v, i, a) => a.findIndex(t => (t.wbs_code === v.wbs_code && t.resource_name === v.resource_name && t.unit === v.unit)) === i);
 
         const processedPlan = uniqueResReq.map(req => {
           const task = tasks.find(t => t.wbs_code === req.wbs_code);
           
           if (task && task.volume > 0) {
-            // Vol Total dikurangi Vol Realisasi
             const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
             const sisaVolume = Math.max(0, task.volume - actualVol);
             
             const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             const targetHarianVol = sisaVolume / sisaHari;
             
-            // 🟢 PERBAIKAN: Menggunakan nama kolom yang benar dari Supabase
             const totalRequirement = Number(req.total_requirement) || 0;
-            
             const proporsiSisa = sisaVolume / task.volume;
-            // Menghitung sisa kebutuhan berdasarkan proporsi volume sisa
             const sisaTotalKebutuhan = totalRequirement * proporsiSisa;
             
-            const kapasitasNyataPerTim = 10; 
-            const jumlahTim = targetHarianVol / kapasitasNyataPerTim;
+            const dailyReq = sisaTotalKebutuhan / sisaHari;
+            const kapasitasNyataPerTim = Number(req.capacity_per_day) || 1; 
+            const jumlahTim = dailyReq / kapasitasNyataPerTim;
 
             let rekomendasi = 'Normal';
             if (jumlahTim > 3) rekomendasi = 'Shift';
@@ -74,6 +78,11 @@ export default function ResourcesPage() {
 
             return {
               ...req,
+              start_date: task.start_date,
+              end_date: task.end_date,
+              remaining_volume: sisaVolume,
+              remaining_days: sisaHari,
+              daily_requirement: dailyReq,
               sisa_volume: sisaVolume,
               sisa_hari: sisaHari,
               target_harian_vol: targetHarianVol,
@@ -82,7 +91,20 @@ export default function ResourcesPage() {
               rekomendasi: rekomendasi
             };
           }
-          return { ...req, sisa_volume: 0, sisa_hari: 1, target_harian_vol: 0, sisa_total_kebutuhan: 0, jumlah_tim: 0, rekomendasi: 'Normal' };
+          return { 
+            ...req, 
+            start_date: task?.start_date,
+            end_date: task?.end_date,
+            remaining_volume: 0, 
+            remaining_days: 1, 
+            daily_requirement: 0,
+            sisa_volume: 0, 
+            sisa_hari: 1, 
+            target_harian_vol: 0, 
+            sisa_total_kebutuhan: 0, 
+            jumlah_tim: 0, 
+            rekomendasi: 'Normal' 
+          };
         });
 
         setPlanData(processedPlan);
@@ -93,6 +115,58 @@ export default function ResourcesPage() {
       setLoading(false);
     }
   };
+
+  const histogramData = useMemo(() => {
+    const uniqueTasks = planData.reduce((acc, current) => {
+      if (!acc.find(item => item.wbs_code === current.wbs_code)) acc.push(current);
+      return acc;
+    }, []);
+    return generateResourceHistogram(uniqueTasks);
+  }, [planData]);
+
+  const histogramThreshold = useMemo(() => {
+    if (manualLimit && !isNaN(Number(manualLimit))) return Number(manualLimit);
+    if (!histogramData || histogramData.length === 0) return 1.5;
+    
+    const teams = histogramData.map(d => d.totalTeams);
+    const sum = teams.reduce((a, b) => a + b, 0);
+    const avg = sum / teams.length;
+    return Math.max(avg * 1.25, 1.5);
+  }, [histogramData, manualLimit]);
+
+  // FORMAT DESIMAL ABSOLUT UNTUK TEKS PANDUAN DI BAWAH
+  const formattedThreshold = histogramThreshold.toFixed(1).replace('.', ',');
+
+  const { deficitTasks, peakDate } = useMemo(() => {
+    if (planData.length === 0 || histogramData.length === 0) return { deficitTasks: [], peakDate: null };
+
+    let maxDayTeams = 0;
+    let peakDateStr = null;
+
+    histogramData.forEach(d => {
+      if (d.totalTeams > maxDayTeams) {
+        maxDayTeams = d.totalTeams;
+        peakDateStr = d.fullDate;
+      }
+    });
+
+    if (maxDayTeams <= histogramThreshold) {
+      return { deficitTasks: [], peakDate: peakDateStr };
+    }
+
+    const activeTasks = planData.filter(p => {
+      if (!p.start_date || !p.end_date || p.resource_type === 'Bahan' || p.jumlah_tim <= 0) return false;
+      
+      const pStart = new Date(p.start_date).toISOString().split('T')[0];
+      const pEnd = new Date(p.end_date).toISOString().split('T')[0];
+      
+      return peakDateStr >= pStart && peakDateStr <= pEnd;
+    });
+
+    const sortedTasks = activeTasks.sort((a, b) => b.jumlah_tim - a.jumlah_tim).slice(0, 5);
+
+    return { deficitTasks: sortedTasks, peakDate: peakDateStr };
+  }, [planData, histogramData, histogramThreshold]);
 
   const handleOpenEdit = (res) => {
     setEditingResource(res);
@@ -118,8 +192,15 @@ export default function ResourcesPage() {
   const filteredResources = resources.filter(r => r.name?.toLowerCase().includes(searchTerm.toLowerCase()) || r.role?.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredPlan = planData.filter(p => p.task_name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.resource_type?.toLowerCase().includes(searchTerm.toLowerCase()));
 
+  const tabClass = (isActive) => 
+    `flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 rounded-t-lg whitespace-nowrap ${
+      isActive 
+        ? 'border-blue-600 text-blue-700 bg-blue-50/50' 
+        : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+    }`;
+
   return (
-    <div className="p-6 bg-slate-50 min-h-screen relative">
+    <div className="p-6 md:p-8 bg-slate-50 min-h-screen relative w-full">
       {toast.show && (
         <div className={`fixed top-5 right-5 z-[10000] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl border ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
           {toast.type === 'success' ? <CheckCircle className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
@@ -127,28 +208,42 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col gap-4 mb-6">
-          <div className="flex justify-between items-end">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><Users className="text-indigo-600" /> Resource Management</h1>
-              <p className="text-sm text-slate-500 mt-1">Kelola Master Data dan Kalkulasi Kebutuhan Resource berdasarkan AHSP & Sisa Volume.</p>
-            </div>
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input type="text" placeholder="Cari resource..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 w-72 shadow-sm" />
-            </div>
-          </div>
+      <div className="w-full max-w-[1920px] mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Users className="text-blue-600 w-6 h-6" /> Resource Management
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">Kelola Master Data dan Kalkulasi Kebutuhan Resource berdasarkan AHSP & Sisa Volume.</p>
+        </div>
 
-          <div className="flex gap-2 border-b border-slate-200">
-            <button onClick={() => { setActiveTab('master'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 ${activeTab === 'master' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>Master Data</button>
-            <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={`px-4 py-2 text-sm font-semibold border-b-2 flex items-center gap-2 ${activeTab === 'plan' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}><Calculator className="w-4 h-4" /> Requirement Plan</button>
+        <div className="flex flex-col md:flex-row justify-between items-end border-b border-slate-200 mb-6 gap-2">
+          <div className="flex gap-1 overflow-x-auto w-full md:w-auto pb-0">
+            <button onClick={() => { setActiveTab('master'); setSearchTerm(''); }} className={tabClass(activeTab === 'master')}>
+              <Users className="w-4 h-4" /> Master Data
+            </button>
+            <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={tabClass(activeTab === 'plan')}>
+              <Calculator className="w-4 h-4" /> Requirement Plan
+            </button>
+            <button onClick={() => { setActiveTab('histogram'); setSearchTerm(''); }} className={tabClass(activeTab === 'histogram')}>
+              <BarChart3 className="w-4 h-4" /> Histogram Beban Kerja
+            </button>
+          </div>
+          
+          <div className="relative group w-full md:w-56 mb-2">
+            <Filter className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+            <input 
+              type="text" 
+              placeholder="Filter data modul ini..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs w-full shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-shadow bg-white text-slate-700" 
+            />
           </div>
         </div>
 
         {activeTab === 'master' && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-            <table className="w-full text-left border-collapse">
+             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-100 text-slate-600 text-xs uppercase border-b border-slate-200">
                   <th className="p-4 font-bold">Nama Resource</th>
@@ -177,82 +272,163 @@ export default function ResourcesPage() {
         )}
 
         {activeTab === 'plan' && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-max text-sm">
-              <thead>
-                <tr className="bg-slate-100 text-slate-600 text-xs uppercase border-b border-slate-200">
-                  <th className="p-3 font-bold text-center">WBS</th>
-                  <th className="p-3 font-bold">Uraian Pekerjaan</th>
-                  <th className="p-3 font-bold">Resource / Crew</th>
-                  <th className="p-3 font-bold text-right">Sisa Vol</th>
-                  <th className="p-3 font-bold text-center">Sisa Hari</th>
-                  <th className="p-3 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Kebutuhan</th>
-                  <th className="p-3 font-bold text-right bg-blue-50 text-blue-700">Target Vol / Hari</th>
-                  <th className="p-3 font-bold text-right bg-emerald-50 text-emerald-700 flex items-center justify-end gap-1" title="Dihitung berdasarkan Asumsi Kapasitas 1 Tim = 10 unit/hari">
-                    Jumlah Tim <HelpCircle className="w-3 h-3 text-slate-400" />
-                  </th>
-                  <th className="p-3 font-bold text-center">Rekomendasi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {loading ? (<tr><td colSpan="9" className="p-8 text-center text-slate-500">Memuat data plan...</td></tr>) : 
-                  filteredPlan.map((r, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="p-3 font-mono text-center text-slate-500">{r.wbs_code}</td>
-                    <td className="p-3 font-medium text-slate-800">{r.task_name}</td>
-                    <td className="p-3 text-slate-600">{r.resource_name} ({r.resource_type})</td>
-                    <td className="p-3 text-right font-mono font-bold text-slate-700">{formatNum(r.sisa_volume)}</td>
-                    <td className="p-3 text-center font-mono font-bold text-slate-600">{r.sisa_hari} hr</td>
-                    <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
-                      {formatNum(r.sisa_total_kebutuhan)} <span className="text-[10px] text-slate-500">{r.unit}</span>
-                    </td>
-                    <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{formatNum(r.target_harian_vol)}</td>
-                    <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{formatNum(r.jumlah_tim)}</td>
-                    <td className="p-3 text-center">
-                      {r.rekomendasi === 'Normal' ? (<span className="text-xs text-slate-400 font-semibold">Normal</span>) : (
-                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1"><AlertTriangle className="w-3 h-3" /> {r.rekomendasi}</span>
-                      )}
-                    </td>
+          <>
+            <div className="mb-4">
+              <ResourceCostHeader summary={costSummary} />
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-max text-sm">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-600 text-xs uppercase border-b border-slate-200">
+                    <th className="p-3 font-bold text-center">WBS</th>
+                    <th className="p-3 font-bold">Uraian Pekerjaan</th>
+                    <th className="p-3 font-bold">Resource / Crew</th>
+                    <th className="p-3 font-bold text-right">Sisa Vol</th>
+                    <th className="p-3 font-bold text-center">Sisa Hari</th>
+                    <th className="p-3 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Kebutuhan</th>
+                    <th className="p-3 font-bold text-right bg-blue-50 text-blue-700">Target Vol / Hari</th>
+                    <th className="p-3 font-bold text-right bg-emerald-50 text-emerald-700 flex items-center justify-end gap-1" title="Dihitung berdasarkan Asumsi Kapasitas 1 Tim = 10 unit/hari">
+                      Jumlah Tim <HelpCircle className="w-3 h-3 text-slate-400" />
+                    </th>
+                    <th className="p-3 font-bold text-center">Rekomendasi</th>
+                    <th className="p-3 font-bold text-right bg-teal-50 text-teal-700">Estimasi Sisa Biaya</th>
+                    <th className="p-3 font-bold text-center">Rekomendasi Biaya</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loading ? (<tr><td colSpan="11" className="p-8 text-center text-slate-500">Memuat data plan...</td></tr>) : 
+                    filteredPlan.map((r, i) => (
+                    <tr key={i} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono text-center text-slate-500">{r.wbs_code}</td>
+                      <td className="p-3 font-medium text-slate-800">{r.task_name}</td>
+                      <td className="p-3 text-slate-600">{r.resource_name} ({r.resource_type})</td>
+                      <td className="p-3 text-right font-mono font-bold text-slate-700">{formatNum(r.sisa_volume)}</td>
+                      <td className="p-3 text-center font-mono font-bold text-slate-600">{r.sisa_hari} hr</td>
+                      <td className="p-3 text-right font-mono font-bold text-indigo-700 bg-indigo-50/30">
+                        {formatNum(r.sisa_total_kebutuhan)} <span className="text-[10px] text-slate-500">{r.unit}</span>
+                      </td>
+                      <td className="p-3 text-right font-mono font-bold text-blue-700 bg-blue-50/30">{formatNum(r.target_harian_vol)}</td>
+                      <td className="p-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/30 text-lg">{formatNum(r.jumlah_tim)}</td>
+                      <td className="p-3 text-center">
+                        {r.rekomendasi === 'Normal' ? (<span className="text-xs text-slate-400 font-semibold">Normal</span>) : (
+                          <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold flex items-center justify-center gap-1"><AlertTriangle className="w-3 h-3" /> {r.rekomendasi}</span>
+                        )}
+                      </td>
+                      <ResourceCostCells req={r} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'histogram' && (
+          <div className="space-y-4">
+            
+            <div className="flex justify-end mb-2">
+              {isEditingLimit ? (
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                  <span className="text-xs font-semibold text-slate-600">Set Limit Max (T/H):</span>
+                  <input 
+                    type="number" 
+                    step="0.1"
+                    value={manualLimit} 
+                    onChange={(e) => setManualLimit(e.target.value)}
+                    className="w-20 px-2 py-1 text-sm border rounded focus:outline-none focus:border-blue-500 font-mono"
+                    placeholder={formattedThreshold}
+                  />
+                  <button onClick={() => setIsEditingLimit(false)} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded">Tutup</button>
+                </div>
+              ) : (
+                <button onClick={() => setIsEditingLimit(true)} className="flex items-center gap-1 text-xs text-slate-500 hover:text-blue-600 transition-colors bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                  <Settings2 className="w-3.5 h-3.5" /> Ubah Batas Limit (Manual)
+                </button>
+              )}
+            </div>
+
+            <ResourceHistogram data={histogramData} threshold={histogramThreshold} />
+            
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden print:hidden">
+              <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+                <h4 className="font-bold text-slate-800 text-sm">Top Pemicu Over-allocation</h4>
+                <span className="text-xs text-slate-500">
+                  {peakDate ? `Tugas aktif pada puncak beban (${new Date(peakDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })})` : 'Berdasarkan kebutuhan tim tertinggi'}
+                </span>
+              </div>
+              <table className="w-full text-left border-collapse text-sm">
+                <thead>
+                  <tr className="bg-white text-slate-500 text-xs uppercase border-b border-slate-200">
+                    <th className="p-3 font-semibold">Pekerjaan</th>
+                    <th className="p-3 font-semibold text-center">Resource</th>
+                    <th className="p-3 font-semibold text-right" title="Kebutuhan Puncak Tim per Hari">Kebutuhan Tim/Hari</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {deficitTasks.map((t, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="p-3 font-medium text-slate-800">{t.task_name} <span className="text-xs text-slate-400 font-mono ml-1">({t.wbs_code})</span></td>
+                      <td className="p-3 text-center text-slate-600">{t.resource_name}</td>
+                      <td className="p-3 text-right">
+                        <span className="inline-block bg-rose-50 text-rose-600 px-2 py-1 rounded-md font-semibold border border-rose-100 font-mono text-xs">
+                          {formatNum(t.jumlah_tim)}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {deficitTasks.length === 0 && (
+                    <tr>
+                      <td colSpan="3" className="p-8 text-center">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <ShieldCheck className="w-8 h-8 text-emerald-400" />
+                          <span className="font-semibold text-slate-700">Tidak Ada Pemicu Over-allocation</span>
+                          <span className="text-xs text-slate-500">Semua beban kerja terdistribusi normal di bawah batas aman ({formattedThreshold} T/H).</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-slate-50 border-l-4 border-blue-500 border-y border-r border-slate-200 px-3 py-2 rounded-r-lg flex items-center gap-2 text-xs text-slate-700 shadow-sm print:bg-white print:border-slate-300 print:border-l-slate-500 print:text-black">
+              <Info className="w-4 h-4 shrink-0 text-blue-500 print:text-slate-500" />
+              <p>
+                <span className="font-semibold text-slate-800 mr-1 print:text-black">Panduan:</span>
+                Batang <b className="text-rose-600 print:text-black">Merah</b> atau yang menembus garis <b className="text-rose-500 print:text-black">Batas Max ({formattedThreshold} T/H)</b> menandakan penumpukan beban kerja (<i>Over-allocation</i>). Fitur <i>Resource Leveling</i> akan dibuat di Fase 3.
+              </p>
+            </div>
           </div>
         )}
 
-        {activeTab === 'plan' && (
-          <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3 text-sm text-blue-800 mt-4">
-            <Info className="w-5 h-5 shrink-0" />
-            <p><b>Logika Enterprise:</b> Kolom <b>Sisa Kebutuhan</b> dihitung dari (Total Requirement x Proporsi Sisa Volume). Kolom <b>Jumlah Tim</b> dihitung dari (Target Vol/Hari) dibagi (Kapasitas Nyata 1 Tim = 10 unit/hari).</p>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
             <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-white">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Edit className="w-5 h-5 text-indigo-600" /> Edit Resource</h2>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Edit className="w-5 h-5 text-blue-600" /> Edit Resource</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 p-2 rounded-full transition-colors"><X className="w-5 h-5"/></button>
             </div>
             <form onSubmit={handleSaveEdit}>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Nama Resource</label>
-                  <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="w-full px-3 py-2 border rounded-md text-sm" />
+                  <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="w-full px-3 py-2 border rounded-md text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1">Role / Jabatan</label>
-                  <input type="text" value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} required className="w-full px-3 py-2 border rounded-md text-sm" />
+                  <input type="text" value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} required className="w-full px-3 py-2 border rounded-md text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">Biaya Harian (Rp)</label>
-                    <input type="number" value={formData.daily_rate} onChange={(e) => setFormData({...formData, daily_rate: e.target.value})} className="w-full px-3 py-2 border rounded-md text-sm font-mono" />
+                    <input type="number" value={formData.daily_rate} onChange={(e) => setFormData({...formData, daily_rate: e.target.value})} className="w-full px-3 py-2 border rounded-md text-sm font-mono focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-indigo-600 mb-1">Kapasitas (Jam/Hari)</label>
-                    <input type="number" step="0.1" value={formData.daily_capacity} onChange={(e) => setFormData({...formData, daily_capacity: e.target.value})} className="w-full px-3 py-2 border border-indigo-300 rounded-md text-sm font-mono font-bold text-indigo-700 bg-indigo-50" />
+                    <input type="number" step="0.1" value={formData.daily_capacity} onChange={(e) => setFormData({...formData, daily_capacity: e.target.value})} className="w-full px-3 py-2 border border-indigo-300 rounded-md text-sm font-mono font-bold text-indigo-700 bg-indigo-50 focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
                   </div>
                 </div>
               </div>
