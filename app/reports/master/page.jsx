@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useProject } from '../../../context/ProjectContext';
-import { countWorkingDays } from '../../../lib/scheduler'; // 🟢 Import Working Days Calculator
+import { updateProjectScheduleSecure, countWorkingDays } from '../../../lib/scheduler'; // 🟢 Import Scheduler
 import { 
   Printer, ArrowLeft, Loader2, Settings, X, PieChart, Users, Package, Calendar 
 } from 'lucide-react';
@@ -28,7 +28,6 @@ const formatDateShort = (d) =>
 const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode = false }) => {
   if (!data || data.length === 0) return null;
 
-  // --- Data Filtering ---
   let filteredData = data;
   if (dateFrom || dateTo) {
     const filterStart = dateFrom ? new Date(dateFrom) : new Date(0);
@@ -45,7 +44,6 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
     return <div className="text-center p-4 text-slate-500">Tidak ada data.</div>;
   }
 
-  // --- Timeline Calculation ---
   const allDates = filteredData
     .filter(t => t.start_date && t.end_date)
     .map(t => [new Date(t.start_date).getTime(), new Date(t.end_date).getTime()])
@@ -96,7 +94,6 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
     return (s <= colEnd && e >= colStart);
   };
 
-  // --- PRINT MODE RENDERING (Puppeteer Friendly) ---
   if (isPrintMode) {
     const getColIndex = (dateStr) => {
       if (!dateStr) return 0;
@@ -203,7 +200,6 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
     );
   }
 
-  // --- SCREEN MODE RENDERING (Tailwind) ---
   return (
     <div className="overflow-x-auto w-full">
       <table className="w-full text-left border-collapse text-[10px] min-w-[1000px]">
@@ -280,7 +276,6 @@ export default function MasterReportPage() {
   const [resources, setResources] = useState([]);
   const [materials, setMaterials] = useState([]);
   
-  // 🟢 Tambahan State untuk Kalender
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
 
@@ -333,7 +328,6 @@ export default function MasterReportPage() {
     return tasksCopy.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
   };
 
-  // 🟢 PERBAIKAN: Gunakan countWorkingDays untuk Target & T/hr
   const calculateEVM = (data, cwd, cex) => {
     const today = new Date(); 
     today.setHours(0,0,0,0);
@@ -351,7 +345,6 @@ export default function MasterReportPage() {
           smartTargetPct = 100; 
           sisaHari = 0; 
         } else if (today > startDate) {
-          // 🟢 Gunakan Hari Kerja (Working Days)
           const totalWorkingDays = countWorkingDays(startDate, endDate, cwd, cex) || 1;
           const elapsedWorkingDays = countWorkingDays(startDate, today, cwd, cex);
           
@@ -399,7 +392,6 @@ export default function MasterReportPage() {
       
       if (projRes.data) {
         setProjectInfo(projRes.data);
-        // Ambil hari kerja dari project info
         if (projRes.data.working_days && Array.isArray(projRes.data.working_days) && projRes.data.working_days.length > 0) {
           cwd = projRes.data.working_days.map(Number);
           setWorkingDays(cwd);
@@ -411,7 +403,16 @@ export default function MasterReportPage() {
       }
       
       if (taskRes.data) {
-        const fixedTasks = recalculateRollupDates(taskRes.data);
+        // 🟢 PERBAIKAN KRUSIAL: Jalankan CPM Engine di Master Report
+        // Agar tanggal yang digunakan adalah Early Finish/Start (bukan baseline DB)
+        const engineResult = updateProjectScheduleSecure(taskRes.data, cwd, cex);
+        let finalTasks = taskRes.data;
+        
+        if (engineResult.success) {
+          finalTasks = engineResult.tasks;
+        }
+
+        const fixedTasks = recalculateRollupDates(finalTasks);
         setAllTasks(calculateEVM(fixedTasks, cwd, cex));
       }
       if (resRes.data) setResources(resRes.data);

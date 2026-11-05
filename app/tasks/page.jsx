@@ -53,7 +53,6 @@ export default function TasksPage() {
     return list.map(p => `${p.wbs}${p.type}${p.lag > 0 ? '+' + p.lag : p.lag < 0 ? p.lag : ''}`).join(', ');
   };
 
-  // 🟢 PERBAIKAN: Tambahkan parameter cwd & cex untuk kalkulasi hari kerja
   const calculateEVM = (data, cwd, cex) => {
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -72,7 +71,6 @@ export default function TasksPage() {
           smartTargetPct = 100;
           sisaHari = 0;
         } else if (today > startDate) {
-          // 🟢 PERBAIKAN: Gunakan countWorkingDays agar akurat secara bisnis
           const totalWorkingDays = countWorkingDays(startDate, endDate, cwd, cex) || 1;
           const elapsedWorkingDays = countWorkingDays(startDate, today, cwd, cex);
           
@@ -465,7 +463,7 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* MODAL TASK INFORMATION (Sama seperti sebelumnya, tidak ada perubahan logika) */}
+      {/* MODAL TASK INFORMATION (Sama seperti sebelumnya) */}
       {isModalOpen && (
          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
