@@ -383,7 +383,6 @@ export default function MasterReportPage() {
 
     try {
       const [projRes, taskRes, resRes, matRes] = await Promise.all([
-        // 🟢 Pastikan select('*') agar logo_url otomatis terambil
         supabase.from('projects').select('*').eq('id', activeProjectId).maybeSingle(),
         supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code'),
         supabase.from('v_resource_plan').select('*').eq('project_id', activeProjectId).order('wbs_code'),
@@ -394,7 +393,7 @@ export default function MasterReportPage() {
       let cex = [];
       
       if (projRes.data) {
-        setProjectInfo(projRes.data); // Data proyek termasuk logo_url disimpan di sini
+        setProjectInfo(projRes.data); 
         if (projRes.data.working_days && Array.isArray(projRes.data.working_days) && projRes.data.working_days.length > 0) {
           cwd = projRes.data.working_days.map(Number);
           setWorkingDays(cwd);
@@ -516,17 +515,17 @@ export default function MasterReportPage() {
           @page gantt_layout { 
             size: A3 landscape; 
             margin: 10mm 10mm 15mm 10mm; 
-            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; font-family: 'Segoe UI', Arial, sans-serif; color: #64748b; } 
           }
           @page matrix_layout { 
             size: A3 landscape; 
             margin: 10mm 10mm 15mm 10mm; 
-            @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; font-family: 'Segoe UI', Arial, sans-serif; color: #64748b; } 
           }
           
-          .print-page-gantt { page: gantt_layout; break-before: page; break-inside: avoid; width: 100%; }
-          .print-page-matrix { page: matrix_layout; break-before: page; break-inside: avoid; width: 100%; }
+          /* 🟢 PERBAIKAN: Hapus break-inside: avoid agar tabel bisa mengalir natural */
+          .print-page-gantt { page: gantt_layout; break-before: page; width: 100%; }
+          .print-page-matrix { page: matrix_layout; break-before: page; width: 100%; }
           
+          /* 🟢 PERBAIKAN: Header Seragam untuk semua halaman */
           .header { 
             position: relative; 
             border-bottom: 2px solid #e2e8f0; 
@@ -549,7 +548,8 @@ export default function MasterReportPage() {
           .kpi-label { font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase; margin: 0 0 6px 0; }
           .kpi-value { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1; }
           
-          table { border-collapse: collapse; margin-bottom: 12px; font-size: 11px; table-layout: fixed; width: 100%; }
+          /* 🟢 PERBAIKAN: Izinkan tabel melintasi halaman, tapi cegah baris terpotong */
+          table { border-collapse: collapse; margin-bottom: 12px; font-size: 11px; table-layout: fixed; width: 100%; break-inside: auto; }
           th, td { border: 1px solid #cbd5e1; padding: 8px 12px; vertical-align: middle; }
           th { background-color: #1e3a8a !important; color: #fff !important; text-align: center !important; vertical-align: middle !important; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
           tr { page-break-inside: avoid !important; break-inside: avoid !important; }
@@ -872,17 +872,10 @@ export default function MasterReportPage() {
         {/* HALAMAN 1: TIME SCHEDULE */}
         <div className="print-page-gantt">
           <div className="header">
-            {/* 🟢 LOGO DINAMIS DARI DATABASE */}
             {projectInfo?.logo_url ? (
-              <img 
-                src={projectInfo.logo_url} 
-                alt="Logo Proyek" 
-                style={{ height: '60px', width: 'auto', objectFit: 'contain' }} 
-              />
+              <img src={projectInfo.logo_url} alt="Logo Proyek" style={{ height: '60px', width: 'auto', objectFit: 'contain' }} />
             ) : (
-              <div style={{ height: '60px', width: '60px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
-                LOGO
-              </div>
+              <div style={{ height: '60px', width: '60px', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: '4px' }}>LOGO</div>
             )}
             <div>
               <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
@@ -934,9 +927,15 @@ export default function MasterReportPage() {
         {/* HALAMAN 2: EVM MATRIX */}
         <div className="print-page-matrix">
           <div className="header">
-            <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
-            <h1>PROJECT MASTER PROGRAM (PMP) - EVM MATRIX</h1>
-            <h2>{projectInfo?.name || '-'}</h2>
+            <div>
+              <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
+              <h1>PROJECT MASTER PROGRAM (PMP) - EVM MATRIX</h1>
+              <h2>{projectInfo?.name || '-'}</h2>
+              <div className="header-meta">
+                <span>No. Kontrak: {projectInfo?.contract_number || '-'}</span>
+                <span>Lokasi: {projectInfo?.location || '-'}</span>
+              </div>
+            </div>
           </div>
           <table style={{ width: '100%' }}>
             <colgroup>
@@ -990,9 +989,15 @@ export default function MasterReportPage() {
         {/* HALAMAN 3: RESOURCES */}
         <div className="print-page-matrix">
           <div className="header">
-            <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
-            <h1>PROJECT MASTER PROGRAM (PMP) - RESOURCES</h1>
-            <h2>{projectInfo?.name || '-'}</h2>
+            <div>
+              <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
+              <h1>PROJECT MASTER PROGRAM (PMP) - RESOURCES</h1>
+              <h2>{projectInfo?.name || '-'}</h2>
+              <div className="header-meta">
+                <span>No. Kontrak: {projectInfo?.contract_number || '-'}</span>
+                <span>Lokasi: {projectInfo?.location || '-'}</span>
+              </div>
+            </div>
           </div>
           <table style={{ width: '100%' }}>
             <colgroup>
@@ -1034,9 +1039,15 @@ export default function MasterReportPage() {
         {/* HALAMAN 4: MATERIALS + SIGNATURES */}
         <div className="print-page-matrix">
           <div className="header">
-            <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
-            <h1>PROJECT MASTER PROGRAM (PMP) - MATERIALS</h1>
-            <h2>{projectInfo?.name || '-'}</h2>
+            <div>
+              <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
+              <h1>PROJECT MASTER PROGRAM (PMP) - MATERIALS</h1>
+              <h2>{projectInfo?.name || '-'}</h2>
+              <div className="header-meta">
+                <span>No. Kontrak: {projectInfo?.contract_number || '-'}</span>
+                <span>Lokasi: {projectInfo?.location || '-'}</span>
+              </div>
+            </div>
           </div>
           <table style={{ width: '100%' }}>
             <colgroup>
