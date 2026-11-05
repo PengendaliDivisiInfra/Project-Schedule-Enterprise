@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Package, Search, AlertTriangle, Info } from 'lucide-react';
+import { Package, Search, AlertTriangle, Info, HelpCircle } from 'lucide-react';
 
 export default function MaterialsPage() {
   const { activeProjectId } = useProject();
@@ -33,7 +33,10 @@ export default function MaterialsPage() {
           const task = tasks.find(t => t.wbs_code === mat.wbs_tasks?.wbs_code);
           
           if (task && task.volume > 0) {
-            const sisaVolume = task.volume - (task.volume * (task.progress_percent / 100));
+            // 🟢 PERBAIKAN: Menggunakan Vol Total dikurangi Vol Realisasi
+            const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
+            const sisaVolume = Math.max(0, task.volume - actualVol);
+            
             const sisaHari = task.end_date ? Math.max(0, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             
             const proporsiSisa = sisaVolume / task.volume;
@@ -41,13 +44,17 @@ export default function MaterialsPage() {
             const sisaWaste = sisaKebutuhanIdeal * (mat.waste_factor || 0);
             const sisaTotalDibeli = sisaKebutuhanIdeal + sisaWaste;
 
-            const hargaSatuan = mat.master_hsd?.harga_dasar || 0;
-            const sisaEstimasiBiaya = sisaTotalDibeli * hargaSatuan;
+            // 🟢 CATATAN: Stok On-Hand belum ada di DB, jadi asumsi 0. 
+            // Jika nanti ada tabel inventory, kurangi dengan stok di sini.
+            const stokOnHand = 0; 
+            const sisaPengadaan = Math.max(0, sisaTotalDibeli - stokOnHand);
 
+            const hargaSatuan = mat.master_hsd?.harga_dasar || 0;
+            const sisaEstimasiBiaya = sisaPengadaan * hargaSatuan;
+
+            // Asumsi Lead Time default 14 hari (2 minggu) karena belum ada di master_hsd
             const leadTimeDays = 14;
-            
-            // 🟢 PERBAIKAN: Lead time hanya menyala jika Sisa Total Dibeli > 0 DAN Sisa Hari <= 14
-            const isLeadTimeWarning = (sisaTotalDibeli > 0) && (sisaHari <= leadTimeDays);
+            const isLeadTimeWarning = (sisaPengadaan > 0) && (sisaHari <= leadTimeDays);
 
             return {
               ...mat,
@@ -55,7 +62,7 @@ export default function MaterialsPage() {
               sisa_hari: sisaHari,
               sisa_kebutuhan_ideal: sisaKebutuhanIdeal,
               sisa_waste: sisaWaste,
-              sisa_total_dibeli: sisaTotalDibeli,
+              sisa_total_dibeli: sisaPengadaan, // Ini yang harus dibeli
               sisa_estimasi_biaya: sisaEstimasiBiaya,
               lead_time_days: leadTimeDays,
               is_lead_time_warning: isLeadTimeWarning
@@ -101,7 +108,9 @@ export default function MaterialsPage() {
                 <th className="p-4 font-bold text-right">Sisa Waste</th>
                 <th className="p-4 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Total Dibeli</th>
                 <th className="p-4 font-bold text-right">Estimasi Sisa Biaya</th>
-                <th className="p-4 font-bold text-center bg-red-50 text-red-700">Status Lead Time</th>
+                <th className="p-4 font-bold text-center bg-red-50 text-red-700 flex items-center justify-center gap-1" title="Peringatan jika Sisa Hari < Lead Time (14 Hari)">
+                  Status Lead Time <HelpCircle className="w-3 h-3 text-slate-400" />
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
@@ -138,7 +147,7 @@ export default function MaterialsPage() {
 
         <div className="bg-orange-50 border border-orange-200 p-4 rounded-lg flex gap-3 text-sm text-orange-800 mt-4">
           <Info className="w-5 h-5 shrink-0" />
-          <p><b>Logika Enterprise:</b> Tabel ini menghitung <b>Sisa Total Dibeli</b> berdasarkan proporsi Sisa Volume ditambah Waste. Jika <b>Sisa Hari &lt; Lead Time Pengiriman</b> (14 hari) DAN sisa barang &gt; 0, sistem memberikan peringatan merah agar segera dilakukan Purchase Order (PO).</p>
+          <p><b>Logika Enterprise:</b> Tabel ini menghitung <b>Sisa Total Dibeli</b> berdasarkan proporsi Sisa Volume ditambah Waste. <b>Stok Gudang (On-Hand) saat ini diasumsikan 0</b> karena belum ada modul Inventory. Status Lead Time menyala merah jika <b>Sisa Hari &lt; 14 Hari</b> DAN Sisa Barang &gt; 0.</p>
         </div>
       </div>
     </div>

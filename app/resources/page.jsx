@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Users, Search, Plus, Edit, Trash2, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info } from 'lucide-react';
+import { Users, Search, Plus, Edit, Trash2, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info, HelpCircle } from 'lucide-react';
 
 export default function ResourcesPage() {
   const { activeProjectId } = useProject();
@@ -51,18 +51,20 @@ export default function ResourcesPage() {
           const task = tasks.find(t => t.wbs_code === req.wbs_code);
           
           if (task && task.volume > 0) {
-            const sisaVolume = task.volume - (task.volume * (task.progress_percent / 100));
-            const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
+            // 🟢 PERBAIKAN: Menggunakan Vol Total dikurangi Vol Realisasi (Actual Vol)
+            const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));
+            const sisaVolume = Math.max(0, task.volume - actualVol);
             
+            const sisaHari = task.end_date ? Math.max(1, Math.ceil((new Date(task.end_date) - new Date()) / (1000 * 60 * 60 * 24))) : 1;
             const targetHarianVol = sisaVolume / sisaHari;
             
-            // 🟢 PERBAIKAN: Cek nama kolom yang benar & fallback ke 0 jika undefined
             const totalKebutuhanRaw = req.total_kebutuhan || req.total_kebutuhan_jam || req.jumlah || 0;
             const proporsiSisa = sisaVolume / task.volume;
             const sisaTotalKebutuhan = Number(totalKebutuhanRaw) * proporsiSisa;
             
-            const kapasitasNyata = 10; 
-            const jumlahTim = targetHarianVol / kapasitasNyata;
+            // Asumsi 1 Tim = Kapasitas Nyata 10 unit/hari
+            const kapasitasNyataPerTim = 10; 
+            const jumlahTim = targetHarianVol / kapasitasNyataPerTim;
 
             let rekomendasi = 'Normal';
             if (jumlahTim > 3) rekomendasi = 'Shift';
@@ -183,7 +185,9 @@ export default function ResourcesPage() {
                   <th className="p-3 font-bold text-center">Sisa Hari</th>
                   <th className="p-3 font-bold text-right bg-indigo-50 text-indigo-700">Sisa Kebutuhan (Jam)</th>
                   <th className="p-3 font-bold text-right bg-blue-50 text-blue-700">Target Vol / Hari</th>
-                  <th className="p-3 font-bold text-right bg-emerald-50 text-emerald-700">Jumlah Tim</th>
+                  <th className="p-3 font-bold text-right bg-emerald-50 text-emerald-700 flex items-center justify-end gap-1" title="Dihitung berdasarkan Asumsi Kapasitas 1 Tim = 10 unit/hari">
+                    Jumlah Tim <HelpCircle className="w-3 h-3 text-slate-400" />
+                  </th>
                   <th className="p-3 font-bold text-center">Rekomendasi</th>
                 </tr>
               </thead>
@@ -214,7 +218,7 @@ export default function ResourcesPage() {
         {activeTab === 'plan' && (
           <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex gap-3 text-sm text-blue-800 mt-4">
             <Info className="w-5 h-5 shrink-0" />
-            <p><b>Logika Enterprise:</b> Kolom <b>Jumlah Tim</b> dihitung dari (Target Vol/Hari) dibagi (Kapasitas Nyata 1 Tim = 10 unit/hari). Jika hasilnya &gt; 2, sistem merekomendasikan Lembur/Shift.</p>
+            <p><b>Logika Enterprise:</b> Kolom <b>Jumlah Tim</b> dihitung dari (Target Vol/Hari) dibagi (Kapasitas Nyata 1 Tim = 10 unit/hari). Jika hasilnya &gt; 2, sistem merekomendasikan Lembur/Shift. Sistem belum mendefinisikan jumlah pekerja per tim.</p>
           </div>
         )}
       </div>
