@@ -34,6 +34,11 @@ export interface PurchaseOrder {
   po_number: string;
   po_date: string;
   status: 'Draft' | 'Ordered' | 'Partial' | 'Completed';
+  
+  // Properti baru untuk Payment Status
+  payment_status: 'Unpaid' | 'Paid';
+  payment_date: string | null;
+
   subtotal: number;
   ppn_percent: number;
   ppn_amount: number;
