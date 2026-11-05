@@ -1,7 +1,6 @@
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 
-// 🟢 WAJIB: Memberi tahu Vercel agar mengizinkan proses berjalan hingga 60 detik
 export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +9,7 @@ export async function POST(req) {
   try {
     const { html, scale } = await req.json();
 
-    // 🟢 OPTIMASI CHROMIUM UNTUK VERCEL (Mengurangi penggunaan RAM)
+    // 🟢 OPTIMASI CHROMIUM UNTUK VERCEL
     chromium.setGraphicsMode = false;
     const executablePath = await chromium.executablePath();
 
@@ -21,7 +20,8 @@ export async function POST(req) {
         '--disable-dev-shm-usage',
         '--disable-setuid-sandbox',
         '--no-sandbox',
-        '--single-process' // KRUSIAL: Mencegah OOM (Out of Memory) di Vercel
+        '--single-process', // Krusial untuk mencegah OOM
+        '--hide-scrollbars'
       ],
       defaultViewport: chromium.defaultViewport,
       executablePath: executablePath,
@@ -30,11 +30,16 @@ export async function POST(req) {
 
     const page = await browser.newPage();
     
-    // Set konten HTML dan tunggu hingga semua aset (font/gambar) termuat
+    // 🟢 PERBAIKAN UTAMA: Jangan gunakan 'networkidle0'
+    // Karena Supabase Realtime (WebSocket) membuat koneksi tidak pernah putus.
+    // Cukup tunggu DOM selesai dimuat.
     await page.setContent(html, { 
-      waitUntil: 'networkidle0', 
-      timeout: 45000 // Beri waktu 45 detik untuk render DOM
+      waitUntil: 'domcontentloaded', 
+      timeout: 30000 
     });
+
+    // Beri waktu tambahan singkat untuk memastikan CSS ter-render
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // Konversi ke PDF
     const pdfBuffer = await page.pdf({
@@ -42,7 +47,8 @@ export async function POST(req) {
       landscape: true,
       printBackground: true,
       scale: scale || 1,
-      margin: { top: '10mm', right: '10mm', bottom: '15mm', left: '10mm' }
+      margin: { top: '10mm', right: '10mm', bottom: '15mm', left: '10mm' },
+      timeout: 30000 // Timeout untuk proses generate PDF
     });
 
     return new Response(pdfBuffer, {
@@ -55,12 +61,16 @@ export async function POST(req) {
 
   } catch (error) {
     console.error('PDF Generation Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    
+    // Mengembalikan error yang lebih jelas ke frontend
+    return new Response(JSON.stringify({ 
+      error: 'Gagal generate PDF', 
+      details: error.message 
+    }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
   } finally {
-    // Pastikan browser selalu ditutup agar memori server kembali lega
     if (browser) {
       await browser.close();
     }

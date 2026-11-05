@@ -1,5 +1,3 @@
-function Start-InfraControlDev {
-    Set-Location "D:\Project Schedule\promanage-construction"
-    Write-Host "Navigasi ke InfraControl PRO berhasil. Menjalankan server..." -ForegroundColor Green
-    npm run dev
-}
+git add .
+git commit -m "Fix: Optimize puppeteer waitUntil to prevent timeout"
+git push origin main
