@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useProject } from '../../../context/ProjectContext';
+import { countWorkingDays } from '../../../lib/scheduler'; // 🟢 Import Working Days Calculator
 import { 
   Printer, ArrowLeft, Loader2, Settings, X, PieChart, Users, Package, Calendar 
 } from 'lucide-react';
@@ -105,10 +106,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
       return idx;
     };
 
-    // KALKULASI LEBAR DINAMIS (FULL WIDTH A3)
     const TARGET_PRINT_WIDTH = 1450; 
-    
-    // LEBAR KOLOM (Total = 775px)
     const LEFT_COLUMNS_WIDTH = 40 + 200 + 55 + 55 + 40 + 60 + 60 + 45 + 50 + 55 + 55 + 60; 
     
     const availableTimelineWidth = TARGET_PRINT_WIDTH - LEFT_COLUMNS_WIDTH;
@@ -116,24 +114,24 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
     if (COL_WIDTH < 24) COL_WIDTH = 24; 
     
     const TABLE_WIDTH = LEFT_COLUMNS_WIDTH + (columns.length * COL_WIDTH);
-    const ROW_HEIGHT = 22; // 🟢 Dikurangi dari 26px agar tabel lebih ringkas
+    const ROW_HEIGHT = 22; 
 
     return (
       <div className="gantt-print-wrapper" style={{ position: 'relative', width: `${TABLE_WIDTH}px`, minWidth: '100%' }}>
         <table className="gantt-table" style={{ width: `${TABLE_WIDTH}px`, minWidth: '100%' }}>
           <colgroup>
-            <col style={{ width: '40px' }} />  {/* WBS */}
-            <col style={{ width: '200px' }} /> {/* Uraian */}
-            <col style={{ width: '55px' }} />  {/* Vol */}
-            <col style={{ width: '55px' }} />  {/* Sisa */}
-            <col style={{ width: '40px' }} />  {/* Dur */}
-            <col style={{ width: '60px' }} />  {/* Mulai */}
-            <col style={{ width: '60px' }} />  {/* Selesai */}
-            <col style={{ width: '45px' }} />  {/* Pred */}
-            <col style={{ width: '50px' }} />  {/* Bobot */}
-            <col style={{ width: '55px' }} />  {/* Rencana */}
-            <col style={{ width: '55px' }} />  {/* Varian */}
-            <col style={{ width: '60px' }} />  {/* T/HR */}
+            <col style={{ width: '40px' }} />
+            <col style={{ width: '200px' }} />
+            <col style={{ width: '55px' }} />
+            <col style={{ width: '55px' }} />
+            <col style={{ width: '40px' }} />
+            <col style={{ width: '60px' }} />
+            <col style={{ width: '60px' }} />
+            <col style={{ width: '45px' }} />
+            <col style={{ width: '50px' }} />
+            <col style={{ width: '55px' }} />
+            <col style={{ width: '55px' }} />
+            <col style={{ width: '60px' }} />
             {columns.map((_, i) => <col key={i} style={{ width: `${COL_WIDTH}px` }} />)}
           </colgroup>
           <thead>
@@ -282,6 +280,10 @@ export default function MasterReportPage() {
   const [resources, setResources] = useState([]);
   const [materials, setMaterials] = useState([]);
   
+  // 🟢 Tambahan State untuk Kalender
+  const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
+  const [exceptions, setExceptions] = useState([]);
+
   const [activeTab, setActiveTab] = useState('gantt');
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isGeneratingPrint, setIsGeneratingPrint] = useState(false);
@@ -331,7 +333,8 @@ export default function MasterReportPage() {
     return tasksCopy.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
   };
 
-  const calculateEVM = (data) => {
+  // 🟢 PERBAIKAN: Gunakan countWorkingDays untuk Target & T/hr
+  const calculateEVM = (data, cwd, cex) => {
     const today = new Date(); 
     today.setHours(0,0,0,0);
     
@@ -348,10 +351,14 @@ export default function MasterReportPage() {
           smartTargetPct = 100; 
           sisaHari = 0; 
         } else if (today > startDate) {
-          const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) || 1;
-          const elapsedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
-          smartTargetPct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
-          sisaHari = Math.max(0, totalDays - elapsedDays);
+          // 🟢 Gunakan Hari Kerja (Working Days)
+          const totalWorkingDays = countWorkingDays(startDate, endDate, cwd, cex) || 1;
+          const elapsedWorkingDays = countWorkingDays(startDate, today, cwd, cex);
+          
+          smartTargetPct = Math.min(100, Math.max(0, (elapsedWorkingDays / totalWorkingDays) * 100));
+          sisaHari = Math.max(0, totalWorkingDays - elapsedWorkingDays); 
+        } else {
+          sisaHari = countWorkingDays(startDate, endDate, cwd, cex);
         }
       }
       
@@ -387,10 +394,25 @@ export default function MasterReportPage() {
         supabase.from('v_material_plan').select('*').eq('project_id', activeProjectId).order('wbs_code')
       ]);
       
-      if (projRes.data) setProjectInfo(projRes.data);
+      let cwd = [1,2,3,4,5];
+      let cex = [];
+      
+      if (projRes.data) {
+        setProjectInfo(projRes.data);
+        // Ambil hari kerja dari project info
+        if (projRes.data.working_days && Array.isArray(projRes.data.working_days) && projRes.data.working_days.length > 0) {
+          cwd = projRes.data.working_days.map(Number);
+          setWorkingDays(cwd);
+        }
+        if (projRes.data.exceptions) {
+          cex = projRes.data.exceptions;
+          setExceptions(cex);
+        }
+      }
+      
       if (taskRes.data) {
         const fixedTasks = recalculateRollupDates(taskRes.data);
-        setAllTasks(calculateEVM(fixedTasks));
+        setAllTasks(calculateEVM(fixedTasks, cwd, cex));
       }
       if (resRes.data) setResources(resRes.data);
       if (matRes.data) setMaterials(matRes.data);
@@ -524,13 +546,12 @@ export default function MasterReportPage() {
           .gantt-table td.bar-cell { padding: 0 2px !important; border-left: none !important; border-right: none !important; position: relative; }
           .gantt-table td.empty-cell { padding: 0 !important; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; }
           
-          /* ENTERPRISE BUBBLE STYLE - LEBIH RINGKAS */
           .gantt-bar-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; position: relative; z-index: 10; }
           
           .gantt-bar-blue { 
             background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%) !important; 
             border: 1px solid #2563eb; 
-            height: 8px; /* 🟢 Dikurangi dari 14px */
+            height: 8px; 
             width: 100%; 
             border-radius: 999px; 
             box-shadow: 0 1px 2px rgba(0,0,0,0.15); 
@@ -539,7 +560,7 @@ export default function MasterReportPage() {
           .gantt-bar-red { 
             background: linear-gradient(180deg, #f87171 0%, #ef4444 100%) !important; 
             border: 1px solid #dc2626; 
-            height: 8px; /* 🟢 Dikurangi dari 14px */
+            height: 8px; 
             width: 100%; 
             border-radius: 999px; 
             box-shadow: 0 1px 2px rgba(0,0,0,0.15); 
@@ -547,7 +568,7 @@ export default function MasterReportPage() {
           
           .gantt-bar-summary {
             background: linear-gradient(180deg, #334155 0%, #0f172a 100%) !important; 
-            height: 5px; /* 🟢 Dikurangi dari 8px */
+            height: 5px; 
             width: 100%; 
             position: relative;
             border-radius: 2px;
@@ -556,8 +577,8 @@ export default function MasterReportPage() {
           .gantt-bar-summary::before, .gantt-bar-summary::after {
             content: '';
             position: absolute;
-            top: 4px; /* 🟢 Disesuaikan dengan tinggi baru */
-            border-left: 3px solid transparent; /* 🟢 Segitiga sedikit dikecilkan */
+            top: 4px; 
+            border-left: 3px solid transparent; 
             border-right: 3px solid transparent;
             border-top: 4px solid #0f172a;
           }

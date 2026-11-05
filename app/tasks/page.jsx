@@ -53,28 +53,33 @@ export default function TasksPage() {
     return list.map(p => `${p.wbs}${p.type}${p.lag > 0 ? '+' + p.lag : p.lag < 0 ? p.lag : ''}`).join(', ');
   };
 
-  const calculateEVM = (data) => {
+  // 🟢 PERBAIKAN: Tambahkan parameter cwd & cex untuk kalkulasi hari kerja
+  const calculateEVM = (data, cwd, cex) => {
     const today = new Date();
     today.setHours(0,0,0,0);
+    
     return data.map(t => {
       const vol = Number(t.volume) || 0;
-      const dur = Number(t.duration) || 1;
       const progPct = Number(t.progress_percent) || 0;
       const startDate = t.start_date ? new Date(t.start_date) : null;
       const endDate = t.end_date ? new Date(t.end_date) : null;
       
       let smartTargetPct = 0;
-      let sisaHari = dur;
+      let sisaHari = t.duration || 1;
 
       if (t.summary === 'No' && startDate && endDate) {
         if (today >= endDate) {
           smartTargetPct = 100;
           sisaHari = 0;
         } else if (today > startDate) {
-          const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) || 1;
-          const elapsedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
-          smartTargetPct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
-          sisaHari = Math.max(0, totalDays - elapsedDays);
+          // 🟢 PERBAIKAN: Gunakan countWorkingDays agar akurat secara bisnis
+          const totalWorkingDays = countWorkingDays(startDate, endDate, cwd, cex) || 1;
+          const elapsedWorkingDays = countWorkingDays(startDate, today, cwd, cex);
+          
+          smartTargetPct = Math.min(100, Math.max(0, (elapsedWorkingDays / totalWorkingDays) * 100));
+          sisaHari = Math.max(0, totalWorkingDays - elapsedWorkingDays); 
+        } else {
+          sisaHari = countWorkingDays(startDate, endDate, cwd, cex);
         }
       }
 
@@ -87,7 +92,7 @@ export default function TasksPage() {
     });
   };
 
-    const syncScheduleToDB = async (tasksToSync) => {
+  const syncScheduleToDB = async (tasksToSync) => {
     try {
       for (const t of tasksToSync) {
         if (t.summary === 'No') {
@@ -126,14 +131,13 @@ export default function TasksPage() {
     if (data) {
       const engineResult = updateProjectScheduleSecure(data, cwd, cex);
       if (engineResult.success) {
-        const evmTasks = calculateEVM(engineResult.tasks);
+        const evmTasks = calculateEVM(engineResult.tasks, cwd, cex);
         const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
         setTasks(sorted);
         
-        // Simpan hasil kalkulasi CPM ke database agar sinkron dengan Master Report
         await syncScheduleToDB(engineResult.tasks); 
       } else {
-        setTasks(calculateEVM(data));
+        setTasks(calculateEVM(data, cwd, cex));
       }
     }
     if (error) console.error(error);
@@ -152,7 +156,7 @@ export default function TasksPage() {
     const previousTasks = [...tasks];
     setTasks(prev => {
         const updated = prev.map(t => t.id === taskId ? { ...t, progress_percent: newPct } : t);
-        return calculateEVM(updated);
+        return calculateEVM(updated, workingDays, exceptions);
     });
     showToast(`Progres diupdate: ${newPct.toFixed(1)}%`, 'success');
     const { error } = await supabase.from('wbs_tasks').update({ progress_percent: newPct }).eq('id', taskId);
@@ -256,14 +260,14 @@ export default function TasksPage() {
       const cpmResult = updateProjectScheduleSecure(updatedTasks, workingDays, exceptions);
       if (cpmResult.success) updatedTasks = cpmResult.tasks;
       
-      const evmTasks = calculateEVM(updatedTasks);
+      const evmTasks = calculateEVM(updatedTasks, workingDays, exceptions);
       const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
       
       setTasks(sorted);
       showToast('Task diperbarui', 'success');
 
       const { error } = await supabase.from('wbs_tasks').update(saveData).eq('id', currentTask.id);
-      if (!error) await syncScheduleToDB(updatedTasks); // Sinkronkan semua task
+      if (!error) await syncScheduleToDB(updatedTasks); 
       if (error) { setTasks(previousTasks); showToast('Gagal: ' + error.message, 'error'); }
 
     } else {
@@ -277,7 +281,7 @@ export default function TasksPage() {
         const cpmResult = updateProjectScheduleSecure(updatedTasks, workingDays, exceptions);
         if (cpmResult.success) updatedTasks = cpmResult.tasks;
         
-        const evmTasks = calculateEVM(updatedTasks);
+        const evmTasks = calculateEVM(updatedTasks, workingDays, exceptions);
         const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
         
         setTasks(sorted);
@@ -358,7 +362,7 @@ export default function TasksPage() {
               {loading ? (
                  <tr><td colSpan={showCPM ? 20 : 14} className="p-8 text-center text-slate-500">Memuat data...</td></tr>
               ) : tasks.map((t) => {
-                const isSummary = t.summary === 'Yes';
+                const isSummary = t.summary === 'Yes' || t.summary !== 'No';
                 const varian = t.varian_pct || 0;
                 return (
                   <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${t.is_critical && !isSummary ? 'bg-red-50/40' : ''}`}>
@@ -461,7 +465,7 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* MODAL TASK INFORMATION */}
+      {/* MODAL TASK INFORMATION (Sama seperti sebelumnya, tidak ada perubahan logika) */}
       {isModalOpen && (
          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
