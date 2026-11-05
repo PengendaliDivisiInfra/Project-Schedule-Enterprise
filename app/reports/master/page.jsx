@@ -283,6 +283,9 @@ export default function MasterReportPage() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isGeneratingPrint, setIsGeneratingPrint] = useState(false);
   
+  // 🟢 STATE UNTUK WATERMARK
+  const [watermarkText, setWatermarkText] = useState('DRAFT'); 
+
   const [printConfig, setPrintConfig] = useState({
     timescale: 'Bulanan', 
     dateFrom: '', 
@@ -493,8 +496,24 @@ export default function MasterReportPage() {
             color: #1e293b; line-height: 1.2; 
             width: 100%;
           }
+
+          /* 🟢 WATERMARK DRAFT/FINAL */
+          body::before {
+            content: "${watermarkText}"; 
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 150px;
+            font-weight: 900;
+            color: rgba(0, 0, 0, 0.05); 
+            z-index: -1;
+            pointer-events: none;
+            white-space: nowrap;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            letter-spacing: 10px;
+          }
           
-          /* 🟢 PERBAIKAN: Menyamakan ukuran kertas menjadi A3 untuk semua halaman */
           @page gantt_layout { 
             size: A3 landscape; 
             margin: 10mm 10mm 15mm 10mm; 
@@ -509,7 +528,15 @@ export default function MasterReportPage() {
           .print-page-gantt { page: gantt_layout; break-before: page; break-inside: avoid; width: 100%; }
           .print-page-matrix { page: matrix_layout; break-before: page; break-inside: avoid; width: 100%; }
           
-          .header { position: relative; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 12px; }
+          .header { 
+            position: relative; 
+            border-bottom: 2px solid #e2e8f0; 
+            padding-bottom: 6px; 
+            margin-bottom: 12px; 
+            display: flex; /* 🟢 Flexbox untuk Logo dan Teks */
+            align-items: center;
+            gap: 15px;
+          }
           h1 { font-size: 18px; font-weight: 700; margin: 0 0 2px 0; text-transform: uppercase; color: #0f172a; }
           h2 { font-size: 13px; font-weight: 600; color: #4338ca; margin: 0 0 8px 0; text-transform: uppercase; }
           .rev-box { position: absolute; top: 0; right: 0; border: 1px solid #cbd5e1; padding: 4px 8px; font-size: 9px; font-weight: 700; color: #475569; background-color: #f8fafc; border-radius: 4px; }
@@ -523,7 +550,6 @@ export default function MasterReportPage() {
           .kpi-label { font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase; margin: 0 0 6px 0; }
           .kpi-value { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1; }
           
-          /* 🟢 PERBAIKAN: Memperbesar Font & Padding Tabel Matriks agar Memenuhi Halaman A3 */
           table { border-collapse: collapse; margin-bottom: 12px; font-size: 11px; table-layout: fixed; width: 100%; }
           th, td { border: 1px solid #cbd5e1; padding: 8px 12px; vertical-align: middle; }
           th { background-color: #1e3a8a !important; color: #fff !important; text-align: center !important; vertical-align: middle !important; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
@@ -540,7 +566,6 @@ export default function MasterReportPage() {
             overflow: hidden;
           } 
           
-          /* GANTT TABLE (Spesifik) */
           .gantt-print-wrapper { position: relative; margin: 0; }
           .gantt-table { table-layout: fixed !important; border: 1px solid #94a3b8; font-size: 9px; }
           .gantt-table th, .gantt-table td { padding: 2px 4px; }
@@ -609,7 +634,7 @@ export default function MasterReportPage() {
         </html>
       `;
 
-      const response = await fetch(printConfig.pdfServerUrl || 'https://pdf-service-repo-production.up.railway.app/generate-pdf', {
+      const response = await fetch('https://pdf-service-repo-production.up.railway.app/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: htmlString, scale: pdfScale })
@@ -848,12 +873,20 @@ export default function MasterReportPage() {
         {/* HALAMAN 1: TIME SCHEDULE */}
         <div className="print-page-gantt">
           <div className="header">
-            <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
-            <h1>PROJECT MASTER PROGRAM (PMP) - TIME SCHEDULE</h1>
-            <h2>{projectInfo?.name || '-'}</h2>
-            <div className="header-meta">
-              <span>No. Kontrak: {projectInfo?.contract_number || '-'}</span>
-              <span>Lokasi: {projectInfo?.location || '-'}</span>
+            {/* 🟢 LOGO BASE64 - GANTI SRC DENGAN LOGO ASLI ANDA */}
+            <img 
+              src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzFkNGVkOCIvPjx0ZXh0IHg9IjUwIiB5PSI1NSIgZm9udC1zaXplPSIyMCIgZmlsbD0id2hpdGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkxPR088L3RleHQ+PC9zdmc+" 
+              alt="Logo" 
+              style={{ height: '50px', width: 'auto' }} 
+            />
+            <div>
+              <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
+              <h1>PROJECT MASTER PROGRAM (PMP) - TIME SCHEDULE</h1>
+              <h2>{projectInfo?.name || '-'}</h2>
+              <div className="header-meta">
+                <span>No. Kontrak: {projectInfo?.contract_number || '-'}</span>
+                <span>Lokasi: {projectInfo?.location || '-'}</span>
+              </div>
             </div>
           </div>
 
@@ -1122,6 +1155,21 @@ export default function MasterReportPage() {
                       className="w-full border p-2 rounded-lg bg-white outline-none focus:ring-2 focus:ring-indigo-500" 
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* 🟢 OPSI WATERMARK */}
+              <div>
+                <h3 className="font-bold text-slate-700 mb-2 border-b pb-1">Watermark Dokumen</h3>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="watermark" value="DRAFT" checked={watermarkText === 'DRAFT'} onChange={(e) => setWatermarkText(e.target.value)} className="w-4 h-4 text-indigo-600" /> 
+                    <span className="text-sm font-semibold">DRAFT</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="watermark" value="FINAL" checked={watermarkText === 'FINAL'} onChange={(e) => setWatermarkText(e.target.value)} className="w-4 h-4 text-indigo-600" /> 
+                    <span className="text-sm font-semibold">FINAL</span>
+                  </label>
                 </div>
               </div>
 

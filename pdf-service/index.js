@@ -3,29 +3,30 @@ const puppeteer = require('puppeteer');
 const cors = require('cors');
 
 const app = express();
-app.use(cors()); // Izinkan request dari domain Vercel Anda
-app.use(express.json({ limit: '50mb' })); // Naikkan limit payload karena HTML bisa besar
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
+
+// 🟢 ROUTE UNTUK KEEP-ALIVE (Mencegah Railway Sleep)
+app.get('/healthz', (req, res) => {
+  res.status(200).send('OK');
+});
 
 app.post('/generate-pdf', async (req, res) => {
   const { html, scale } = req.body;
   let browser = null;
 
   try {
-    // Gunakan Puppeteer standar (bukan serverless)
     browser = await puppeteer.launch({
       headless: "new",
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
 
     const page = await browser.newPage();
-    
-    // Set konten
     await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     
     // Beri waktu CSS render
     await new Promise(r => setTimeout(r, 1000));
 
-    // Generate PDF
     const pdfBuffer = await page.pdf({
       format: 'A3',
       landscape: true,
