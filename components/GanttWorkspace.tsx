@@ -5,7 +5,15 @@ import { Gantt } from '@bluemillstudio/gantt';
 import type { GanttTask, GanttLink } from '@bluemillstudio/gantt';
 import { supabase } from '@/lib/supabase';
 
-export default function GanttWorkspace({ tasks = [], links = [], readOnly = false }: { tasks?: GanttTask[], links?: GanttLink[], readOnly?: boolean }) {
+export default function GanttWorkspace({ 
+  tasks = [], 
+  links = [], 
+  readOnly = false 
+}: { 
+  tasks?: GanttTask[], 
+  links?: GanttLink[], 
+  readOnly?: boolean 
+}) {
   if (!tasks || tasks.length === 0) {
     return (
       <div className="h-[400px] w-full flex items-center justify-center text-slate-500">
@@ -19,7 +27,6 @@ export default function GanttWorkspace({ tasks = [], links = [], readOnly = fals
       <Gantt
         tasks={tasks}
         links={links}
-        rowHeight={32}
         onTaskUpdate={async (task) => {
           if (readOnly) return;
           await supabase.from('wbs_tasks').update({
@@ -31,6 +38,8 @@ export default function GanttWorkspace({ tasks = [], links = [], readOnly = fals
         }}
         config={{
           showCriticalPath: true,
+          // 🟢 PERBAIKAN: Properti yang benar adalah `cellHeight` di dalam config
+          cellHeight: 32, 
         }}
       />
     </div>
