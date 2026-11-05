@@ -2,10 +2,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Users, Search, Edit, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info, HelpCircle, BarChart3, Filter, ShieldCheck, Settings2 } from 'lucide-react';
+import { Users, Search, Edit, Calculator, CheckCircle, XCircle, X, AlertTriangle, Info, HelpCircle, BarChart3, Filter, ShieldCheck, Settings2, Wand2, CalendarClock, ArrowRight } from 'lucide-react';
 import { ResourceCostHeader, ResourceCostCells, useCostSummary } from '@/components/resource-plan/ResourceCostColumns';
 import { ResourceHistogram } from '@/components/resource-plan/ResourceHistogram';
 import { generateResourceHistogram } from '@/lib/utils/resource-histogram';
+import { generateLevelingSuggestion } from '@/lib/utils/resource-leveling';
 
 export default function ResourcesPage() {
   const { activeProjectId } = useProject();
@@ -17,6 +18,11 @@ export default function ResourcesPage() {
   
   const [manualLimit, setManualLimit] = useState(''); 
   const [isEditingLimit, setIsEditingLimit] = useState(false);
+
+  // State untuk Leveling Modal
+  const [isLevelingModalOpen, setIsLevelingModalOpen] = useState(false);
+  const [levelingSuggestion, setLevelingSuggestion] = useState(null);
+  const [isExecutingLeveling, setIsExecutingLeveling] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingResource, setEditingResource] = useState(null);
@@ -78,6 +84,7 @@ export default function ResourcesPage() {
 
             return {
               ...req,
+              task_id: task.id,
               start_date: task.start_date,
               end_date: task.end_date,
               remaining_volume: sisaVolume,
@@ -93,6 +100,7 @@ export default function ResourcesPage() {
           }
           return { 
             ...req, 
+            task_id: task?.id,
             start_date: task?.start_date,
             end_date: task?.end_date,
             remaining_volume: 0, 
@@ -134,7 +142,6 @@ export default function ResourcesPage() {
     return Math.max(avg * 1.25, 1.5);
   }, [histogramData, manualLimit]);
 
-  // FORMAT DESIMAL ABSOLUT UNTUK TEKS PANDUAN DI BAWAH
   const formattedThreshold = histogramThreshold.toFixed(1).replace('.', ',');
 
   const { deficitTasks, peakDate } = useMemo(() => {
@@ -168,6 +175,46 @@ export default function ResourcesPage() {
     return { deficitTasks: sortedTasks, peakDate: peakDateStr };
   }, [planData, histogramData, histogramThreshold]);
 
+  // FUNGSI UNTUK MEMICU LEVELING SUGGESTION
+  const handleGenerateLeveling = () => {
+    if (!peakDate) return;
+    const suggestion = generateLevelingSuggestion(peakDate, deficitTasks, histogramThreshold);
+    
+    if (suggestion) {
+      setLevelingSuggestion(suggestion);
+      setIsLevelingModalOpen(true);
+    } else {
+      showToast('Tidak dapat menemukan solusi pergeseran otomatis.', 'error');
+    }
+  };
+
+  // FUNGSI UNTUK MENGEKSEKUSI PERGESERAN KE DATABASE
+  const executeLeveling = async () => {
+    if (!levelingSuggestion) return;
+    setIsExecutingLeveling(true);
+
+    try {
+      const { error } = await supabase
+        .from('wbs_tasks')
+        .update({ 
+          start_date: levelingSuggestion.new_start, 
+          end_date: levelingSuggestion.new_end 
+        })
+        .eq('id', levelingSuggestion.task_id);
+
+      if (error) throw error;
+
+      showToast('Jadwal berhasil digeser! Memuat ulang data...', 'success');
+      setIsLevelingModalOpen(false);
+      
+      await fetchPlanData();
+    } catch (err) {
+      showToast('Gagal menggeser jadwal: ' + err.message, 'error');
+    } finally {
+      setIsExecutingLeveling(false);
+    }
+  };
+
   const handleOpenEdit = (res) => {
     setEditingResource(res);
     setFormData({ name: res.name, role: res.role, daily_rate: res.daily_rate, daily_capacity: res.daily_capacity });
@@ -188,6 +235,7 @@ export default function ResourcesPage() {
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(num || 0);
   const formatNum = (num) => new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0);
+  const formatDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
   const filteredResources = resources.filter(r => r.name?.toLowerCase().includes(searchTerm.toLowerCase()) || r.role?.toLowerCase().includes(searchTerm.toLowerCase()));
   const filteredPlan = planData.filter(p => p.task_name?.toLowerCase().includes(searchTerm.toLowerCase()) || p.resource_type?.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -327,7 +375,18 @@ export default function ResourcesPage() {
         {activeTab === 'histogram' && (
           <div className="space-y-4">
             
-            <div className="flex justify-end mb-2">
+            <div className="flex justify-between items-center mb-2">
+              <div className="flex gap-2">
+                {deficitTasks.length > 0 && (
+                  <button 
+                    onClick={handleGenerateLeveling} 
+                    className="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-3 py-1.5 rounded-lg shadow-sm transition-all"
+                  >
+                    <Wand2 className="w-3.5 h-3.5" /> Auto-Level (Cari Solusi)
+                  </button>
+                )}
+              </div>
+
               {isEditingLimit ? (
                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
                   <span className="text-xs font-semibold text-slate-600">Set Limit Max (T/H):</span>
@@ -396,13 +455,74 @@ export default function ResourcesPage() {
               <Info className="w-4 h-4 shrink-0 text-blue-500 print:text-slate-500" />
               <p>
                 <span className="font-semibold text-slate-800 mr-1 print:text-black">Panduan:</span>
-                Batang <b className="text-rose-600 print:text-black">Merah</b> atau yang menembus garis <b className="text-rose-500 print:text-black">Batas Max ({formattedThreshold} T/H)</b> menandakan penumpukan beban kerja (<i>Over-allocation</i>). Fitur <i>Resource Leveling</i> akan dibuat di Fase 3.
+                Batang <b className="text-rose-600 print:text-black">Merah</b> atau yang menembus garis <b className="text-rose-500 print:text-black">Batas Max ({formattedThreshold} T/H)</b> menandakan penumpukan beban kerja (<i>Over-allocation</i>). Gunakan fitur <b>Auto-Level</b> untuk mencari solusi pergeseran jadwal.
               </p>
             </div>
           </div>
         )}
 
       </div>
+
+      {/* MODAL LEVELING SUGGESTION */}
+      {isLevelingModalOpen && levelingSuggestion && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="flex justify-between items-center px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Wand2 className="w-5 h-5 text-blue-600" /> Rekomendasi Resource Leveling</h2>
+              <button onClick={() => setIsLevelingModalOpen(false)} className="text-slate-400 hover:text-slate-700 bg-white/50 p-2 rounded-full transition-colors"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-sm text-amber-800 flex gap-2">
+                <AlertTriangle className="w-5 h-5 shrink-0" />
+                <p>Sistem mendeteksi penumpukan beban kerja. Kami menyarankan untuk menggeser jadwal pekerjaan berikut agar beban kembali normal.</p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <p className="text-xs font-bold text-slate-500 uppercase mb-1">Pekerjaan yang Disarankan</p>
+                  <p className="font-semibold text-slate-800 text-lg">{levelingSuggestion.task_name} <span className="text-sm font-mono text-slate-500">({levelingSuggestion.wbs_code})</span></p>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 text-center">
+                    <p className="text-xs font-bold text-slate-500 uppercase mb-1">Jadwal Saat Ini</p>
+                    <p className="font-mono text-sm text-slate-700">{formatDate(levelingSuggestion.current_start)}</p>
+                    <p className="text-[10px] text-slate-400">s/d</p>
+                    <p className="font-mono text-sm text-slate-700">{formatDate(levelingSuggestion.current_end)}</p>
+                  </div>
+                  
+                  <div className="flex flex-col items-center text-blue-500">
+                    <ArrowRight className="w-6 h-6" />
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full mt-1">+{levelingSuggestion.shift_days} Hari</span>
+                  </div>
+
+                  <div className="flex-1 bg-emerald-50 p-3 rounded-lg border border-emerald-200 text-center">
+                    <p className="text-xs font-bold text-emerald-600 uppercase mb-1">Jadwal Baru (Saran)</p>
+                    <p className="font-mono text-sm text-emerald-700 font-bold">{formatDate(levelingSuggestion.new_start)}</p>
+                    <p className="text-[10px] text-emerald-500">s/d</p>
+                    <p className="font-mono text-sm text-emerald-700 font-bold">{formatDate(levelingSuggestion.new_end)}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-xs text-slate-500 italic text-center">
+                "{levelingSuggestion.reason}"
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+              <button type="button" onClick={() => setIsLevelingModalOpen(false)} className="px-5 py-2 text-sm font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 rounded-md">Batal</button>
+              <button 
+                onClick={executeLeveling} 
+                disabled={isExecutingLeveling}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-md shadow-sm"
+              >
+                {isExecutingLeveling ? <CalendarClock className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                {isExecutingLeveling ? 'Memproses...' : 'Terapkan Jadwal Baru'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">

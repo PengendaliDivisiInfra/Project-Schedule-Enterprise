@@ -1,3 +1,5 @@
+// types/resource-plan.ts
+
 export interface CrewComposition {
   id: string;
   project_id: string | null;
@@ -24,6 +26,7 @@ export interface ResourceRequirement {
   id?: string;
   task_id?: string;
   task_name?: string;
+  wbs_code?: string; // <-- TAMBAHKAN INI
   resource_name: string;
   resource_type?: string;
   total_requirement: number;
@@ -35,12 +38,16 @@ export interface ResourceRequirement {
   remaining_volume?: number;
   remaining_days?: number;
   
-  // TAMBAHKAN BARIS INI:
+  // Properti kalkulasi frontend
   jumlah_tim?: number;
   sisa_volume?: number;
   sisa_hari?: number;
   sisa_total_kebutuhan?: number;
   target_harian_vol?: number;
+  
+  // Properti jadwal (dari wbs_tasks)
+  start_date?: string;
+  end_date?: string;
 }
 
 export interface ResourceCostResult {
