@@ -9,7 +9,8 @@ export function useRole(projectId?: string) {
   useEffect(() => {
     const fetchRole = async (userId: string) => {
       try {
-        let finalRole = null;
+        // FIX TYPESCRIPT: Beri tipe data eksplisit string | null
+        let finalRole: string | null = null;
 
         // 1. Cek Owner Global
         const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
@@ -32,6 +33,7 @@ export function useRole(projectId?: string) {
         if (!finalRole) finalRole = 'Site Admin';
         setRole(finalRole);
       } catch (err) {
+        console.error("Error mengambil role:", err);
         setRole('Site Admin');
       } finally {
         setLoading(false);
