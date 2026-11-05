@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useProject } from '../../../context/ProjectContext';
-import { updateProjectScheduleSecure, countWorkingDays } from '../../../lib/scheduler'; // 🟢 Import Scheduler
+import { updateProjectScheduleSecure, countWorkingDays } from '../../../lib/scheduler';
 import { 
   Printer, ArrowLeft, Loader2, Settings, X, PieChart, Users, Package, Calendar 
 } from 'lucide-react';
@@ -403,8 +403,6 @@ export default function MasterReportPage() {
       }
       
       if (taskRes.data) {
-        // 🟢 PERBAIKAN KRUSIAL: Jalankan CPM Engine di Master Report
-        // Agar tanggal yang digunakan adalah Early Finish/Start (bukan baseline DB)
         const engineResult = updateProjectScheduleSecure(taskRes.data, cwd, cex);
         let finalTasks = taskRes.data;
         
@@ -496,13 +494,14 @@ export default function MasterReportPage() {
             width: 100%;
           }
           
+          /* 🟢 PERBAIKAN: Menyamakan ukuran kertas menjadi A3 untuk semua halaman */
           @page gantt_layout { 
             size: A3 landscape; 
             margin: 10mm 10mm 15mm 10mm; 
             @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; font-family: 'Segoe UI', Arial, sans-serif; color: #64748b; } 
           }
           @page matrix_layout { 
-            size: A4 landscape; 
+            size: A3 landscape; 
             margin: 10mm 10mm 15mm 10mm; 
             @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8px; font-family: 'Segoe UI', Arial, sans-serif; color: #64748b; } 
           }
@@ -511,39 +510,41 @@ export default function MasterReportPage() {
           .print-page-matrix { page: matrix_layout; break-before: page; break-inside: avoid; width: 100%; }
           
           .header { position: relative; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 12px; }
-          h1 { font-size: 16px; font-weight: 700; margin: 0 0 2px 0; text-transform: uppercase; color: #0f172a; }
-          h2 { font-size: 11px; font-weight: 600; color: #4338ca; margin: 0 0 8px 0; text-transform: uppercase; }
-          .rev-box { position: absolute; top: 0; right: 0; border: 1px solid #cbd5e1; padding: 4px 8px; font-size: 8px; font-weight: 700; color: #475569; background-color: #f8fafc; border-radius: 4px; }
-          .header-meta { display: flex; gap: 15px; font-size: 9px; color: #475569; margin-top: 4px; font-weight: 500; }
+          h1 { font-size: 18px; font-weight: 700; margin: 0 0 2px 0; text-transform: uppercase; color: #0f172a; }
+          h2 { font-size: 13px; font-weight: 600; color: #4338ca; margin: 0 0 8px 0; text-transform: uppercase; }
+          .rev-box { position: absolute; top: 0; right: 0; border: 1px solid #cbd5e1; padding: 4px 8px; font-size: 9px; font-weight: 700; color: #475569; background-color: #f8fafc; border-radius: 4px; }
+          .header-meta { display: flex; gap: 15px; font-size: 10px; color: #475569; margin-top: 4px; font-weight: 500; }
           
-          .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; width: 100%; }
-          .kpi-card { padding: 10px 12px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: center; }
-          .kpi-card.primary { background-color: #eff6ff; border-left: 3px solid #3b82f6; }
-          .kpi-card.success { background-color: #ecfdf5; border-left: 3px solid #10b981; }
-          .kpi-card.danger { background-color: #fef2f2; border-left: 3px solid #ef4444; }
-          .kpi-label { font-size: 8px; font-weight: 700; color: #475569; text-transform: uppercase; margin: 0 0 4px 0; }
-          .kpi-value { font-size: 15px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1; }
+          .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; width: 100%; }
+          .kpi-card { padding: 12px 16px; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); display: flex; flex-direction: column; justify-content: center; }
+          .kpi-card.primary { background-color: #eff6ff; border-left: 4px solid #3b82f6; }
+          .kpi-card.success { background-color: #ecfdf5; border-left: 4px solid #10b981; }
+          .kpi-card.danger { background-color: #fef2f2; border-left: 4px solid #ef4444; }
+          .kpi-label { font-size: 9px; font-weight: 700; color: #475569; text-transform: uppercase; margin: 0 0 6px 0; }
+          .kpi-value { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1; }
           
-          table { border-collapse: collapse; margin-bottom: 8px; font-size: 8px; table-layout: fixed; width: 100%; }
-          th, td { border: 1px solid #cbd5e1; padding: 2px 4px; vertical-align: middle; }
-          th { background-color: #1e3a8a !important; color: #fff !important; text-align: center !important; vertical-align: middle !important; font-weight: 600; text-transform: uppercase; font-size: 7px; }
+          /* 🟢 PERBAIKAN: Memperbesar Font & Padding Tabel Matriks agar Memenuhi Halaman A3 */
+          table { border-collapse: collapse; margin-bottom: 12px; font-size: 11px; table-layout: fixed; width: 100%; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px 12px; vertical-align: middle; }
+          th { background-color: #1e3a8a !important; color: #fff !important; text-align: center !important; vertical-align: middle !important; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
           tr { page-break-inside: avoid !important; break-inside: avoid !important; }
           thead { display: table-header-group !important; }
           
-          .text-left { text-align: left !important; padding-left: 4px !important; }
+          .text-left { text-align: left !important; padding-left: 8px !important; }
           .text-center { text-align: center !important; white-space: nowrap; }
           .text-right { 
             text-align: right !important; 
-            padding-right: 4px !important; 
+            padding-right: 8px !important; 
             font-variant-numeric: tabular-nums; 
             white-space: nowrap !important;
             overflow: hidden;
           } 
           
+          /* GANTT TABLE (Spesifik) */
           .gantt-print-wrapper { position: relative; margin: 0; }
-          .gantt-table { table-layout: fixed !important; border: 1px solid #94a3b8; }
-          .gantt-table th.timeline-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; height: 40px; padding: 2px 0; font-size: 7px; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; }
-          .gantt-table td { border: 1px solid #cbd5e1; padding: 0; text-align: center; }
+          .gantt-table { table-layout: fixed !important; border: 1px solid #94a3b8; font-size: 9px; }
+          .gantt-table th, .gantt-table td { padding: 2px 4px; }
+          .gantt-table th.timeline-header { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; height: 40px; padding: 2px 0; font-size: 8px; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; }
           .gantt-table td.bar-cell { padding: 0 2px !important; border-left: none !important; border-right: none !important; position: relative; }
           .gantt-table td.empty-cell { padding: 0 !important; border-left: 1px solid #cbd5e1; border-right: 1px solid #cbd5e1; }
           
@@ -552,7 +553,7 @@ export default function MasterReportPage() {
           .gantt-bar-blue { 
             background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%) !important; 
             border: 1px solid #2563eb; 
-            height: 8px; 
+            height: 10px; 
             width: 100%; 
             border-radius: 999px; 
             box-shadow: 0 1px 2px rgba(0,0,0,0.15); 
@@ -561,7 +562,7 @@ export default function MasterReportPage() {
           .gantt-bar-red { 
             background: linear-gradient(180deg, #f87171 0%, #ef4444 100%) !important; 
             border: 1px solid #dc2626; 
-            height: 8px; 
+            height: 10px; 
             width: 100%; 
             border-radius: 999px; 
             box-shadow: 0 1px 2px rgba(0,0,0,0.15); 
@@ -569,7 +570,7 @@ export default function MasterReportPage() {
           
           .gantt-bar-summary {
             background: linear-gradient(180deg, #334155 0%, #0f172a 100%) !important; 
-            height: 5px; 
+            height: 6px; 
             width: 100%; 
             position: relative;
             border-radius: 2px;
@@ -578,25 +579,25 @@ export default function MasterReportPage() {
           .gantt-bar-summary::before, .gantt-bar-summary::after {
             content: '';
             position: absolute;
-            top: 4px; 
-            border-left: 3px solid transparent; 
-            border-right: 3px solid transparent;
-            border-top: 4px solid #0f172a;
+            top: 5px; 
+            border-left: 4px solid transparent; 
+            border-right: 4px solid transparent;
+            border-top: 5px solid #0f172a;
           }
           .gantt-bar-summary::before { left: 0; }
           .gantt-bar-summary::after { right: 0; }
 
-          .legend { display: flex; justify-content: flex-end; gap: 12px; font-size: 8px; font-weight: 600; margin-top: 10px; color: #475569; }
-          .legend-box { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
+          .legend { display: flex; justify-content: flex-end; gap: 12px; font-size: 10px; font-weight: 600; margin-top: 15px; color: #475569; }
+          .legend-box { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 2px; }
           
-          .signature-wrapper { margin-top: 30px; page-break-inside: avoid !important; display: flex; justify-content: space-between; text-align: center; width: 100%; }
+          .signature-wrapper { margin-top: 40px; page-break-inside: avoid !important; display: flex; justify-content: space-between; text-align: center; width: 100%; }
           .signature-box { flex: 1; display: flex; flex-direction: column; align-items: center; }
-          .signature-title { font-size: 9px; font-weight: 600; color: #475569; margin-bottom: 2px; }
-          .signature-company { font-size: 10px; font-weight: 700; color: #0f172a; text-transform: uppercase; margin-bottom: 40px; }
-          .signature-name-wrapper { display: inline-block; border-bottom: 1.5px solid #0f172a; padding-bottom: 2px; padding-left: 10px; padding-right: 10px; margin-bottom: 2px; }
-          .signature-name { font-size: 10px; font-weight: 700; color: #0f172a; }
-          .signature-nip { font-size: 8px; color: #475569; font-weight: 500; margin-bottom: 2px; }
-          .signature-role { font-size: 9px; color: #64748b; }
+          .signature-title { font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+          .signature-company { font-size: 12px; font-weight: 700; color: #0f172a; text-transform: uppercase; margin-bottom: 50px; }
+          .signature-name-wrapper { display: inline-block; border-bottom: 1.5px solid #0f172a; padding-bottom: 2px; padding-left: 15px; padding-right: 15px; margin-bottom: 4px; }
+          .signature-name { font-size: 12px; font-weight: 700; color: #0f172a; }
+          .signature-nip { font-size: 10px; color: #475569; font-weight: 500; margin-bottom: 2px; }
+          .signature-role { font-size: 11px; color: #64748b; }
         </style>
       `;
 
@@ -608,9 +609,7 @@ export default function MasterReportPage() {
         </html>
       `;
 
-      const PDF_SERVER_URL = 'https://pdf-service-repo-production.up.railway.app/generate-pdf'; // Ganti dengan URL Render Anda
-
-      const response = await fetch(PDF_SERVER_URL, {
+      const response = await fetch(printConfig.pdfServerUrl || 'https://pdf-service-repo-production.up.railway.app/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: htmlString, scale: pdfScale })
