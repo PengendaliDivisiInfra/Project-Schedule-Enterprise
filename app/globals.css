@@ -1,63 +1,36 @@
-﻿/* app/globals.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Warna Merah untuk Task di Jalur Kritis (Critical Path) */
-.critical-task .gantt-bar {
-  background-color: #dc2626 !important;
-  border-color: #b91c1c !important;
+/* =========================================
+   1. HIDE SIDEBAR SCROLLBAR
+   ========================================= */
+aside::-webkit-scrollbar, aside *::-webkit-scrollbar,
+nav::-webkit-scrollbar, .sidebar-container::-webkit-scrollbar {
+  display: none !important; width: 0 !important; height: 0 !important;
+}
+aside, aside *, nav, .sidebar-container {
+  -ms-overflow-style: none !important; scrollbar-width: none !important;
 }
 
-/* Styling untuk Logo */
-.brand-logo {
-  height: 40px;
-  width: auto;
-  object-fit: contain;
-}
-/* FITUR HIDE SIDEBAR */
-body.sidebar-hidden aside {
-  display: none !important;
-}
-body.sidebar-hidden main {
-  margin-left: 0 !important;
-  width: 100% !important;
-}
+/* =========================================
+   2. ENTERPRISE PRINT STYLES (BACKUP)
+   ========================================= */
+@media print {
+  @page gantt_page { size: A3 landscape; margin: 10mm; }
+  @page matrix_page { size: A4 portrait; margin: 15mm; }
 
-/* ANIMASI TRANSISI */
-aside {
-  transition: transform 0.3s ease-in-out;
-}
+  .print-page-gantt { page: gantt_page; break-before: page !important; }
+  .print-page-matrix { page: matrix_page; break-before: page !important; }
 
-/* ANIMASI ENTERPRISE MODAL */
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.animate-scale-in { animation: scaleIn 0.2s ease-out forwards; }
-.animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
-.animate-fade-in-up { animation: fadeInUp 0.3s ease-out forwards; }
+  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  
+  .gantt-table { border-collapse: collapse !important; width: 100% !important; }
+  .gantt-table th, .gantt-table td { border: 1px solid #000 !important; padding: 0 !important; }
+  .gantt-table td.bar-active { background-color: #2563eb !important; }
+  .gantt-table td.bar-critical { background-color: #ef4444 !important; }
+  .gantt-table td.bar-summary { background-color: #1e293b !important; }
 
-/* DRAWER ANIMATION */
-@keyframes slideInRight {
-  from { transform: translateX(100%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-.animate-slide-in-right { animation: slideInRight 0.3s ease-out forwards; }
-
-/* ENTERPRISE SIDEBAR SCROLLBAR (Sembunyikan scrollbar bawaan) */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  .report-table { width: 100% !important; border-collapse: collapse !important; }
+  .report-table th, .report-table td { border: 1px solid #000 !important; padding: 3px 4px !important; font-size: 9px !important; }
 }

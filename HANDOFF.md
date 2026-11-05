@@ -1,43 +1,52 @@
 # Project Handoff Document - InfraControl PRO
 
-**Status Proyek:** 🟢 Production Ready (V24 - Enterprise PMP & Reporting Engine)
+**Status Proyek:** 🟢 Production Ready (V25 - Enterprise PMP & Server-Side PDF Engine)
 **Terakhir Diperbarui:** 04 November 2026
 **Developer Utama:** [Nama Anda]
 
 ---
 
 ## 1. Status Saat Ini (Implemented Features)
-Aplikasi **InfraControl PRO** kini telah memiliki modul pelaporan eksekutif (PMP) yang terintegrasi secara *real-time*. Sistem telah lulus audit arsitektur data tanpa duplikasi (Double Sum).
+Aplikasi **InfraControl PRO** telah melalui perombakan besar pada modul **Master Project Report (PMP)**. Sistem kini telah sepenuhnya meninggalkan metode cetak bawaan browser yang rentan *crash* dan beralih ke arsitektur **Server-Side PDF Generation**.
 
-### Fitur Utama yang Sudah Selesai (V24 Updates):
-- **Database Optimization (SQL Views):**
-  - `v_resource_plan`: Menggunakan `STRING_AGG` untuk menggabungkan nama kru/alat dalam satu baris WBS (Single-row WBS). Bebas baris kosong/duplikat.
-  - `v_material_plan`: Memisahkan agregasi AHSP ke dalam CTE untuk mencegah *Double Join Sum*. Kalkulasi *Waste* 5% akurat.
-- **Sinkronisasi CPM ke Database:**
-  - Fungsi `syncScheduleToDB` memastikan kalkulasi CPM (ES, EF, LS, LF, Critical Path) tersimpan otomatis ke tabel `wbs_tasks`. Data di Master Report 100% sinkron dengan input lapangan.
-- **Executive Reporting UI:**
-  - **Tabbed Navigation** (Time Schedule, EVM Matrix, Resource Plan, Material Plan) untuk mencegah *scroll fatigue*.
-  - **Dynamic KPI:** Header laporan dihitung otomatis dari bobot biaya WBS (Target Rencana, Aktual Realisasi, Status Varian).
-  - **Early Warning System:** Kolom Varian pada EVM dilengkapi dengan *Status Badges* (Oranye/Merah + Ikon Alert) untuk keterlambatan kritis.
-- **Print Setup & Gantt Chart:**
-  - Modal Print Setup untuk memilih Orientasi (A3/A4), Ukuran Kertas, Filter Tanggal (Khusus Gantt), dan Toggle Tanda Tangan.
-  - Render Gantt Chart Matriks (Bar Chart berwarna) di layar dan *Print Preview*.
+### Fitur Utama yang Sudah Selesai (V25 Updates):
+
+- **Server-Side PDF Engine (Puppeteer):**
+  - Menggunakan `puppeteer` via API Route (`/api/generate-pdf`) untuk merender laporan menjadi PDF.
+  - **Bebas Hang:** Browser tidak lagi macet di status "Memuat pratinjau...". Proses cetak dilakukan di latar belakang server.
+  - **Dynamic Scale:** Laporan otomatis menyesuaikan skala (Zoom Out) jika pengguna memilih skala *Harian* atau *Mingguan* dengan rentang tanggal yang panjang, memastikan tabel tidak terpotong.
+- **Desain Gantt Chart MS Project Style:**
+  - **Bars:** Berbentuk kapsul (Pill Shape) dengan border-radius dinamis. Warna menyatu sempurna (solid) tanpa terputus antar sel.
+  - **Kolom Lengkap:** Menampilkan kolom `VOL`, `SISA VOL`, `DUR`, `START`, `FINISH`, `PRED`, `%`, `TARGET`, `VARIAN`, dan `T/HR`. (Kolom Slack & Cost disembunyikan untuk efisiensi).
+  - **Timeline Vertikal:** Header tanggal di-rotate 90 derajat agar rapi saat dicetak.
+  - **Dependency Arrows:** Garis ketergantungan oranye (SVG) dirender presisi dari ujung bar pendahulu ke awal bar target.
+- **Tata Letak Cetak Enterprise (A3 & A4):**
+  - Menggunakan *Named Pages* CSS (`@page gantt_layout` dan `@page matrix_layout`) untuk menghasilkan PDF dengan orientasi kertas ganda (A3 Landscape untuk Gantt, A4 Landscape untuk Matriks).
+  - **Tanda Tangan (Sign-off):** Dibuat menggunakan *HTML Table Layout* murni (bukan Flexbox/Grid) untuk menjamin 3 kolom tanda tangan sejajar sempurna di halaman terakhir PDF.
+- **Sinkronisasi Data (Roll-up Date):**
+  - Fungsi `recalculateRollupDates` berjalan di *frontend* sebelum render, memastikan tanggal `MIN` dan `MAX` dari sub-task otomatis terakumulasi ke Summary Task (WBS Utama).
+- **Optimasi Konfigurasi Next.js:**
+  - `next.config.js` telah diperbarui dengan `serverComponentsExternalPackages` untuk memastikan Puppeteer berjalan lancar tanpa peringatan (warning).
 
 ---
 
 ## 2. Gap Analysis (Sisa Pekerjaan / Next Steps)
-Berdasarkan audit PMO terakhir, sistem sudah sangat matang, namun tersisa beberapa perbaikan minor pada *Printing Engine* yang harus dieksekusi sebelum rilis final:
+Meskipun modul laporan sudah sangat matang, secara keseluruhan aplikasi masih memerlukan beberapa fitur untuk rilis final:
 
-1.  **Print Engine (Gantt Chart Squeeze & Blank Space):** Memperbaiki CSS `@media print` agar Gantt Chart tidak mengecil (gepeng) dan menghilangkan *blank space* raksasa pada halaman PDF. (Sedang diperbaiki).
-2.  **Authentication & RBAC:** Menerapkan Login/Register (Supabase Auth) dan pembatasan hak akses (Owner, PM, Site Admin).
-3.  **Audit Logs:** Mencatat setiap perubahan data (siapa, kapan, apa yang diubah).
+1.  **Authentication & RBAC:** Menerapkan Login/Register (Supabase Auth) dan pembatasan hak akses (Owner, PM, Site Admin).
+2.  **Audit Logs:** Mencatat setiap perubahan data (siapa, kapan, apa yang diubah).
+3.  **Refining Other PDF Matrices:** Memastikan modul *Resource Plan* dan *Material Plan* di dalam PDF (Halaman 3 & 4) memiliki penyesuaian desain jika diperlukan (saat ini sudah rapi, tapi bisa disesuaikan kolomnya).
 
 ---
 
-## 3. Panduan Developer Selanjutnya
+## 3. Panduan Developer Selanjutnya (SANGAT PENTING)
 - **Build:** `npm run build`
 - **Deploy:** `git push origin main` (Otomatis via Vercel).
-- **Catatan Penting:**
+- **Catatan Penting Print Engine:**
+  - **Jangan** menghapus `executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'` di `app/api/generate-pdf/route.js` jika berjalan di Windows lokal.
+  - Untuk **deploy ke Vercel**, Anda perlu mengubah `executablePath` menggunakan `@sparticuz/chromium` agar ukuran *Serverless Function* tidak melebihi batas Vercel.
+  - CSS Cetak (Print Styles) di `page.jsx` **wajib menggunakan CSS murni (Vanilla CSS)**. Jangan gunakan Tailwind di area `#print-section` karena Puppeteer tidak akan membacanya dengan benar.
+- **Database Notes:**
   - **JANGAN** mengubah logika `GROUP BY` pada View SQL tanpa melakukan *Drop View* terlebih dahulu.
   - Selalu jalankan `NOTIFY pgrst, 'reload schema';` setelah mengubah View/Trigger.
 

@@ -3,16 +3,19 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { updateProjectScheduleSecure, addWorkingDays, countWorkingDays } from '../../lib/scheduler';
 import { useProject } from '../../context/ProjectContext';
+import { useProjectStore } from '../../store/useProjectStore';
+import { useRealtimeWBS } from '../../hooks/useRealtimeWBS';
 import { 
   ListTree, Plus, Edit, Trash2, X, Settings, Pin, CheckCircle, XCircle, 
-  TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder, FileText
+  TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder
 } from 'lucide-react';
 
 export default function TasksPage() {
-  const { userRole } = useProject();
-  // Tentukan siapa yang boleh edit (Owner dan PM)
+  const { userRole, activeProjectId } = useProject();
+  useRealtimeWBS(activeProjectId);
   const canEdit = userRole === 'pm' || userRole === 'owner'; 
-  const [tasks, setTasks] = useState([]);
+  const { tasks, setTasks } = useProjectStore();
+  
   const [loading, setLoading] = useState(true);
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
   const [exceptions, setExceptions] = useState([]);
@@ -35,7 +38,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasksAndCalendar();
-  }, []);
+  }, [activeProjectId]);
 
   const parsePreds = (str) => {
     if (!str) return [];
@@ -84,10 +87,32 @@ export default function TasksPage() {
     });
   };
 
+    const syncScheduleToDB = async (tasksToSync) => {
+    try {
+      for (const t of tasksToSync) {
+        if (t.summary === 'No') {
+          await supabase.from('wbs_tasks').update({
+            start_date: t.start_date ? new Date(t.start_date).toISOString().split('T')[0] : null,
+            end_date: t.end_date ? new Date(t.end_date).toISOString().split('T')[0] : null,
+            early_start: t.early_start ? new Date(t.early_start).toISOString().split('T')[0] : null,
+            early_finish: t.early_finish ? new Date(t.early_finish).toISOString().split('T')[0] : null,
+            late_start: t.late_start ? new Date(t.late_start).toISOString().split('T')[0] : null,
+            late_finish: t.late_finish ? new Date(t.late_finish).toISOString().split('T')[0] : null,
+            total_float: t.total_float,
+            is_critical: t.is_critical
+          }).eq('id', t.id);
+        }
+      }
+    } catch (error) {
+      console.error("Gagal sinkronisasi jadwal:", error);
+    }
+  };
+
   const fetchTasksAndCalendar = async () => {
     setLoading(true);
+    if (!activeProjectId) { setLoading(false); return; }
     
-    const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
+    const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').eq('id', activeProjectId).maybeSingle();
     let cwd = [1,2,3,4,5];
     let cex = [];
     if (projectData) {
@@ -97,13 +122,16 @@ export default function TasksPage() {
     setWorkingDays(cwd);
     setExceptions(cex);
 
-    const { data, error } = await supabase.from('wbs_tasks').select('*').order('wbs_code', { ascending: true }); 
+    const { data, error } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code', { ascending: true }); 
     if (data) {
       const engineResult = updateProjectScheduleSecure(data, cwd, cex);
       if (engineResult.success) {
         const evmTasks = calculateEVM(engineResult.tasks);
         const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
         setTasks(sorted);
+        
+        // Simpan hasil kalkulasi CPM ke database agar sinkron dengan Master Report
+        await syncScheduleToDB(engineResult.tasks); 
       } else {
         setTasks(calculateEVM(data));
       }
@@ -235,10 +263,11 @@ export default function TasksPage() {
       showToast('Task diperbarui', 'success');
 
       const { error } = await supabase.from('wbs_tasks').update(saveData).eq('id', currentTask.id);
+      if (!error) await syncScheduleToDB(updatedTasks); // Sinkronkan semua task
       if (error) { setTasks(previousTasks); showToast('Gagal: ' + error.message, 'error'); }
 
     } else {
-      const newTaskData = { ...saveData, wbs_code: '99.' + Math.floor(Math.random() * 100), summary: 'No' };
+      const newTaskData = { ...saveData, project_id: activeProjectId, wbs_code: '99.' + Math.floor(Math.random() * 100), summary: 'No' };
       const { data: insertedData, error } = await supabase.from('wbs_tasks').insert([newTaskData]).select().maybeSingle();
 
       if (error) {
@@ -334,7 +363,6 @@ export default function TasksPage() {
                 return (
                   <tr key={t.id} className={`hover:bg-slate-50 transition-colors ${t.is_critical && !isSummary ? 'bg-red-50/40' : ''}`}>
                     
-                    {/* PERBAIKAN: MENGGANTI EMOJI DENGAN LUCIDE ICONS */}
                     <td className="p-2 text-center">
                       {isSummary ? (
                         <Folder className="w-4 h-4 text-slate-400 mx-auto" />
@@ -585,10 +613,10 @@ export default function TasksPage() {
                     <div className="mt-3 bg-blue-50 border border-blue-100 p-3 rounded-lg flex items-start gap-2">
                         <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                         <div className="text-[11px] text-blue-800 leading-relaxed">
-                            {newPred.type === 'FS' && <span><b>Finish-to-Start (FS):</b> Pekerjaan ini baru bisa dimulai setelah pekerjaan pendahulu selesai 100%. (Paling umum digunakan).</span>}
-                            {newPred.type === 'SS' && <span><b>Start-to-Start (SS):</b> Pekerjaan ini bisa dimulai secara bersamaan dengan mulainya pekerjaan pendahulu. (Cocok untuk pekerjaan tumpang tindih/overlap).</span>}
-                            {newPred.type === 'FF' && <span><b>Finish-to-Finish (FF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu selesai. (Biasanya untuk penyerahan akhir).</span>}
-                            {newPred.type === 'SF' && <span><b>Start-to-Finish (SF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu dimulai. (Sangat jarang digunakan).</span>}
+                            {newPred.type === 'FS' && <span><b>Finish-to-Start (FS):</b> Pekerjaan ini baru bisa dimulai setelah pekerjaan pendahulu selesai 100%.</span>}
+                            {newPred.type === 'SS' && <span><b>Start-to-Start (SS):</b> Pekerjaan ini bisa dimulai secara bersamaan dengan mulainya pekerjaan pendahulu.</span>}
+                            {newPred.type === 'FF' && <span><b>Finish-to-Finish (FF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu selesai.</span>}
+                            {newPred.type === 'SF' && <span><b>Start-to-Finish (SF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu dimulai.</span>}
                         </div>
                     </div>
 
@@ -629,10 +657,10 @@ export default function TasksPage() {
                     <h3 className="font-bold text-blue-700 text-base flex items-center gap-2"><Info className="w-5 h-5"/> Fungsi Constraint</h3>
                     <p>Constraint = batasan waktu yang memaksa kapan task harus mulai/selesai.</p>
                     <ul className="list-disc pl-5 space-y-1">
-                      <li><strong>ASAP</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ikuti jadwal predecessor murni (Default).</li>
-                      <li><strong>SNET</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Tugas baru boleh mulai SETELAH tanggal X.</li>
-                      <li><strong>MSO</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Tugas HARUS mulai TEPAT tanggal X.</li>
-                      <li><strong>MFO</strong> ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Tugas HARUS selesai TEPAT tanggal X.</li>
+                      <li><strong>ASAP</strong> - Ikuti jadwal predecessor murni (Default).</li>
+                      <li><strong>SNET</strong> - Tugas baru boleh mulai SETELAH tanggal X.</li>
+                      <li><strong>MSO</strong> - Tugas HARUS mulai TEPAT tanggal X.</li>
+                      <li><strong>MFO</strong> - Tugas HARUS selesai TEPAT tanggal X.</li>
                     </ul>
                   </div>
                 )}

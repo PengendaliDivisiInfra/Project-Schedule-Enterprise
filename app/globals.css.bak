@@ -1,0 +1,286 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================
+   HIDE SIDEBAR SCROLLBAR (ENTERPRISE LOOK)
+   ========================================= */
+aside::-webkit-scrollbar, 
+aside *::-webkit-scrollbar,
+nav::-webkit-scrollbar,
+.sidebar-container::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+aside, aside *, nav, .sidebar-container {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* =========================================
+   ENTERPRISE PRINT STYLES (BULLETPROOF V3)
+   ========================================= */
+@media print {
+  /* 1. Set Kertas A3 Landscape */
+  @page {
+    size: A3 landscape;
+    margin: 10mm;
+  }
+
+  /* 2. Sembunyikan SEMUA elemen body */
+  body * {
+    visibility: hidden;
+  }
+
+  /* 3. Tampilkan HANYA Print Area */
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+
+  /* 4. Posisikan Print Area di pojok kiri atas & hilangkan batasan tinggi */
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* 5. Atur Tabel (JANGAN pakai table-layout: fixed) */
+  /* Biarkan auto agar Gantt Chart melebar ke samping sesuai isi */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  /* 6. Header Tabel Berulang di Setiap Halaman */
+  thead {
+    display: table-header-group !important;
+  }
+
+  /* 7. Cegah Baris Terpotong di tengah halaman */
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  /* 8. Paksa Warna Tercetak (Gantt Chart & Badges) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* 9. Hilangkan elemen UI */
+  aside, nav, header, .print\:hidden, button, .action-bar {
+    display: none !important;
+  }
+}
+/* =========================================
+   PRINT TABLE ADJUSTMENT
+   ========================================= */
+@media print {
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    /* Jangan gunakan table-layout: fixed agar teks tidak menumpuk */
+  }
+
+  th, td {
+    word-wrap: break-word !important;
+    overflow: hidden !important;
+  }
+  
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+}
+
+/* =========================================
+   ENTERPRISE PRINT STYLES (FIXED TABLE & NO BLANK SPACE)
+   ========================================= */
+@media print {
+  @page {
+    size: A3 landscape;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* KUNCI UTAMA: Gunakan table-layout: fixed agar teks tidak bertumpuk */
+  table {
+    width: 100% !important;
+    table-layout: fixed !important; 
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  th, td {
+    word-wrap: break-word !important;
+    overflow: hidden !important;
+    font-size: 6px !important; /* Font kecil agar muat */
+    padding: 2px !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  aside, nav, header, .print\:hidden, button, .action-bar {
+    display: none !important;
+  }
+}
+
+/* =========================================
+   ENTERPRISE PRINT STYLES (FIXED TABLE - FINAL)
+   ========================================= */
+@media print {
+  @page {
+    size: A3 landscape;
+    margin: 10mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-area, .print-area * {
+    visibility: visible;
+  }
+
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* KUNCI UTAMA: Gunakan table-layout fixed agar teks tidak bertumpuk */
+  table {
+    width: 100% !important;
+    table-layout: fixed !important; 
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  /* Ukuran font kecil dan padding ketat */
+  th, td {
+    word-wrap: break-word !important;
+    overflow: hidden !important;
+    font-size: 6px !important; 
+    padding: 2px !important;
+  }
+
+  /* Header Tabel Berulang */
+  thead {
+    display: table-header-group !important;
+  }
+
+  /* Cegah Baris Terpotong */
+  tr {
+    page-break-inside: avoid !important;
+  }
+
+  /* Warna Cetak Muncul */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Sembunyikan UI */
+  aside, nav, header, .print\:hidden, button, .action-bar {
+    display: none !important;
+  }
+}
+
+/* =========================================
+   FINAL ENTERPRISE PRINT STYLES (READABLE & AUTO-FIT)
+   ========================================= */
+@media print {
+  /* 1. Paksa Kertas A3 Landscape */
+  @page {
+    size: A3 landscape;
+    margin: 10mm;
+  }
+
+  /* 2. Sembunyikan UI, Tampilkan Area Cetak */
+  body * { visibility: hidden; }
+  .print-area, .print-area * { visibility: visible; }
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white !important;
+  }
+  aside, nav, header, .print\:hidden, button, .action-bar { display: none !important; }
+
+  /* 3. Atur Tabel (JANGAN Gunakan table-layout: fixed) */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  /* 4. Ukuran Font Standar yang Terbaca */
+  th, td {
+    font-size: 9px !important; /* Kembalikan ke 9px agar tidak terlalu kecil */
+    padding: 4px !important;   /* Padding yang cukup */
+    word-wrap: break-word !important;
+  }
+
+  /* 5. Paksa Header Tabel (thead) Berulang di Halaman Baru */
+  thead {
+    display: table-header-group !important;
+  }
+
+  /* 6. Cegah Baris Terpotong */
+  tr {
+    page-break-inside: avoid !important;
+  }
+
+  /* 7. Paksa Warna Tercetak (Gantt Chart & Badges) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+}
