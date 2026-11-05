@@ -6,7 +6,6 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// 🟢 ROUTE UNTUK KEEP-ALIVE (Mencegah Railway Sleep)
 app.get('/healthz', (req, res) => {
   res.status(200).send('OK');
 });
@@ -32,7 +31,15 @@ app.post('/generate-pdf', async (req, res) => {
       landscape: true,
       printBackground: true,
       scale: scale || 1,
-      margin: { top: '10mm', right: '10mm', bottom: '15mm', left: '10mm' }
+      margin: { top: '10mm', right: '10mm', bottom: '15mm', left: '10mm' },
+      // 🟢 AKTIFKAN FOOTER UNTUK NOMOR HALAMAN
+      displayHeaderFooter: true,
+      headerTemplate: '<div></div>', // Kosongkan header default
+      footerTemplate: `
+        <div style="width: 100%; font-size: 9px; font-family: 'Segoe UI', Arial, sans-serif; color: #64748b; text-align: right; padding-right: 10mm;">
+          Page <span class="pageNumber"></span> of <span class="totalPages"></span>
+        </div>
+      `
     });
 
     res.set({
