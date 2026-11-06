@@ -4,11 +4,13 @@ import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
+import { useRole } from '@/lib/hooks/useRole';
 
 export default function CashFlowPage() {
   const { userRole } = useProject();
-  const canAddTransaction = userRole === 'pm' || userRole === 'dd' || userRole === 'owner';
-  const canApprove = userRole === 'pm' || userRole === 'owner';
+  const { can } = useRole();
+  const canAddTransaction = can('CREATE_PO') || userRole === 'owner' || userRole === 'pm'; 
+  const canApprove = userRole === 'pm' || userRole === 'owner'; 
   const [flows, setFlows] = useState([]);
   const [tasks, setTasks] = useState([]); 
   const [loading, setLoading] = useState(true);
@@ -101,16 +103,16 @@ export default function CashFlowPage() {
     
     // Validasi wajib file
     const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
-    if (isUploadRequired && !file) {
-      alert("Wajib mengunggah bukti nota/kuitansi untuk pembayaran Tunai atau Petty Cash!");
-      return;
-    }
+      if (isUploadRequired && !file) {
+        showToast('danger', "Wajib mengunggah bukti nota/kuitansi untuk pembayaran Tunai atau Petty Cash!");
+        return;
+      }
 
     // Validasi wajib alasan jika Overbudget
-    if (isOverbudget && !formData.overbudget_reason) {
-      alert("Wajib mengisi alasan overbudget!");
-      return;
-    }
+      if (isOverbudget && !formData.overbudget_reason) {
+        showToast('danger', "Wajib mengisi alasan overbudget!");
+        return;
+      }
     
     setIsSaving(true);
     let finalAttachmentUrl = null;
@@ -149,7 +151,7 @@ export default function CashFlowPage() {
       fetchData();
 
     } catch (error) {
-      alert(error.message);
+      showToast('danger', error.message);
     } finally {
       setIsSaving(false);
       setIsUploading(false);
@@ -157,8 +159,8 @@ export default function CashFlowPage() {
   };
 
   // Hanya transaksi APPROVED yang masuk kalkulasi total
-  const totalIn = flows.filter(f => f.type === 'IN' && f.approval_status === 'Approved').reduce((sum, f) => sum + Number(f.amount), 0);
-  const totalOut = flows.filter(f => f.type === 'OUT' && f.approval_status === 'Approved').reduce((sum, f) => sum + Number(f.amount), 0);
+  const totalIn = flows.filter(f => ['IN', 'Income'].includes(f.type) && f.approval_status === 'Approved').reduce((sum, f) => sum + Number(f.amount), 0);
+  const totalOut = flows.filter(f => ['OUT', 'Expense'].includes(f.type) && f.approval_status === 'Approved').reduce((sum, f) => sum + Number(f.amount), 0);  
   const netCash = totalIn - totalOut;
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
@@ -247,8 +249,8 @@ export default function CashFlowPage() {
                   <tr key={f.id} className="hover:bg-slate-50">
                     <td className="p-3 text-slate-600 text-xs">{new Date(f.transaction_date).toLocaleDateString('id-ID')}</td>
                     <td className="p-3 text-center">
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${f.type === 'IN' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                        {f.type === 'IN' ? 'MASUK' : 'KELUAR'}
+                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${['IN', 'Income'].includes(f.type) ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                        {['IN', 'Income'].includes(f.type) ? 'MASUK' : 'KELUAR'}
                       </span>
                     </td>
                     <td className="p-3 text-xs font-semibold text-slate-700">{f.category}</td>
@@ -266,7 +268,7 @@ export default function CashFlowPage() {
                         </div>
                       )}
                     </td>
-                    <td className={`p-3 text-right font-bold ${f.type === 'IN' ? 'text-emerald-600' : 'text-red-600'}`}>
+                    <td className={`p-3 text-right font-bold ${['IN', 'Income'].includes(f.type) ? 'text-emerald-600' : 'text-red-600'}`}>
                       {formatRp(f.amount)}
                     </td>
                     <td className="p-3 text-center">

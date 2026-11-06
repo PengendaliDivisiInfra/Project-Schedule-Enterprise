@@ -3,19 +3,21 @@
 import { useRole } from '@/lib/hooks/useRole';
 
 interface MoneyTextProps {
-  value: number;
+  value: number | string | undefined | null;
   className?: string;
-  showMask?: boolean; // paksa mask (opsional)
+  showMask?: boolean;
 }
 
 export function MoneyText({ value, className = '', showMask }: MoneyTextProps) {
   const { can } = useRole();
   const isAllowedToSeePrice = can('VIEW_PRICE');
   
-  // Jika user tidak punya akses ATAU showMask diset true
   if (!isAllowedToSeePrice || showMask) {
     return <span className={className}>Rp ***</span>;
   }
+
+  // Pastikan value adalah angka valid
+  const safeValue = isNaN(Number(value)) ? 0 : Number(value);
 
   return (
     <span className={className}>
@@ -24,7 +26,7 @@ export function MoneyText({ value, className = '', showMask }: MoneyTextProps) {
         currency: 'IDR',
         minimumFractionDigits: 0,
         maximumFractionDigits: 2,
-      }).format(value)}
+      }).format(safeValue)}
     </span>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useRole } from '@/lib/hooks/useRole';
-import { getContractByProject, listTermins, listInvoices } from '@/lib/services/termin.service';
+import { getContractByProject, listTermins, listInvoices, approveTermin } from '@/lib/services/termin.service';
 import { listReceipts } from '@/lib/services/cash-in.service';
 import { listReleases } from '@/lib/services/retention.service';
 import { 
@@ -16,6 +16,7 @@ import { InvoiceModal } from '@/components/termin/InvoiceModal';
 import { ReceiptModal } from '@/components/termin/ReceiptModal';
 import { VoidReceiptModal } from '@/components/termin/VoidReceiptModal';
 import { RetentionReleaseModal } from '@/components/termin/RetentionReleaseModal';
+import { ContractFormModal } from '@/components/termin/ContractFormModal';
 import { HelpCircle, Plus, FileText, CheckCircle } from 'lucide-react';
 
 export default function TerminPage() {
@@ -23,7 +24,6 @@ export default function TerminPage() {
   const projectId = params?.projectId as string;
   const { can } = useRole();
 
-  // Data States
   const [contract, setContract] = useState<ClientContract | null>(null);
   const [termins, setTermins] = useState<ProjectTermin[]>([]);
   const [invoices, setInvoices] = useState<ClientInvoiceSummary[]>([]);
@@ -33,7 +33,6 @@ export default function TerminPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('rencana');
 
-  // Toast & Modal States
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   
   const [isTerminModalOpen, setIsTerminModalOpen] = useState(false);
@@ -47,6 +46,7 @@ export default function TerminPage() {
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
 
   const [isReleaseModalOpen, setIsReleaseModalOpen] = useState(false);
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -70,6 +70,8 @@ export default function TerminPage() {
         setInvoices(i);
         setReceipts(r);
         setReleases(rel);
+      } else {
+        setContract(null);
       }
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -82,18 +84,27 @@ export default function TerminPage() {
     loadData();
   }, [projectId]);
 
+  const handleApproveTermin = async (id: string) => {
+    try {
+      await approveTermin(id);
+      showToast('Termin berhasil di-approve', 'success');
+      loadData();
+    } catch (error: any) {
+      showToast(error.message, 'error');
+    }
+  };
+
   if (!can('TERMIN_VIEW')) {
     return <div className="p-8 text-center text-red-500 font-semibold">Anda tidak memiliki akses ke modul Termin.</div>;
   }
 
-  // Total Retensi Ditahan (dari invoice yang sudah issued/paid) - Total yang sudah dicairkan
-  const totalRetentionHeld = invoices.filter(i => i.status !== 'Void').reduce((sum, inv) => sum + inv.retention_amount, 0);
-  const totalRetentionReleased = releases.reduce((sum, rel) => sum + rel.amount, 0);
+  // PERBAIKAN: Gunakan Number() untuk mencegah penggabungan string dari Supabase
+  const totalRetentionHeld = invoices.filter(i => i.status !== 'Void').reduce((sum, inv) => sum + Number(inv.retention_amount || 0), 0);
+  const totalRetentionReleased = releases.reduce((sum, rel) => sum + Number(rel.amount || 0), 0);
   const retentionBalance = totalRetentionHeld - totalRetentionReleased;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Toast Notification */}
+    <div className="p-6 w-full space-y-6">
       {toast && (
         <div className={`fixed top-4 right-4 px-4 py-2 rounded shadow-lg text-white font-medium z-[100] ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
           {toast.msg}
@@ -105,7 +116,7 @@ export default function TerminPage() {
           <h1 className="text-2xl font-bold text-slate-800">Termin & Progress Klien</h1>
           <p className="text-slate-500 text-sm">Kelola tagihan, invoice, dan penerimaan kas proyek.</p>
         </div>
-        {can('TERMIN_CREATE') && (
+        {can('TERMIN_CREATE') && contract && (
           <button onClick={() => setIsTerminModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2">
             <Plus size={18} /> Tambah Termin
           </button>
@@ -115,12 +126,16 @@ export default function TerminPage() {
       {loading ? (
         <div className="text-center p-12 text-slate-500">Memuat data...</div>
       ) : !contract ? (
-        <div className="bg-amber-50 text-amber-800 p-4 rounded-lg border border-amber-200">
-          Proyek ini belum memiliki Kontrak Klien aktif. Hubungi Project Manager atau Owner untuk membuat kontrak terlebih dahulu.
+        <div className="bg-amber-50 text-amber-800 p-6 rounded-lg border border-amber-200 flex flex-col items-center justify-center text-center space-y-4">
+          <p>Proyek ini belum memiliki Kontrak Klien aktif. Silakan buat kontrak terlebih dahulu di menu Pengaturan Proyek, atau klik tombol di bawah ini.</p>
+          {can('TERMIN_CREATE') && (
+            <button onClick={() => setIsContractModalOpen(true)} className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg font-medium">
+              + Buat Kontrak Klien Manual
+            </button>
+          )}
         </div>
       ) : (
         <>
-          {/* Ringkasan Kontrak */}
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div className="bg-white p-4 rounded-xl border shadow-sm">
               <p className="text-sm text-slate-500 mb-1">Nilai Kontrak</p>
@@ -128,11 +143,13 @@ export default function TerminPage() {
             </div>
             <div className="bg-white p-4 rounded-xl border shadow-sm">
               <p className="text-sm text-slate-500 mb-1">Sisa Tagihan (Outstanding)</p>
-              <p className="text-lg font-bold text-red-600"><MoneyText value={invoices.reduce((acc, curr) => acc + curr.outstanding, 0)} /></p>
+              {/* PERBAIKAN: Gunakan Number() */}
+              <p className="text-lg font-bold text-red-600"><MoneyText value={invoices.reduce((acc, curr) => acc + Number(curr.outstanding || 0), 0)} /></p>
             </div>
             <div className="bg-white p-4 rounded-xl border shadow-sm">
               <p className="text-sm text-slate-500 mb-1">Total Kas Diterima</p>
-              <p className="text-lg font-bold text-green-600"><MoneyText value={receipts.filter(r => !r.voided_at).reduce((acc, curr) => acc + curr.amount, 0)} /></p>
+              {/* PERBAIKAN: Gunakan Number() */}
+              <p className="text-lg font-bold text-green-600"><MoneyText value={receipts.filter(r => !r.voided_at).reduce((acc, curr) => acc + Number(curr.amount || 0), 0)} /></p>
             </div>
             <div className="bg-white p-4 rounded-xl border shadow-sm">
               <p className="text-sm text-slate-500 mb-1">Saldo Retensi Ditahan</p>
@@ -144,7 +161,6 @@ export default function TerminPage() {
             </div>
           </div>
 
-          {/* Tabs Navigation */}
           <div className="border-b border-slate-200 mt-6">
             <nav className="flex gap-6 -mb-px">
               {['rencana', 'invoice', 'kas', 'retensi'].map((tab) => (
@@ -164,9 +180,7 @@ export default function TerminPage() {
             </nav>
           </div>
 
-          {/* Konten Tab */}
           <div className="bg-white border rounded-xl shadow-sm overflow-x-auto">
-            {/* TAB 1: RENCANA TERMIN */}
             {activeTab === 'rencana' && (
               <table className="w-full text-left text-sm min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-600">
@@ -174,13 +188,7 @@ export default function TerminPage() {
                     <th className="p-4 border-b">No</th>
                     <th className="p-4 border-b">Nama Termin</th>
                     <th className="p-4 border-b">Progres (%)</th>
-                    <th className="p-4 border-b">
-                      <div className="flex items-center gap-1">
-                        DPP (Gross) <span title="Nilai progres fisik sebelum pajak & retensi">
-                          <HelpCircle size={14} className="text-slate-400 cursor-help" />
-                        </span>
-                      </div>
-                    </th>
+                    <th className="p-4 border-b">DPP (Gross)</th>
                     <th className="p-4 border-b">Retensi</th>
                     <th className="p-4 border-b">Status</th>
                     <th className="p-4 border-b text-right">Aksi</th>
@@ -195,9 +203,14 @@ export default function TerminPage() {
                       <td className="p-4 border-b"><MoneyText value={t.gross_amount} /></td>
                       <td className="p-4 border-b text-red-600"><MoneyText value={t.retention_amount} /></td>
                       <td className="p-4 border-b"><StatusBadge status={t.status} /></td>
-                      <td className="p-4 border-b text-right">
+                      <td className="p-4 border-b text-right space-x-2">
+                        {t.status === 'Draft' && can('TERMIN_APPROVE') && (
+                          <button onClick={() => handleApproveTermin(t.id)} className="bg-green-100 text-green-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-200 transition-colors">
+                            Approve
+                          </button>
+                        )}
                         {t.status === 'Approved' && can('INVOICE_ISSUE') && (
-                          <button onClick={() => { setSelectedTermin(t); setIsInvoiceModalOpen(true); }} className="text-blue-600 hover:underline text-sm font-medium">
+                          <button onClick={() => { setSelectedTermin(t); setIsInvoiceModalOpen(true); }} className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-blue-200 transition-colors">
                             Buat Invoice
                           </button>
                         )}
@@ -209,7 +222,6 @@ export default function TerminPage() {
               </table>
             )}
 
-            {/* TAB 2: INVOICE */}
             {activeTab === 'invoice' && (
               <table className="w-full text-left text-sm min-w-[900px]">
                 <thead className="bg-slate-50 text-slate-600">
@@ -235,7 +247,7 @@ export default function TerminPage() {
                       <td className="p-4 border-b text-red-600 font-medium"><MoneyText value={inv.outstanding} /></td>
                       <td className="p-4 border-b"><StatusBadge status={inv.status} /></td>
                       <td className="p-4 border-b text-right">
-                        {inv.outstanding > 0 && inv.status !== 'Void' && can('CASH_IN_RECORD') && (
+                        {Number(inv.outstanding) > 0 && inv.status !== 'Void' && can('CASH_IN_RECORD') && (
                           <button onClick={() => { setSelectedInvoice(inv); setIsReceiptModalOpen(true); }} className="text-green-600 hover:underline text-sm font-medium flex items-center justify-end gap-1">
                             <CheckCircle size={14} /> Catat Kas
                           </button>
@@ -248,7 +260,6 @@ export default function TerminPage() {
               </table>
             )}
 
-            {/* TAB 3: KAS MASUK */}
             {activeTab === 'kas' && (
               <table className="w-full text-left text-sm min-w-[800px]">
                 <thead className="bg-slate-50 text-slate-600">
@@ -286,7 +297,6 @@ export default function TerminPage() {
               </table>
             )}
 
-            {/* TAB 4: RETENSI */}
             {activeTab === 'retensi' && (
               <div className="p-4">
                 <div className="flex justify-between items-center mb-4">
@@ -326,7 +336,6 @@ export default function TerminPage() {
         </>
       )}
 
-      {/* Modals */}
       {contract && (
         <>
           <TerminFormModal
@@ -367,6 +376,14 @@ export default function TerminPage() {
           />
         </>
       )}
+
+      <ContractFormModal
+        isOpen={isContractModalOpen}
+        onClose={() => setIsContractModalOpen(false)}
+        projectId={projectId}
+        onSuccess={loadData}
+        showToast={showToast}
+      />
     </div>
   );
 }

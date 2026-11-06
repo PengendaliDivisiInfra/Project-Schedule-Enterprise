@@ -1,9 +1,9 @@
 ﻿'use client';
 import { useEffect, useState } from 'react';
-import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
 import { useRole } from '@/lib/hooks/useRole';
-import { ShieldAlert, Search, Info, X, Clock, User, Database, FileJson, Loader2, ArrowRight } from 'lucide-react';
+import { listAuditLogs } from '@/lib/services/logs.service'; // Import Service Baru
+import { ShieldAlert, Search, Info, X, Clock, User, Database, FileJson, Loader2 } from 'lucide-react';
 
 export default function AuditLogsPage() {
   const { activeProjectId } = useProject();
@@ -12,25 +12,24 @@ export default function AuditLogsPage() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // State Modal Detail
   const [selectedLog, setSelectedLog] = useState(null);
 
   const fetchLogs = async () => {
     if (!activeProjectId) return;
     setLoading(true);
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .select('*')
-      .eq('project_id', activeProjectId)
-      .order('created_at', { ascending: false });
-
-    if (!error && data) setLogs(data);
-    setLoading(false);
+    try {
+      const data = await listAuditLogs(activeProjectId);
+      setLogs(data);
+    } catch (error) {
+      console.error("Gagal memuat log:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    if (role === 'Owner') {
+    // Perbaikan: Cek role dengan huruf kecil semua agar aman
+    if (role?.toLowerCase() === 'owner') {
       fetchLogs();
     } else if (!loadingRole) {
       setLoading(false);
@@ -55,10 +54,8 @@ export default function AuditLogsPage() {
     return 'bg-slate-100 text-slate-700';
   };
 
-  // Fungsi untuk merapikan JSON menjadi baris "Key: Value"
   const renderDataRows = (data) => {
     if (!data) return null;
-    // Sembunyikan kolom yang tidak perlu dilihat user
     const hiddenKeys = ['id', 'created_at', 'updated_at', 'project_id'];
     
     return Object.entries(data)
@@ -81,7 +78,8 @@ export default function AuditLogsPage() {
     );
   }
 
-  if (role !== 'Owner') {
+  // Perbaikan: Cek role dengan huruf kecil semua
+  if (role?.toLowerCase() !== 'owner') {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center text-rose-500">
@@ -97,13 +95,12 @@ export default function AuditLogsPage() {
     <div className="p-6 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* HEADER */}
         <div className="flex justify-between items-end">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
               <ShieldAlert className="text-indigo-600" /> System Activity Logs
             </h1>
-            <p className="text-sm text-slate-500 mt-1">Audit trail terenkripsi untuk seluruh perubahan data (PO, Kas, Inventory).</p>
+            <p className="text-sm text-slate-500 mt-1">Audit trail terenkripsi untuk seluruh perubahan data proyek.</p>
           </div>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -117,7 +114,6 @@ export default function AuditLogsPage() {
           </div>
         </div>
 
-        {/* TABEL LOGS */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-100 text-slate-600 text-xs uppercase border-b">
@@ -131,7 +127,7 @@ export default function AuditLogsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan="5" className="p-8 text-center text-slate-500">Memuat data log...</td></tr>
+                <tr><td colSpan="5" className="p-8 text-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2"/> Memuat data log...</td></tr>
               ) : filteredLogs.length === 0 ? (
                 <tr><td colSpan="5" className="p-8 text-center text-slate-500">Belum ada aktivitas yang tercatat.</td></tr>
               ) : (
@@ -139,8 +135,8 @@ export default function AuditLogsPage() {
                   <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                     <td className="p-4 text-slate-600 font-mono text-xs">{formatDate(log.created_at)}</td>
                     <td className="p-4">
-                      <div className="font-bold text-slate-800">{log.user_name || 'System/Unknown'}</div>
-                      <div className="text-[10px] text-slate-500 font-bold uppercase">{log.user_role || '-'}</div>
+                      <div className="font-bold text-slate-800">{log.user_name}</div>
+                      <div className="text-[10px] text-slate-500 font-bold uppercase">{log.user_role}</div>
                     </td>
                     <td className="p-4 text-center">
                       <span className={`px-2 py-1 rounded text-[10px] font-bold ${getActionColor(log.action)}`}>
@@ -163,10 +159,9 @@ export default function AuditLogsPage() {
             </tbody>
           </table>
         </div>
-
       </div>
 
-      {/* MODAL DETAIL PERUBAHAN (BERSIH & RAPI) */}
+      {/* MODAL DETAIL PERUBAHAN */}
       {selectedLog && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95">
@@ -221,7 +216,6 @@ export default function AuditLogsPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
