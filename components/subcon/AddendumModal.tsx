@@ -17,7 +17,6 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
   const [loading, setLoading] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
   
-  // State untuk menyimpan data asli dari DB (untuk perbandingan)
   const [originalItems, setOriginalItems] = useState<AddendumItemChange[]>([]);
   
   const [form, setForm] = useState({
@@ -26,11 +25,11 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
     description: '',
     amount: 0,
     new_contract_value: 0,
+    tax_mode: 'EXCLUDE' as 'EXCLUDE' | 'INCLUDE' | 'NON_PAJAK', // TAMBAHAN BARU
   });
 
   const [items, setItems] = useState<AddendumItemChange[]>([]);
 
-  // 1. Ambil data saat modal dibuka
   useEffect(() => {
     if (isOpen && spk) {
       const oldValue = spk.final_contract_value || spk.contract_value;
@@ -41,17 +40,16 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
         description: '',
         amount: 0,
         new_contract_value: oldValue,
+        tax_mode: spk.tax_mode || 'EXCLUDE', // TAMBAHAN BARU
       });
 
       setLoadingItems(true);
       getSPKItems(spk.id).then(data => {
-        // PERBAIKAN 1: Beri tipe eksplisit AddendumItemChange[] pada fetchedItems
         let fetchedItems: AddendumItemChange[] = [];
         
         if (data && data.length > 0) {
           fetchedItems = data.map((i: any) => ({
             id: i.id,
-            // PERBAIKAN 2: Gunakan as const agar TypeScript tahu ini string literal
             action: 'UPDATE' as const,
             description: i.description,
             volume: Number(i.volume),
@@ -59,7 +57,6 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
             unit_price: Number(i.unit_price)
           }));
         } else {
-          // FALLBACK: Beri Temp ID agar terdeteksi sebagai item yang bisa diedit
           fetchedItems = [{
             id: `temp_${Date.now()}`, 
             action: 'UPDATE' as const,
@@ -70,14 +67,13 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
           }];
         }
         
-        setOriginalItems(JSON.parse(JSON.stringify(fetchedItems))); // Simpan copy
+        setOriginalItems(JSON.parse(JSON.stringify(fetchedItems))); 
         setItems(fetchedItems);
         setLoadingItems(false);
       });
     }
   }, [isOpen, spk]);
 
-  // 2. OTOMATISASI: Hitung Nilai Kontrak Baru & Selisih
   const oldContractValue = spk?.final_contract_value || spk?.contract_value || 0;
   
   const currentItemsTotal = items
@@ -86,7 +82,6 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
 
   const amountDiff = currentItemsTotal - oldContractValue;
 
-  // 3. OTOMATISASI: Generate Keterangan Lengkap
   useEffect(() => {
     if (loadingItems) return;
 
@@ -98,10 +93,9 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
       } else if (item.action === 'DELETE') {
         changes.push(`[HAPUS] ${item.description}`);
       } else {
-        // Deteksi perubahan pada item (termasuk item fallback dengan temp ID)
         const orig = item.id && !item.id.startsWith('temp_') 
           ? originalItems.find(o => o.id === item.id)
-          : originalItems[index]; // Bandingkan berdasarkan index jika temp ID
+          : originalItems[index]; 
 
         if (orig) {
           const volChanged = Number(orig.volume) !== Number(item.volume);
@@ -152,9 +146,8 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
     e.preventDefault();
     setLoading(true);
     try {
-      // Bersihkan payload: Item dengan temp_ harus diubah jadi action ADD
       const sanitizedItems = items
-        .filter(i => i.action !== 'DELETE' || i.id) // Ambil semua yang berubah
+        .filter(i => i.action !== 'DELETE' || i.id) 
         .map(item => {
           if (item.id && item.id.startsWith('temp_')) {
             return { ...item, action: 'ADD' as const, id: undefined };
@@ -170,6 +163,7 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
         description: form.description,
         amount: amountDiff,
         new_contract_value: form.new_contract_value,
+        tax_mode: form.tax_mode, // TAMBAHAN BARU
         items: sanitizedItems
       });
 
@@ -192,7 +186,7 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
         <form onSubmit={handleSubmit} className="space-y-6">
           
           <div className="bg-slate-50 p-4 rounded-lg border space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">No. Addendum</label>
                 <input type="number" required min={1} value={form.addendum_no} onChange={e => setForm({...form, addendum_no: Number(e.target.value)})} className="w-full border rounded p-2" />
@@ -200,6 +194,15 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">Judul Addendum</label>
                 <input type="text" required placeholder="Cth: Pekerjaan Tambah / CCO 1" value={form.title} onChange={e => setForm({...form, title: e.target.value})} className="w-full border rounded p-2" />
+              </div>
+              {/* TAMBAHAN BARU: DROPDOWN MODE HARGA DI ADDENDUM */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Ubah Mode Harga</label>
+                <select required value={form.tax_mode} onChange={e => setForm({...form, tax_mode: e.target.value as any})} className="w-full border rounded p-2 text-sm font-bold text-teal-700">
+                  <option value="EXCLUDE">EXCLUDE PAJAK</option>
+                  <option value="INCLUDE">INCLUDE PAJAK</option>
+                  <option value="NON_PAJAK">NON PAJAK</option>
+                </select>
               </div>
             </div>
 

@@ -22,12 +22,12 @@ export function PaySubconModal({ isOpen, onClose, spk, onSuccess, showToast }: P
     progress_pct: 0,
     amount: 0,
     description: '',
-    // State Fleksibel Pajak
     ppn_pct: 11,
     pph_pct: 2,
+    category: 'Kasbon', // Default Kategori
+    payment_method: 'Transfer', // Default Metode
   });
 
-  // Reset form & set default pajak dari SPK setiap kali modal dibuka
   useEffect(() => {
     if (isOpen && spk) {
       setForm({
@@ -39,27 +39,21 @@ export function PaySubconModal({ isOpen, onClose, spk, onSuccess, showToast }: P
         description: '',
         ppn_pct: spk.ppn_pct ?? 11,
         pph_pct: spk.pph_pct ?? 2,
+        category: 'Kasbon',
+        payment_method: 'Transfer',
       });
     }
   }, [isOpen, spk]);
 
   if (!isOpen || !spk) return null;
 
-  // 1. Hitung Nilai Bruto (DPP)
   const grossAmount = form.payment_type === 'Opname' 
     ? (form.progress_pct / 100) * spk.final_contract_value 
     : form.amount;
     
-  // 2. Hitung PPN dan PPh sesuai Input User
   const ppnAmount = (grossAmount * form.ppn_pct) / 100;
   const pphAmount = (grossAmount * form.pph_pct) / 100;
-
-  // 3. Hitung Retensi
-  const retentionAmount = form.payment_type === 'Opname' 
-    ? (grossAmount * spk.retention_pct) / 100 
-    : 0; 
-
-  // 4. Rumus Transfer Bersih
+  const retentionAmount = form.payment_type === 'Opname' ? (grossAmount * spk.retention_pct) / 100 : 0; 
   const netAmount = grossAmount + ppnAmount - pphAmount - retentionAmount;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,7 +73,9 @@ export function PaySubconModal({ isOpen, onClose, spk, onSuccess, showToast }: P
         payment_type: form.payment_type,
         progress_pct: form.progress_pct,
         ppn_amount: ppnAmount,
-        pph_amount: pphAmount
+        pph_amount: pphAmount,
+        category: form.payment_type === 'Kasbon' ? form.category : undefined,
+        payment_method: form.payment_method
       });
       showToast(`Pembayaran ${form.payment_type} berhasil dicatat`, 'success');
       onSuccess();
@@ -120,57 +116,69 @@ export function PaySubconModal({ isOpen, onClose, spk, onSuccess, showToast }: P
             </div>
           </div>
 
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
             {form.payment_type === 'Opname' ? (
-              <div className="mb-4">
+              <div>
                 <label className="block text-sm font-bold mb-1">Progres Pekerjaan (%)</label>
                 <div className="relative">
                   <input type="number" step="0.01" required min="1" max="100" value={form.progress_pct} onChange={e => setForm({...form, progress_pct: Number(e.target.value)})} className="w-full border rounded p-2 font-bold text-lg pr-10" />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">%</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Nilai SPK: <MoneyText value={spk.final_contract_value} /></p>
               </div>
             ) : (
-              <div className="mb-4">
-                <label className="block text-sm font-bold mb-1 text-amber-700">Nominal Kasbon (Rp)</label>
-                <input type="number" step="0.01" required value={form.amount} onChange={e => setForm({...form, amount: Number(e.target.value)})} className="w-full border border-amber-300 bg-amber-50 rounded p-2 font-bold text-lg" />
+              <>
+                <div>
+                  <label className="block text-sm font-bold mb-1 text-amber-700">Nominal Kasbon (Rp)</label>
+                  <input type="number" step="0.01" required value={form.amount} onChange={e => setForm({...form, amount: Number(e.target.value)})} className="w-full border border-amber-300 bg-amber-50 rounded p-2 font-bold text-lg" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Kategori</label>
+                    <select value={form.category} onChange={e => setForm({...form, category: e.target.value})} className="w-full border rounded p-1.5 text-sm">
+                      <option value="Kasbon">Kasbon</option>
+                      <option value="K3">K3</option>
+                      <option value="Alat">Alat</option>
+                      <option value="DLL">DLL</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Metode</label>
+                    <select value={form.payment_method} onChange={e => setForm({...form, payment_method: e.target.value})} className="w-full border rounded p-1.5 text-sm">
+                      <option value="Transfer">Transfer</option>
+                      <option value="Cash">Cash</option>
+                      <option value="BG">BG</option>
+                    </select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {form.payment_type === 'Opname' && (
+              <div className="grid grid-cols-2 gap-3 border-t pt-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">PPN (%)</label>
+                  <input type="number" step="0.01" required value={form.ppn_pct} onChange={e => setForm({...form, ppn_pct: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">PPh (%)</label>
+                  <input type="number" step="0.01" required value={form.pph_pct} onChange={e => setForm({...form, pph_pct: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm" />
+                </div>
               </div>
             )}
 
-            {/* INPUT FLEKSIBEL PPN & PPH */}
-            <div className="grid grid-cols-2 gap-3 mb-4 border-b pb-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">PPN (%)</label>
-                <input type="number" step="0.01" required value={form.ppn_pct} onChange={e => setForm({...form, ppn_pct: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">PPh (%)</label>
-                <input type="number" step="0.01" required value={form.pph_pct} onChange={e => setForm({...form, pph_pct: Number(e.target.value)})} className="w-full border rounded p-1.5 text-sm" />
-              </div>
-            </div>
-
-            <div className="space-y-1">
+            <div className="space-y-1 border-t pt-2">
               <div className="flex justify-between items-center text-sm text-slate-600">
-                <span>Bruto (DPP):</span>
-                <MoneyText value={grossAmount} />
-              </div>
-              <div className="flex justify-between items-center text-sm text-blue-600">
-                <span>PPN ({form.ppn_pct}%):</span>
-                <span>+ <MoneyText value={ppnAmount} /></span>
-              </div>
-              <div className="flex justify-between items-center text-sm text-orange-600">
-                <span>PPh ({form.pph_pct}%):</span>
-                <span>- <MoneyText value={pphAmount} /></span>
+                <span>Bruto:</span><MoneyText value={grossAmount} />
               </div>
               {form.payment_type === 'Opname' && (
-                <div className="flex justify-between items-center text-sm text-red-600">
-                  <span>Retensi ({spk.retention_pct}%):</span>
-                  <span>- <MoneyText value={retentionAmount} /></span>
-                </div>
+                <>
+                  <div className="flex justify-between items-center text-sm text-blue-600"><span>PPN:</span><span>+ <MoneyText value={ppnAmount} /></span></div>
+                  <div className="flex justify-between items-center text-sm text-orange-600"><span>PPh:</span><span>- <MoneyText value={pphAmount} /></span></div>
+                  <div className="flex justify-between items-center text-sm text-red-600"><span>Retensi:</span><span>- <MoneyText value={retentionAmount} /></span></div>
+                </>
               )}
-              <div className="flex justify-between items-center text-sm font-bold text-green-700 border-t pt-2 mt-2">
-                <span>Dana Ditransfer:</span>
-                <MoneyText value={netAmount} />
+              <div className="flex justify-between items-center text-sm font-bold text-green-700 pt-2 mt-2 border-t">
+                <span>Dana Ditransfer:</span><MoneyText value={netAmount} />
               </div>
             </div>
           </div>

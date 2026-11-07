@@ -34,6 +34,7 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
     retention_pct: 5,
     ppn_pct: 11,
     pph_pct: 2,
+    tax_mode: 'EXCLUDE' as 'EXCLUDE' | 'INCLUDE' | 'NON_PAJAK', // TAMBAHAN BARU
   });
 
   const [items, setItems] = useState<SPKItem[]>([
@@ -50,6 +51,7 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
           retention_pct: editingSPK.retention_pct || 5,
           ppn_pct: editingSPK.ppn_pct ?? 11,
           pph_pct: editingSPK.pph_pct ?? 2,
+          tax_mode: editingSPK.tax_mode || 'EXCLUDE', // TAMBAHAN BARU
         });
         setItems([{ description: 'Ubah nilai kontrak (Item lama disembunyikan saat edit)', volume: 1, unit: 'ls', unit_price: editingSPK.contract_value }]);
       } else {
@@ -60,6 +62,7 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
           retention_pct: 5,
           ppn_pct: 11,
           pph_pct: 2,
+          tax_mode: 'EXCLUDE', // TAMBAHAN BARU
         });
         setItems([{ description: '', volume: 1, unit: 'ls', unit_price: 0 }]);
       }
@@ -109,6 +112,7 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
           retention_pct: form.retention_pct,
           ppn_pct: form.ppn_pct,
           pph_pct: form.pph_pct,
+          tax_mode: form.tax_mode, // TAMBAHAN BARU
           contract_value: totalValue,
         });
         showToast('SPK berhasil diperbarui', 'success');
@@ -167,7 +171,16 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
             <input type="text" required placeholder="Cth: Pekerjaan Struktur Baja" value={form.work_description} onChange={e => setForm({...form, work_description: e.target.value})} className="w-full border rounded p-2" />
           </div>
 
-          <div className="grid grid-cols-3 gap-4 bg-slate-50 p-3 rounded-lg border">
+          <div className="grid grid-cols-4 gap-4 bg-slate-50 p-3 rounded-lg border">
+            {/* TAMBAHAN BARU: DROPDOWN MODE HARGA */}
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1">Mode Harga</label>
+              <select required value={form.tax_mode} onChange={e => setForm({...form, tax_mode: e.target.value as any})} className="w-full border rounded p-2 text-sm font-bold text-teal-700">
+                <option value="EXCLUDE">EXCLUDE PAJAK</option>
+                <option value="INCLUDE">INCLUDE PAJAK</option>
+                <option value="NON_PAJAK">NON PAJAK</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1">Retensi (%)</label>
               <input type="number" step="0.01" required value={form.retention_pct} onChange={e => setForm({...form, retention_pct: Number(e.target.value)})} className="w-full border rounded p-2 text-sm" />

@@ -2,14 +2,22 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useProject } from '../../../context/ProjectContext';
-import { Save, Loader2, Building2, FileText, Calendar, ShieldCheck, Upload, ImageIcon } from 'lucide-react';
+import { Save, Loader2, Building2, FileText, Calendar, ShieldCheck, Upload, ImageIcon, CheckCircle, XCircle } from 'lucide-react';
 
 export default function ProjectSettingsPage() {
   const { activeProjectId } = useProject();
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingLogo, setIsUploadingLogo] = useState(false); // State baru untuk upload logo
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [formData, setFormData] = useState({});
+  
+  // State untuk Toast (Pengganti alert)
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type) => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -31,21 +39,19 @@ export default function ProjectSettingsPage() {
     setIsSaving(true);
     const { error } = await supabase.from('projects').update(formData).eq('id', activeProjectId);
     if (!error) {
-      alert('Pengaturan Proyek berhasil disimpan!');
+      showToast('Pengaturan Proyek berhasil disimpan!', 'success');
     } else {
-      alert('Gagal menyimpan: ' + error.message);
+      showToast('Gagal menyimpan: ' + error.message, 'error');
     }
     setIsSaving(false);
   };
 
-  // 🟢 FUNGSI BARU: Handle Upload Logo
   const handleLogoUpload = async (event) => {
     try {
       setIsUploadingLogo(true);
       const file = event.target.files?.[0];
       if (!file) return;
 
-      // Validasi ukuran (maks 2MB)
       if (file.size > 2 * 1024 * 1024) {
         throw new Error('Ukuran file maksimal 2MB');
       }
@@ -53,32 +59,18 @@ export default function ProjectSettingsPage() {
       const fileExt = file.name.split('.').pop();
       const fileName = `${activeProjectId}-${Math.random()}.${fileExt}`;
 
-      // 1. Upload ke Supabase Storage (Bucket: project-assets)
-      const { error: uploadError } = await supabase.storage
-        .from('project-assets')
-        .upload(fileName, file);
-
+      const { error: uploadError } = await supabase.storage.from('project-assets').upload(fileName, file);
       if (uploadError) throw uploadError;
 
-      // 2. Dapatkan Public URL
-      const { data } = supabase.storage
-        .from('project-assets')
-        .getPublicUrl(fileName);
-
-      // 3. Simpan URL ke tabel projects
-      const { error: updateError } = await supabase
-        .from('projects')
-        .update({ logo_url: data.publicUrl })
-        .eq('id', activeProjectId);
-
+      const { data } = supabase.storage.from('project-assets').getPublicUrl(fileName);
+      const { error: updateError } = await supabase.from('projects').update({ logo_url: data.publicUrl }).eq('id', activeProjectId);
       if (updateError) throw updateError;
 
-      // 4. Update state lokal agar UI langsung berubah
       setFormData(prev => ({ ...prev, logo_url: data.publicUrl }));
-      alert('Logo berhasil diunggah!');
+      showToast('Logo berhasil diunggah!', 'success');
 
     } catch (error) {
-      alert('Gagal mengunggah logo: ' + error.message);
+      showToast('Gagal mengunggah logo: ' + error.message, 'error');
     } finally {
       setIsUploadingLogo(false);
     }
@@ -88,7 +80,15 @@ export default function ProjectSettingsPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>;
 
   return (
-    <div className="p-6 bg-slate-50 min-h-screen">
+    <div className="p-6 bg-slate-50 min-h-screen relative">
+      {/* TOAST NOTIFICATION */}
+      {toast && (
+        <div className={`fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg text-white font-medium z-[100] flex items-center gap-2 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+          {toast.type === 'success' ? <CheckCircle size={20} /> : <XCircle size={20} />}
+          {toast.msg}
+        </div>
+      )}
+
       <div className="max-w-4xl mx-auto space-y-6">
         
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -98,7 +98,7 @@ export default function ProjectSettingsPage() {
 
         <form onSubmit={handleSave} className="space-y-6">
           
-          {/* 🟢 SECTION BARU: Logo Perusahaan */}
+          {/* Logo Perusahaan */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-4 border-b bg-slate-50 flex items-center gap-2">
               <ImageIcon size={18} className="text-slate-600"/> 
@@ -121,13 +121,7 @@ export default function ProjectSettingsPage() {
                 <label className="cursor-pointer bg-indigo-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-indigo-700 transition w-fit">
                   {isUploadingLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                   {isUploadingLogo ? 'Mengunggah...' : 'Upload Logo Baru'}
-                  <input 
-                    type="file" 
-                    accept="image/png, image/jpeg, image/svg+xml" 
-                    className="hidden" 
-                    onChange={handleLogoUpload} 
-                    disabled={isUploadingLogo} 
-                  />
+                  <input type="file" accept="image/png, image/jpeg, image/svg+xml" className="hidden" onChange={handleLogoUpload} disabled={isUploadingLogo} />
                 </label>
                 <p className="text-xs text-slate-500 mt-2">Format: PNG, JPG, SVG. Maksimal 2MB. <br/>Disarankan rasio 1:1 atau horizontal.</p>
               </div>
@@ -141,8 +135,37 @@ export default function ProjectSettingsPage() {
               <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-600 mb-1">Nama Proyek</label><input type="text" name="name" value={formData.name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-600 mb-1">Lokasi</label><input type="text" name="location" value={formData.location || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
               <div><label className="block text-xs font-bold text-slate-600 mb-1">Nama Pemberi Tugas (Owner)</label><input type="text" name="owner_name" value={formData.owner_name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Kementerian PUPR" /></div>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1">Nama Perusahaan (Kontraktor)</label><input type="text" name="company_name" value={formData.company_name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
-              <div><label className="block text-xs font-bold text-slate-600 mb-1">Nama Konsultan Pengawas</label><input type="text" name="consultant_name" value={formData.consultant_name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
+            </div>
+          </div>
+
+          {/* Data Kontraktor (Pihak Kesatu) - SECTION BARU */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b bg-slate-50 flex items-center gap-2"><Building2 size={18} className="text-slate-600"/> <h2 className="font-bold text-slate-800">Data Kontraktor (Pihak Kesatu)</h2></div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-600 mb-1">Nama Perusahaan (Kontraktor)</label>
+                <input type="text" name="company_name" value={formData.company_name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-600 mb-1">Alamat Perusahaan</label>
+                <input type="text" name="contractor_address" value={formData.contractor_address || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Alamat lengkap perusahaan..." />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Nama Penanggung Jawab (PIC)</label>
+                <input type="text" name="contractor_pic_name" value={formData.contractor_pic_name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Budi Santoso" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Jabatan Penanggung Jawab</label>
+                <input type="text" name="contractor_pic_title" value={formData.contractor_pic_title || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="cth: Site Engineer" />
+              </div>
+            </div>
+          </div>
+
+          {/* Pihak Lain */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 border-b bg-slate-50 flex items-center gap-2"><FileText size={18} className="text-slate-600"/> <h2 className="font-bold text-slate-800">Pihak Pengawas</h2></div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2"><label className="block text-xs font-bold text-slate-600 mb-1">Nama Konsultan Pengawas</label><input type="text" name="consultant_name" value={formData.consultant_name || ''} onChange={handleChange} className="w-full border p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" /></div>
             </div>
           </div>
 
