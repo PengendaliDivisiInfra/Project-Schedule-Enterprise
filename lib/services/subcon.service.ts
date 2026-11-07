@@ -143,3 +143,32 @@ export async function paySubcontractor(contractId: string, payload: {
   if (error) throw new Error(error.message);
   return data;
 }
+
+export async function getBAOPData(contractId: string, startDate: string, endDate: string) {
+  const { data: contract, error: cError } = await supabase
+    .from('subcontractor_contracts')
+    .select(`
+      id, spk_number, work_description, contract_value,
+      subcontractors ( company_name, address, contact_person ),
+      projects ( name, location, contractor_name, owner_name, contract_number )
+    `)
+    .eq('id', contractId)
+    .single();
+    
+  if (cError) throw new Error(cError.message);
+
+  const { data: opnames, error: oError } = await supabase
+    .from('subcon_opnames')
+    .select(`
+      id, opname_date, volume, price, total,
+      subcontractor_spk_items ( description, unit )
+    `)
+    .eq('contract_id', contractId)
+    .gte('opname_date', startDate)
+    .lte('opname_date', endDate)
+    .order('opname_date', { ascending: true });
+
+  if (oError) throw new Error(oError.message);
+
+  return { contract, opnames: opnames || [] };
+}

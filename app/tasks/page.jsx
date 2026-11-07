@@ -5,15 +5,23 @@ import { updateProjectScheduleSecure, addWorkingDays, countWorkingDays } from '.
 import { useProject } from '../../context/ProjectContext';
 import { useProjectStore } from '../../store/useProjectStore';
 import { useRealtimeWBS } from '../../hooks/useRealtimeWBS';
+import { useRole } from '../../lib/hooks/useRole';
 import { 
   ListTree, Plus, Edit, Trash2, X, Settings, Pin, CheckCircle, XCircle, 
   TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder
 } from 'lucide-react';
 
+const SATUAN_OPTIONS = [
+  'Ls', 'M3', 'M2', 'M1', 'Kg', 'Unit', 'Buah', 'Titik', 'Hari', 'Jam', 'OH', 'Org', 'Btg', 'Lbr', 'Zak', 'Roll'
+];
+
 export default function TasksPage() {
-  const { userRole, activeProjectId } = useProject();
+  const { activeProjectId } = useProject();
   useRealtimeWBS(activeProjectId);
-  const canEdit = userRole === 'pm' || userRole === 'owner'; 
+  
+  const { can } = useRole(activeProjectId);
+  const canEdit = can('EDIT_PROGRESS'); 
+  
   const { tasks, setTasks } = useProjectStore();
   
   const [loading, setLoading] = useState(true);
@@ -38,6 +46,19 @@ export default function TasksPage() {
 
   useEffect(() => {
     fetchTasksAndCalendar();
+  }, [activeProjectId]);
+
+  // --- REALTIME LISTENER UNTUK PROJECT SETTINGS (KALENDER) ---
+  useEffect(() => {
+    if (!activeProjectId) return;
+    
+    const channel = supabase.channel('realtime-project-calendar')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
+        fetchTasksAndCalendar(); // Otomatis reload jika kalender diubah
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [activeProjectId]);
 
   const parsePreds = (str) => {
@@ -180,7 +201,7 @@ export default function TasksPage() {
   const openModal = (task = null) => {
     setCurrentTask(task);
     setFormData(task || {
-      task_mode: 'Auto Scheduled', constraint_type: 'ASAP', task_type: 'Fixed Duration', priority: 'Medium', is_milestone: false, duration: 1, progress_percent: 0
+      task_mode: 'Auto Scheduled', constraint_type: 'ASAP', task_type: 'Fixed Duration', priority: 'Medium', is_milestone: false, duration: 1, progress_percent: 0, satuan_hsd: '', summary: 'No'
     });
     setPredList(parsePreds(task?.predecessors || ''));
     setNewPred({ wbs: '', type: 'FS', lag: 0 });
@@ -241,12 +262,23 @@ export default function TasksPage() {
     finalData.predecessors = stringifyPreds(finalPredList);
 
     const saveData = {
-      name: finalData.name, volume: Number(finalData.volume) || 0, duration: Number(finalData.duration) || 1,
-      start_date: finalData.start_date || null, end_date: finalData.end_date || null,
-      progress_percent: Number(Number(finalData.progress_percent).toFixed(2)) || 0, task_mode: finalData.task_mode,
-      constraint_type: finalData.constraint_type, constraint_date: finalData.constraint_date || null,
-      task_type: finalData.task_type, priority: finalData.priority, is_milestone: finalData.is_milestone,
-      predecessors: finalData.predecessors, tags: finalData.tags, assignee: finalData.assignee, wbs_dictionary: finalData.wbs_dictionary
+      name: finalData.name, 
+      volume: Number(finalData.volume) || 0, 
+      duration: Number(finalData.duration) || 1,
+      start_date: finalData.start_date || null, 
+      end_date: finalData.end_date || null,
+      progress_percent: Number(Number(finalData.progress_percent).toFixed(2)) || 0, 
+      task_mode: finalData.task_mode,
+      constraint_type: finalData.constraint_type, 
+      constraint_date: finalData.constraint_date || null,
+      task_type: finalData.task_type, 
+      priority: finalData.priority, 
+      is_milestone: finalData.is_milestone,
+      predecessors: finalData.predecessors, 
+      tags: finalData.tags, 
+      assignee: finalData.assignee, 
+      wbs_dictionary: finalData.wbs_dictionary,
+      satuan_hsd: finalData.summary === 'Yes' ? null : (finalData.satuan_hsd || null)
     };
 
     setIsModalOpen(false);
@@ -323,6 +355,7 @@ export default function TasksPage() {
                 <th className="p-2 font-bold text-center w-12">Mode</th>
                 <th className="p-2 font-bold w-16">WBS</th>
                 <th className="p-2 font-bold min-w-[200px]">Task Name</th>
+                <th className="p-2 font-bold text-center">Satuan</th>
                 <th className="p-2 font-bold text-center bg-slate-200">Vol Total</th>
                 
                 {showCPM && (
@@ -358,7 +391,7 @@ export default function TasksPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {loading ? (
-                 <tr><td colSpan={showCPM ? 20 : 14} className="p-8 text-center text-slate-500">Memuat data...</td></tr>
+                 <tr><td colSpan={showCPM ? 21 : 15} className="p-8 text-center text-slate-500">Memuat data...</td></tr>
               ) : tasks.map((t) => {
                 const isSummary = t.summary === 'Yes' || t.summary !== 'No';
                 const varian = t.varian_pct || 0;
@@ -379,7 +412,8 @@ export default function TasksPage() {
                     <td className={`p-2 ${isSummary ? 'font-bold text-slate-800' : 'font-medium text-slate-700'}`}>
                       {t.name}
                     </td>
-                    <td className="p-2 text-center font-mono bg-slate-50/50">{isSummary ? '-' : `${t.volume} ${t.satuan_hsd || ''}`}</td>
+                    <td className="p-2 text-center font-mono">{isSummary ? '-' : (t.satuan_hsd || '-')}</td>
+                    <td className="p-2 text-center font-mono bg-slate-50/50">{isSummary ? '-' : `${t.volume}`}</td>
                     
                     {showCPM && (
                       <>
@@ -448,8 +482,8 @@ export default function TasksPage() {
                     <td className="p-2 text-center">
                       {canEdit ? (
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openModal(t)} className="text-blue-600 p-1 bg-blue-50 rounded"><Edit className="w-3 h-3" /></button>
-                          <button onClick={() => handleDelete(t.id)} className="text-red-600 p-1 bg-red-50 rounded"><Trash2 className="w-3 h-3" /></button>
+                          <button onClick={() => openModal(t)} className="text-blue-600 p-1 bg-blue-50 rounded hover:bg-blue-100"><Edit className="w-3 h-3" /></button>
+                          <button onClick={() => handleDelete(t.id)} className="text-red-600 p-1 bg-red-50 rounded hover:bg-red-100"><Trash2 className="w-3 h-3" /></button>
                         </div>
                       ) : (
                         <span className="text-[10px] text-slate-400 italic font-semibold">Read-Only</span>
@@ -463,7 +497,7 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* MODAL TASK INFORMATION (Sama seperti sebelumnya) */}
+      {/* MODAL TASK INFORMATION */}
       {isModalOpen && (
          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
@@ -495,16 +529,26 @@ export default function TasksPage() {
                         <input type="date" name="end_date" value={formData.end_date?.split('T')[0] || ''} onChange={handleChange} disabled={formData.task_mode === 'Auto Scheduled'} className={`w-full px-3 py-2 border rounded-md text-sm ${formData.task_mode === 'Auto Scheduled' ? 'bg-slate-100 text-slate-500' : ''}`} />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-xs font-bold text-slate-600 mb-1">Duration (Working Days)</label>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Duration (Days)</label>
                         <input type="number" name="duration" value={formData.duration || 1} onChange={handleChange} className="w-full px-3 py-2 border rounded-md text-sm" />
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-slate-600 mb-1">Progress (%)</label>
                         <input type="number" name="progress_percent" value={Number(formData.progress_percent || 0).toFixed(2)} onChange={handleChange} min="0" max="100" step="0.01" className="w-full px-3 py-2 border rounded-md text-sm" />
                       </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">Satuan</label>
+                        <select name="satuan_hsd" value={formData.satuan_hsd || ''} onChange={handleChange} disabled={formData.summary === 'Yes'} className={`w-full px-3 py-2 border rounded-md text-sm ${formData.summary === 'Yes' ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-white'}`}>
+                          <option value="">-- Pilih Satuan --</option>
+                          {SATUAN_OPTIONS.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
+                    
                     <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
                       <div>
                         <label className="block text-xs font-bold text-blue-800 mb-1">Schedule Mode</label>
@@ -574,44 +618,23 @@ export default function TasksPage() {
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex gap-2 items-end">
                         <div className="flex-1">
                             <label className="block text-xs font-bold text-slate-600 mb-1">Pilih Task Pendahulu</label>
-                            <select 
-                                value={newPred.wbs} 
-                                onChange={(e) => setNewPred({...newPred, wbs: e.target.value})}
-                                className="w-full px-3 py-2 border rounded-md text-sm bg-white"
-                            >
+                            <select value={newPred.wbs} onChange={(e) => setNewPred({...newPred, wbs: e.target.value})} className="w-full px-3 py-2 border rounded-md text-sm bg-white">
                                 <option value="">-- Pilih Task --</option>
-                                {tasks.filter(t => t.wbs_code !== currentTask?.wbs_code && t.summary === 'No').map(t => (
-                                    <option key={t.id} value={t.wbs_code}>{t.wbs_code} - {t.name}</option>
-                                ))}
+                                {tasks.filter(t => t.wbs_code !== currentTask?.wbs_code && t.summary === 'No').map(t => (<option key={t.id} value={t.wbs_code}>{t.wbs_code} - {t.name}</option>))}
                             </select>
                         </div>
                         <div className="w-40">
                             <label className="block text-xs font-bold text-slate-600 mb-1">Tipe Hubungan</label>
-                            <select 
-                                value={newPred.type} 
-                                onChange={(e) => setNewPred({...newPred, type: e.target.value})}
-                                className="w-full px-3 py-2 border rounded-md text-sm bg-white font-semibold"
-                            >
-                                <option value="FS">FS (Finish-to-Start)</option>
-                                <option value="SS">SS (Start-to-Start)</option>
-                                <option value="FF">FF (Finish-to-Finish)</option>
-                                <option value="SF">SF (Start-to-Finish)</option>
+                            <select value={newPred.type} onChange={(e) => setNewPred({...newPred, type: e.target.value})} className="w-full px-3 py-2 border rounded-md text-sm bg-white font-semibold">
+                                <option value="FS">FS (Finish-to-Start)</option><option value="SS">SS (Start-to-Start)</option><option value="FF">FF (Finish-to-Finish)</option><option value="SF">SF (Start-to-Finish)</option>
                             </select>
                         </div>
                         <div className="w-24">
                             <label className="block text-xs font-bold text-slate-600 mb-1">Lag (Hari)</label>
-                            <input 
-                                type="number" 
-                                value={newPred.lag} 
-                                onChange={(e) => setNewPred({...newPred, lag: Number(e.target.value)})}
-                                className="w-full px-3 py-2 border rounded-md text-sm bg-white" 
-                            />
+                            <input type="number" value={newPred.lag} onChange={(e) => setNewPred({...newPred, lag: Number(e.target.value)})} className="w-full px-3 py-2 border rounded-md text-sm bg-white" />
                         </div>
-                        <button type="button" onClick={addPredecessor} className="bg-slate-800 text-white p-2.5 rounded-md hover:bg-slate-900 transition-colors">
-                            <Plus className="w-4 h-4" />
-                        </button>
+                        <button type="button" onClick={addPredecessor} className="bg-slate-800 text-white p-2.5 rounded-md hover:bg-slate-900 transition-colors"><Plus className="w-4 h-4" /></button>
                     </div>
-                    
                     <div className="mt-3 bg-blue-50 border border-blue-100 p-3 rounded-lg flex items-start gap-2">
                         <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
                         <div className="text-[11px] text-blue-800 leading-relaxed">
@@ -621,25 +644,14 @@ export default function TasksPage() {
                             {newPred.type === 'SF' && <span><b>Start-to-Finish (SF):</b> Pekerjaan ini baru bisa selesai setelah pekerjaan pendahulu dimulai.</span>}
                         </div>
                     </div>
-
                     <div className="space-y-2 mt-4">
-                        {predList.length === 0 ? (
-                            <p className="text-xs text-slate-400 italic text-center">Belum ada predecessor dipilih.</p>
-                        ) : (
+                        {predList.length === 0 ? (<p className="text-xs text-slate-400 italic text-center">Belum ada predecessor dipilih.</p>) : (
                             predList.map((p, idx) => {
                                 const taskRef = tasks.find(t => t.wbs_code === p.wbs);
                                 return (
                                     <div key={idx} className="flex items-center justify-between bg-white border border-slate-200 p-2 rounded-md shadow-sm">
-                                        <div className="flex items-center gap-3">
-                                            <div className="bg-blue-100 p-1.5 rounded text-blue-600"><Link2 className="w-4 h-4" /></div>
-                                            <div>
-                                                <span className="font-bold text-sm text-slate-700">{p.wbs} - {taskRef?.name || 'Unknown'}</span>
-                                                <div className="text-[10px] text-slate-500">Tipe: {p.type} | Lag: {p.lag} hari</div>
-                                            </div>
-                                        </div>
-                                        <button type="button" onClick={() => removePredecessor(idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center gap-3"><div className="bg-blue-100 p-1.5 rounded text-blue-600"><Link2 className="w-4 h-4" /></div><div><span className="font-bold text-sm text-slate-700">{p.wbs} - {taskRef?.name || 'Unknown'}</span><div className="text-[10px] text-slate-500">Tipe: {p.type} | Lag: {p.lag} hari</div></div></div>
+                                        <button type="button" onClick={() => removePredecessor(idx)} className="text-red-500 hover:bg-red-50 p-1.5 rounded"><Trash2 className="w-4 h-4" /></button>
                                     </div>
                                 );
                             })

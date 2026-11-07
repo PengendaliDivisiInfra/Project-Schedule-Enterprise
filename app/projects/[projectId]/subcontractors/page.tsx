@@ -14,6 +14,7 @@ import { HistoryModal } from '@/components/subcon/HistoryModal';
 import { AddendumModal } from '@/components/subcon/AddendumModal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { Plus, Users, FileText, CheckCircle, Trash2, Pencil } from 'lucide-react';
+import { BAOPView } from '@/components/subcon/BAOPView';
 
 export default function SubcontractorsPage() {
   const params = useParams();
@@ -39,6 +40,7 @@ export default function SubcontractorsPage() {
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string, type: 'vendor' | 'spk' } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isBAOPOpen, setIsBAOPOpen] = useState(false);
 
   const showToast = (msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
@@ -201,6 +203,9 @@ export default function SubcontractorsPage() {
                       <button onClick={() => { setSelectedSPK(spk); setIsHistoryModalOpen(true); }} className="text-slate-500 hover:text-slate-800 text-xs font-medium">
                         History
                       </button>
+                      <button onClick={() => { setSelectedSPK(spk); setIsBAOPOpen(true); }} className="text-amber-600 hover:text-amber-800 text-xs font-medium">
+                        Cetak BAOP
+                      </button>
                       <span className="text-slate-300">|</span>
                       <button onClick={() => { setSelectedSPK(spk); setIsAddendumModalOpen(true); }} className="text-amber-600 hover:text-amber-800 text-xs font-medium">
                         + Addendum
@@ -253,6 +258,15 @@ export default function SubcontractorsPage() {
         message={deleteTarget?.type === 'vendor' ? 'Apakah Anda yakin ingin menghapus vendor ini?' : 'Apakah Anda yakin ingin membatalkan SPK ini?'}
         isLoading={isDeleting}
       />
+
+      {isBAOPOpen && selectedSPK && (
+        <BAOPView 
+          projectId={projectId} 
+          spks={spks} 
+          onClose={() => setIsBAOPOpen(false)} 
+          showToast={showToast} 
+        />
+      )}
     </div>
   );
 }

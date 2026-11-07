@@ -45,12 +45,14 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
 
       setLoadingItems(true);
       getSPKItems(spk.id).then(data => {
-        let fetchedItems = [];
+        // PERBAIKAN 1: Beri tipe eksplisit AddendumItemChange[] pada fetchedItems
+        let fetchedItems: AddendumItemChange[] = [];
         
         if (data && data.length > 0) {
           fetchedItems = data.map((i: any) => ({
             id: i.id,
-            action: 'UPDATE',
+            // PERBAIKAN 2: Gunakan as const agar TypeScript tahu ini string literal
+            action: 'UPDATE' as const,
             description: i.description,
             volume: Number(i.volume),
             unit: i.unit,
@@ -60,7 +62,7 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
           // FALLBACK: Beri Temp ID agar terdeteksi sebagai item yang bisa diedit
           fetchedItems = [{
             id: `temp_${Date.now()}`, 
-            action: 'UPDATE',
+            action: 'UPDATE' as const,
             description: 'Nilai Kontrak Awal (Belum ada rincian)',
             volume: 1,
             unit: 'ls',
@@ -221,7 +223,10 @@ export function AddendumModal({ isOpen, onClose, spk, onSuccess, showToast }: Pr
 
             <div>
               <label className="block text-xs font-bold text-slate-600 mb-1 flex items-center gap-1">
-                Keterangan Lengkap <Info size={14} className="text-blue-500" title="Otomatis terisi berdasarkan perubahan RAB di bawah" />
+                Keterangan Lengkap 
+                <span title="Otomatis terisi berdasarkan perubahan RAB di bawah">
+                  <Info size={14} className="text-blue-500 cursor-help" />
+                </span>
               </label>
               <textarea 
                 rows={3}

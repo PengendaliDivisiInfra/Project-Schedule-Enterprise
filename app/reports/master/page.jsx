@@ -104,7 +104,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
     };
 
     const TARGET_PRINT_WIDTH = 1450; 
-    const LEFT_COLUMNS_WIDTH = 40 + 200 + 55 + 55 + 40 + 60 + 60 + 45 + 50 + 55 + 55 + 60; 
+    const LEFT_COLUMNS_WIDTH = 40 + 200 + 50 + 55 + 55 + 40 + 60 + 60 + 45 + 50 + 55 + 55 + 60; 
     
     const availableTimelineWidth = TARGET_PRINT_WIDTH - LEFT_COLUMNS_WIDTH;
     let COL_WIDTH = availableTimelineWidth / columns.length;
@@ -119,6 +119,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
           <colgroup>
             <col style={{ width: '40px' }} />
             <col style={{ width: '200px' }} />
+            <col style={{ width: '50px' }} />
             <col style={{ width: '55px' }} />
             <col style={{ width: '55px' }} />
             <col style={{ width: '40px' }} />
@@ -135,6 +136,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
             <tr>
               <th className="text-center">WBS</th>
               <th className="text-center">URAIAN</th>
+              <th className="text-center">SATUAN</th>
               <th className="text-center">VOL</th>
               <th className="text-center">SISA</th>
               <th className="text-center">DUR</th>
@@ -163,6 +165,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
                 <tr key={i} style={{ height: `${ROW_HEIGHT}px` }}>
                   <td className="text-center">{t.wbs_code}</td>
                   <td className={`text-left ${isSummary ? 'font-bold' : ''}`}>{t.name}</td>
+                  <td className="text-center">{t.satuan_hsd || t.satuan || t.unit || '-'}</td>
                   <td className="text-right">{formatNum(t.volume)}</td>
                   <td className="text-right">{formatNum(t.sisa_vol)}</td>
                   <td className="text-center">{t.duration}d</td>
@@ -207,6 +210,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
           <tr>
             <th className="p-2 border border-slate-700 text-center w-12">WBS</th>
             <th className="p-2 border border-slate-700 min-w-[200px]">URAIAN</th>
+            <th className="p-2 border border-slate-700 text-center">SATUAN</th>
             <th className="p-2 border border-slate-700 text-right">VOL</th>
             <th className="p-2 border border-slate-700 text-right">SISA</th>
             <th className="p-2 border border-slate-700 text-center">DUR</th>
@@ -228,6 +232,7 @@ const EnterpriseGanttTable = ({ data, timescale, dateFrom, dateTo, isPrintMode =
               <tr key={i} className={`${isSummary ? 'bg-slate-100 font-bold' : 'hover:bg-slate-50'}`}>
                 <td className="p-1.5 border border-slate-300 text-center font-mono">{t.wbs_code}</td>
                 <td className="p-1.5 border border-slate-300 truncate max-w-[200px]">{t.name}</td>
+                <td className="p-1.5 border border-slate-300 text-center">{t.satuan_hsd || t.satuan || t.unit || '-'}</td>
                 <td className="p-1.5 border border-slate-300 text-right">{formatNum(t.volume)}</td>
                 <td className="p-1.5 border border-slate-300 text-right">{formatNum(t.sisa_vol)}</td>
                 <td className="p-1.5 border border-slate-300 text-center">{t.duration}d</td>
@@ -374,7 +379,6 @@ export default function MasterReportPage() {
     });
   };
 
-  // 🟢 FUNGSI KALKULASI DINAMIS ENTERPRISE
   const processDynamicPlans = (rawResources, rawMaterials, tasks) => {
     const dynamicResources = rawResources.map(res => {
       const task = tasks.find(t => t.wbs_code === res.wbs_code);
@@ -383,7 +387,7 @@ export default function MasterReportPage() {
         const sisaTotalKebutuhan = res.total_kebutuhan * proporsiSisa; 
         
         const targetHarian = task.sisa_hari > 0 ? (task.sisa_vol / task.sisa_hari) : 0;
-        const kapasitasNyata = 10; // Standar PUPR
+        const kapasitasNyata = 10; 
         const jumlahTim = targetHarian > 0 ? (targetHarian / kapasitasNyata) : 0;
 
         let rekomendasi = 'Normal';
@@ -392,6 +396,8 @@ export default function MasterReportPage() {
 
         return {
           ...res,
+          // Memaksa pengambilan satuan dari Task (wbs_tasks) jika di view resource kosong
+          satuan: task.satuan_hsd || task.satuan || task.unit || res.satuan || res.unit || '-',
           total_kebutuhan: sisaTotalKebutuhan,
           kebutuhan_harian: task.sisa_hari > 0 ? (sisaTotalKebutuhan / task.sisa_hari) : 0,
           target_harian_vol: targetHarian,
@@ -400,7 +406,10 @@ export default function MasterReportPage() {
           is_delayed: new Date(task.end_date) < new Date()
         };
       }
-      return res;
+      return {
+        ...res,
+        satuan: res.satuan || res.unit || '-'
+      };
     });
 
     const dynamicMaterials = rawMaterials.map(mat => {
@@ -414,7 +423,7 @@ export default function MasterReportPage() {
         const hargaSatuan = mat.total_dibeli > 0 ? (mat.estimasi_biaya / mat.total_dibeli) : 0;
         const sisaEstimasiBiaya = sisaTotalDibeli * hargaSatuan;
 
-        const leadTimeDays = 14; // Standar pengiriman 2 minggu
+        const leadTimeDays = 14; 
         const isLeadTimeWarning = task.sisa_hari <= leadTimeDays;
 
         return {
@@ -434,11 +443,7 @@ export default function MasterReportPage() {
   };
 
   const fetchData = async (isBackground = false) => {
-    if (!activeProjectId) { 
-      setLoading(false); 
-      return; 
-    }
-    
+    if (!activeProjectId) { setLoading(false); return; }
     if (!isBackground) setLoading(true);
 
     try {
@@ -458,27 +463,19 @@ export default function MasterReportPage() {
           cwd = projRes.data.working_days.map(Number);
           setWorkingDays(cwd);
         }
-        if (projRes.data.exceptions) {
-          cex = projRes.data.exceptions;
-          setExceptions(cex);
-        }
+        if (projRes.data.exceptions) { cex = projRes.data.exceptions; setExceptions(cex); }
       }
       
       let processedTasks = [];
       if (taskRes.data) {
         const engineResult = updateProjectScheduleSecure(taskRes.data, cwd, cex);
         let finalTasks = taskRes.data;
-        
-        if (engineResult.success) {
-          finalTasks = engineResult.tasks;
-        }
-
+        if (engineResult.success) { finalTasks = engineResult.tasks; }
         const fixedTasks = recalculateRollupDates(finalTasks);
         processedTasks = calculateEVM(fixedTasks, cwd, cex);
         setAllTasks(processedTasks);
       }
 
-      // 🟢 TERAPKAN KALKULASI DINAMIS ENTERPRISE
       if (resRes.data && matRes.data) {
         const { dynamicResources, dynamicMaterials } = processDynamicPlans(resRes.data, matRes.data, processedTasks);
         setResources(dynamicResources);
@@ -488,16 +485,12 @@ export default function MasterReportPage() {
         if (matRes.data) setMaterials(matRes.data);
       }
 
-    } catch (err) { 
-      console.error("Fetch Data Error:", err); 
-    } finally { 
-      if (!isBackground) setLoading(false); 
-    }
+    } catch (err) { console.error("Fetch Data Error:", err); } 
+    finally { if (!isBackground) setLoading(false); }
   };
 
   useEffect(() => {
     fetchData(); 
-    
     if (!activeProjectId) return;
 
     const channel = supabase
@@ -506,9 +499,7 @@ export default function MasterReportPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cash_flows' }, () => fetchData(true))
       .subscribe();
       
-    return () => { 
-      supabase.removeChannel(channel); 
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [activeProjectId]);
 
   const totalBAC = allTasks.reduce((sum, t) => sum + (Number(t.cost) || 0), 0);
@@ -542,7 +533,7 @@ export default function MasterReportPage() {
         estimatedColumns = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
       }
 
-      const LEFT_COLUMNS_WIDTH = 775; 
+      const LEFT_COLUMNS_WIDTH = 825; 
       const TARGET_PRINT_WIDTH = 1450;
       const availableTimelineWidth = TARGET_PRINT_WIDTH - LEFT_COLUMNS_WIDTH;
       let dynamicColWidth = availableTimelineWidth / estimatedColumns;
@@ -750,8 +741,8 @@ export default function MasterReportPage() {
         </div>
       )}
 
-      {/* HEADER UI */}
-      <div className="max-w-[1400px] mx-auto mb-6 print:hidden">
+      {/* PERBAIKAN: Max-width dihilangkan agar full width */}
+      <div className="w-full mb-6 print:hidden">
         <button onClick={() => window.history.back()} className="text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 mb-4">
           <ArrowLeft size={16}/> Kembali ke Dashboard
         </button>
@@ -770,8 +761,7 @@ export default function MasterReportPage() {
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto print:hidden">
-        {/* KOP SURAT & KPI */}
+      <div className="w-full print:hidden">
         <div className="bg-white p-8 rounded-t-xl border border-slate-200 border-b-0">
           <div className="flex justify-between items-start border-b-4 border-slate-800 pb-4 mb-6">
             <div>
@@ -801,7 +791,6 @@ export default function MasterReportPage() {
           </div>
         </div>
 
-        {/* TAB NAVIGATION */}
         <div className="bg-white border-x border-slate-200 sticky top-0 z-50 shadow-sm">
           <div className="flex border-b border-slate-200 px-6 pt-2 overflow-x-auto">
             {[
@@ -823,7 +812,6 @@ export default function MasterReportPage() {
           </div>
         </div>
 
-        {/* TAB CONTENT */}
         <div className="bg-white p-8 border border-slate-200 border-t-0 rounded-b-xl mb-8 shadow-sm">
           {activeTab === 'gantt' && (
             <EnterpriseGanttTable data={allTasks} timescale="Bulanan" dateFrom="" dateTo="" />
@@ -836,6 +824,7 @@ export default function MasterReportPage() {
                   <tr className="bg-slate-800 text-white uppercase tracking-wider">
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
+                    <th className="p-1 border border-slate-700 text-center">SATUAN</th>
                     <th className="p-1 border border-slate-700 text-right">Vol Total</th>
                     <th className="p-1 border border-slate-700 text-center">Dur</th>
                     <th className="p-1 border border-slate-700 text-center">Mulai</th>
@@ -845,6 +834,7 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-right">Rencana</th>
                     <th className="p-1 border border-slate-700 text-right">Aktual</th>
                     <th className="p-1 border border-slate-700 text-right">Varian</th>
+                    <th className="p-1 border border-slate-700 text-right">T/HR</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -852,6 +842,7 @@ export default function MasterReportPage() {
                     <tr key={i} className={`${t.summary !== 'No' ? 'bg-slate-100 font-bold' : 'hover:bg-slate-50'}`}>
                       <td className="p-1 border border-slate-300 font-mono text-center">{t.wbs_code}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[150px]">{t.name}</td>
+                      <td className="p-1 border border-slate-300 text-center">{t.satuan_hsd || t.satuan || t.unit || '-'}</td>
                       <td className="p-1 border border-slate-300 text-right">{formatNum(t.volume)}</td>
                       <td className="p-1 border border-slate-300 text-center">{t.duration}d</td>
                       <td className="p-1 border border-slate-300 text-center whitespace-nowrap">{formatDateShort(t.start_date)}</td>
@@ -869,6 +860,7 @@ export default function MasterReportPage() {
                           {t.varian_pct > 0 ? '+' : ''}{t.varian_pct ? t.varian_pct.toFixed(1) : 0}%
                         </span>
                       </td>
+                      <td className="p-1 border border-slate-300 text-right font-bold">{t.butuh_t_hr ? t.butuh_t_hr.toFixed(2) : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -884,6 +876,7 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
                     <th className="p-1 border border-slate-700">Resource / Crew</th>
+                    <th className="p-1 border border-slate-700 text-center">Satuan</th>
                     <th className="p-1 border border-slate-700 text-right">Sisa Kebutuhan (Jam)</th>
                     <th className="p-1 border border-slate-700 text-right">Target Vol / Hari</th>
                     <th className="p-1 border border-slate-700 text-right text-emerald-400">Jumlah Tim</th>
@@ -896,6 +889,7 @@ export default function MasterReportPage() {
                       <td className="p-1 border border-slate-300 font-mono text-center">{r.wbs_code}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[150px]">{r.task_name}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[200px]">{r.resource_crew}</td>
+                      <td className="p-1 border border-slate-300 text-center">{r.satuan || '-'}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-indigo-700">{formatNum(r.total_kebutuhan)} Jam</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-blue-700">{formatNum(r.target_harian_vol)}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-emerald-700">{formatNum(r.jumlah_tim)}</td>
@@ -917,6 +911,7 @@ export default function MasterReportPage() {
                     <th className="p-1 border border-slate-700 text-center">WBS</th>
                     <th className="p-1 border border-slate-700">URAIAN</th>
                     <th className="p-1 border border-slate-700">Material</th>
+                    <th className="p-1 border border-slate-700 text-center">Satuan</th>
                     <th className="p-1 border border-slate-700 text-right">Sisa Total Dibeli</th>
                     <th className="p-1 border border-slate-700 text-right">Estimasi Sisa Biaya</th>
                     <th className="p-1 border border-slate-700 text-center text-red-400">Status Lead Time</th>
@@ -928,6 +923,7 @@ export default function MasterReportPage() {
                       <td className="p-1 border border-slate-300 font-mono text-center">{m.wbs_code}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[150px]">{m.task_name}</td>
                       <td className="p-1 border border-slate-300 truncate max-w-[200px]">{m.material_name}</td>
+                      <td className="p-1 border border-slate-300 text-center">{m.satuan || '-'}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold text-blue-700">{formatNum(m.total_dibeli)}</td>
                       <td className="p-1 border border-slate-300 text-right font-bold whitespace-nowrap">{formatRp(m.estimasi_biaya)}</td>
                       <td className="p-1 border border-slate-300 text-center">
@@ -1026,22 +1022,25 @@ export default function MasterReportPage() {
           </div>
           <table style={{ width: '100%' }}>
             <colgroup>
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '25%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '8%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '9%' }} />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '20%' }} />
               <col style={{ width: '6%' }} />
               <col style={{ width: '6%' }} />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
               <col style={{ width: '8%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '6%' }} />
             </colgroup>
             <thead>
               <tr>
                 <th className="text-center">WBS</th>
                 <th className="text-center">URAIAN</th>
+                <th className="text-center">SATUAN</th>
                 <th className="text-center">VOL TOTAL</th>
                 <th className="text-center">DUR</th>
                 <th className="text-center">MULAI</th>
@@ -1051,6 +1050,7 @@ export default function MasterReportPage() {
                 <th className="text-center">RENCANA</th>
                 <th className="text-center">AKTUAL</th>
                 <th className="text-center">VARIAN</th>
+                <th className="text-center">T/HR</th>
               </tr>
             </thead>
             <tbody>
@@ -1058,6 +1058,7 @@ export default function MasterReportPage() {
                 <tr key={i} style={{ backgroundColor: t.summary !== 'No' ? '#f8fafc' : 'transparent' }}>
                   <td className="text-center">{t.wbs_code}</td>
                   <td className="text-left">{t.name}</td>
+                  <td className="text-center">{t.satuan_hsd || t.satuan || t.unit || '-'}</td>
                   <td className="text-right">{formatNum(t.volume)}</td>
                   <td className="text-center">{t.duration}d</td>
                   <td className="text-center">{formatDateShort(t.start_date)}</td>
@@ -1067,6 +1068,7 @@ export default function MasterReportPage() {
                   <td className="text-right">{t.smart_target ? t.smart_target.toFixed(1) : 0}%</td>
                   <td className="text-right font-bold">{Number(t.progress_percent || 0).toFixed(1)}%</td>
                   <td className="text-right font-bold">{t.varian_pct > 0 ? '+' : ''}{t.varian_pct ? t.varian_pct.toFixed(1) : 0}%</td>
+                  <td className="text-right font-bold">{t.butuh_t_hr ? t.butuh_t_hr.toFixed(2) : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -1093,19 +1095,21 @@ export default function MasterReportPage() {
           </div>
           <table style={{ width: '100%' }}>
             <colgroup>
-              <col style={{ width: '6%' }} />
-              <col style={{ width: '25%' }} />
-              <col style={{ width: '25%' }} />
+              <col style={{ width: '5%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '8%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '10%' }} />
-              <col style={{ width: '14%' }} />
+              <col style={{ width: '17%' }} />
             </colgroup>
             <thead>
               <tr>
                 <th className="text-center">WBS</th>
                 <th className="text-center">URAIAN</th>
                 <th className="text-center">RESOURCE / CREW</th>
+                <th className="text-center">SATUAN</th>
                 <th className="text-center">SISA TR (JAM)</th>
                 <th className="text-center">TARGET VOL / HARI</th>
                 <th className="text-center">JUMLAH TIM</th>
@@ -1118,6 +1122,7 @@ export default function MasterReportPage() {
                   <td className="text-center">{r.wbs_code}</td>
                   <td className="text-left">{r.task_name}</td>
                   <td className="text-left">{r.resource_crew}</td>
+                  <td className="text-center">{r.satuan || '-'}</td>
                   <td className="text-right font-bold">{formatNum(r.total_kebutuhan)}</td>
                   <td className="text-right font-bold">{formatNum(r.target_harian_vol)}</td>
                   <td className="text-right font-bold">{formatNum(r.jumlah_tim)}</td>
@@ -1176,7 +1181,7 @@ export default function MasterReportPage() {
                   <td className="text-left">{m.task_name}</td>
                   <td className="text-left">{m.material_name}</td>
                   <td className="text-right">{formatNum(m.sisa_kebutuhan_ideal)}</td>
-                  <td style={{ textAlign: 'center' }}>{m.satuan}</td>
+                  <td style={{ textAlign: 'center' }}>{m.satuan || '-'}</td>
                   <td className="text-right font-bold" style={{ color: '#1d4ed8' }}>{formatNum(m.total_dibeli)}</td>
                   <td className="text-center">
                     {m.is_lead_time_warning ? (

@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { updateProjectScheduleSecure } from '../../lib/scheduler';
+import { updateProjectScheduleSecure, countWorkingDays } from '../../lib/scheduler';
 import { AlertTriangle } from 'lucide-react';
 
 export default function GanttPage() {
@@ -17,29 +17,32 @@ export default function GanttPage() {
   const [schedulerError, setSchedulerError] = useState(null);
   const isUpdatingRef = useRef(false);
 
-  // --- FUNGSI KALKULASI EVM (Disalin dari Tasks Page) ---
-  const calculateEVM = (data) => {
+  // --- PATCH SINKRONISASI: EVM MENGGUNAKAN COUNT WORKING DAYS ---
+  const calculateEVM = (data, cwd, cex) => {
     const today = new Date();
     today.setHours(0,0,0,0);
+    
     return data.map(t => {
       const vol = Number(t.volume) || 0;
-      const dur = Number(t.duration) || 1;
       const progPct = Number(t.progress_percent) || 0;
       const startDate = t.start_date ? new Date(t.start_date) : null;
       const endDate = t.end_date ? new Date(t.end_date) : null;
       
       let smartTargetPct = 0;
-      let sisaHari = dur;
+      let sisaHari = t.duration || 1;
 
       if (t.summary === 'No' && startDate && endDate) {
         if (today >= endDate) {
           smartTargetPct = 100;
           sisaHari = 0;
         } else if (today > startDate) {
-          const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) || 1;
-          const elapsedDays = Math.ceil((today - startDate) / (1000 * 60 * 60 * 24));
-          smartTargetPct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
-          sisaHari = Math.max(0, totalDays - elapsedDays);
+          const totalWorkingDays = countWorkingDays(startDate, endDate, cwd, cex) || 1;
+          const elapsedWorkingDays = countWorkingDays(startDate, today, cwd, cex);
+          
+          smartTargetPct = Math.min(100, Math.max(0, (elapsedWorkingDays / totalWorkingDays) * 100));
+          sisaHari = Math.max(0, totalWorkingDays - elapsedWorkingDays); 
+        } else {
+          sisaHari = countWorkingDays(startDate, endDate, cwd, cex);
         }
       }
 
@@ -54,7 +57,7 @@ export default function GanttPage() {
         sisa_hari_efektif: sisaHari, 
         actual_vol: actualVol, 
         sisa_vol: sisaVol, 
-        varian_pct: varianPct, 
+        varian_pct: Number(varianPct.toFixed(1)), 
         butuh_t_hr: Number(butuhTHr.toFixed(3)) 
       };
     });
@@ -63,6 +66,7 @@ export default function GanttPage() {
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     
+    // Ambil data kalender kerja
     const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
     let currentWorkingDays = [1,2,3,4,5];
     let currentExceptions = [];
@@ -73,7 +77,7 @@ export default function GanttPage() {
       setExceptions(currentExceptions);
     }
 
-    const { data: taskData } = await supabase.from('wbs_tasks').select('*, ahsp_templates(unit)').order('wbs_code');
+    const { data: taskData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
     const { data: assignmentsData } = await supabase.from('task_assignments').select('*');
     const { data: resourcesData } = await supabase.from('project_resources').select('*');
     if (assignmentsData) setTaskAssignments(assignmentsData);
@@ -84,24 +88,23 @@ export default function GanttPage() {
       let formattedTasks = uniqueTasks.map(t => {
         let calculatedDuration = Number(t.duration) || 1;
         if (t.summary !== 'Yes' && t.start_date && t.end_date) {
-          let count = 0;
-          let cur = new Date(t.start_date);
-          const end = new Date(t.end_date);
-          while (cur <= end) {
-            if (currentWorkingDays.includes(cur.getDay()) && !currentExceptions.some(e => e.exception_date === cur.toISOString().split('T')[0])) count++;
-            cur.setDate(cur.getDate() + 1);
-          }
-          calculatedDuration = Math.max(1, count);
+          // Patch Sinkronisasi: Durasi dihitung berdasarkan working days
+          calculatedDuration = countWorkingDays(t.start_date, t.end_date, currentWorkingDays, currentExceptions);
         }
-        return { ...t, satuan_hsd: t.ahsp_templates?.unit || 'unit', volume: Number(t.volume) || 0, cost: Number(t.cost) || 0, duration: calculatedDuration };
+        return { 
+          ...t, 
+          satuan_hsd: t.satuan_hsd || '-', 
+          volume: Number(t.volume) || 0, 
+          cost: Number(t.cost) || 0, 
+          duration: calculatedDuration 
+        };
       });
 
-      // 1. Jalankan CPM Engine
       const result = updateProjectScheduleSecure(formattedTasks, currentWorkingDays, currentExceptions);
       let finalTasks = result.success ? result.tasks : formattedTasks;
       
-      // 2. Jalankan EVM Engine agar Target/Sisa/T/hr muncul
-      finalTasks = calculateEVM(finalTasks);
+      // Patch Sinkronisasi: Kirim working days ke EVM
+      finalTasks = calculateEVM(finalTasks, currentWorkingDays, currentExceptions);
       
       const sorted = finalTasks.sort((a,b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
       setTasks(sorted);
@@ -126,11 +129,18 @@ export default function GanttPage() {
     if (!silent) setLoading(false);
   };
 
+  // --- REALTIME LISTENER (TASKS & PROJECT SETTINGS) ---
   useEffect(() => {
     fetchData();
-    const channel = supabase.channel('realtime-wbs-gantt')
+    const channel = supabase.channel('realtime-gantt-sync')
+      // Dengarkan perubahan pada tabel Task (WBS)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, () => {
         if (isUpdatingRef.current) return;
+        if (window.ganttTimer) clearTimeout(window.ganttTimer);
+        window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
+      })
+      // Dengarkan perubahan pada tabel Projects (Kalender Kerja / Holiday)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
         if (window.ganttTimer) clearTimeout(window.ganttTimer);
         window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
       })
@@ -174,7 +184,7 @@ export default function GanttPage() {
       return; 
     }
     
-    const calculatedTasks = calculateEVM(result.tasks); 
+    const calculatedTasks = calculateEVM(result.tasks, workingDays, exceptions); 
     setTasks([...calculatedTasks]); 
 
     const changedTasks = calculatedTasks.filter(t => {
@@ -195,8 +205,8 @@ export default function GanttPage() {
   if (loading) return <LoadingSpinner text="Memuat Gantt Workspace..." />;
 
   return (
-    <div className="p-4 bg-slate-50 min-h-screen">
-      <div className="max-w-[1600px] mx-auto">
+    <div className="p-6 w-full space-y-6">
+      <div className="w-full">
         <div className="mb-4">
           <h1 className="text-2xl font-bold text-slate-800">Interactive Gantt Workspace</h1>
         </div>

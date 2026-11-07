@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 import { useRef, useEffect, useState, useMemo } from 'react';
-import { Folder, FileText, Pin, Settings, Filter, Calendar } from 'lucide-react';
+import { Folder, FileText, Pin, Settings, Calendar } from 'lucide-react';
 import ResourceHistogram from './ResourceHistogram';
 import { calculateResourceHistogram } from '../lib/histogramCalculator';
 
@@ -26,7 +26,6 @@ export default function AdvancedGantt({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(600);
 
-  // State untuk Data Date
   const [dataDate, setDataDate] = useState(statusDate || new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
@@ -51,10 +50,8 @@ export default function AdvancedGantt({
     [localTasks, taskAssignments, resources, workingDays, exceptions]
   );
 
-  // --- KALKULASI SUMMARY PROYEK ---
   const totalTasks = localTasks.length;
   const criticalTasks = localTasks.filter(t => t.is_critical && t.summary !== 'Yes').length;
-  const overallocatedCount = histogramData?.overallocatedCount || 0;
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_SIZE);
   const endIndex = Math.min(displayTasks.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + BUFFER_SIZE);
@@ -92,7 +89,6 @@ export default function AdvancedGantt({
   }
 
   const pixelsPerDay = zoomLevel === 'day' ? 36 : zoomLevel === 'week' ? 16 : 4;
-  const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
   const totalWidth = calendarDays.length * pixelsPerDay;
 
   useEffect(() => {
@@ -208,25 +204,6 @@ export default function AdvancedGantt({
     setSvgPaths(paths);
   }, [displayTasks, relations, zoomLevel, startIndex, endIndex, pixelsPerDay, minDate.getTime()]);
 
-    const handleAutoLeveling = () => {
-    // Algoritma sederhana: Geser task dengan Slack > 0 ke kanan sejauh 1 minggu (7 hari)
-    // (Implementasi lengkap butuh CPM Engine rekursif)
-    if (confirm("Jalankan Auto Leveling? Sistem akan menggeser task non-kritis ke kanan untuk mengurangi overallocation.")) {
-      const leveledTasks = localTasks.map(t => {
-        if (t.is_critical === false && t.slack > 0 && t.summary === 'No') {
-          // Geser 7 hari ke kanan
-          const newStart = addWorkingDays(t.start_date, 7, workingDays, exceptions);
-          const newEnd = addWorkingDays(t.end_date, 7, workingDays, exceptions);
-          return { ...t, start_date: newStart, end_date: newEnd };
-        }
-        return t;
-      });
-      setLocalTasks(leveledTasks);
-      if (onRefresh) onRefresh(); // Panggil scheduler ulang
-      alert("Leveling Dijalankan! Silakan periksa Resource Histogram.");
-    }
-  };
-
   const handleScroll = (e) => {
     setScrollTop(e.currentTarget.scrollTop);
     setScrollLeft(e.currentTarget.scrollLeft);
@@ -340,11 +317,15 @@ export default function AdvancedGantt({
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
-      {/* TOOLBAR ATAS (Bebas dari karakter aneh) */}
-      <div className="flex justify-between items-center px-4 py-2 bg-white border-b border-slate-200 shrink-0"><div className="flex items-center gap-3"><span className="text-sm font-bold text-slate-800">Project Overview</span><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">Tasks: {totalTasks}</span><span className="bg-red-100 text-red-600 px-2 py-1 rounded text-xs">Critical: {criticalTasks}</span></div>
+      {/* TOOLBAR ATAS */}
+      <div className="flex justify-between items-center px-4 py-2 bg-white border-b border-slate-200 shrink-0">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-slate-800">Project Overview</span>
+          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">Tasks: {totalTasks}</span>
+          <span className="bg-red-100 text-red-600 px-2 py-1 rounded text-xs">Critical: {criticalTasks}</span>
+        </div>
 
         <div className="flex items-center gap-3">
-          {/* FITUR BARU: DATA DATE (STATUS DATE) */}
           <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5">
             <Calendar className="w-4 h-4 text-slate-500" />
             <span className="text-[11px] font-bold text-slate-600">Data Date:</span>
@@ -371,26 +352,25 @@ export default function AdvancedGantt({
       </div>
 
       <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 relative z-10">
-        <div className="w-[1150px] border-r border-slate-300 flex flex-col shrink-0">
+        {/* LEBAR PANEL KIRI DISESUAIKAN MENJADI 938px (Cost Dihapus) */}
+        <div className="w-[938px] border-r border-slate-300 flex flex-col shrink-0">
           <div className="flex justify-between items-center px-2 py-2 border-b border-slate-200 bg-slate-100">
-            <div className="flex text-[11px] font-semibold text-slate-600 items-center">
-              <span className="w-6 text-center" title="Mode">Mode</span>
-              <span className="w-6 text-center" title="Done">Done</span>
-              <span className="w-10 text-center" title="ID">ID</span>
-              <span className="w-44 pl-1 border-l border-slate-300">Task Name</span>
-              <span className="w-20 text-center border-l border-slate-300">Volume</span>
+            <div className="flex text-[10px] font-bold text-slate-500 uppercase tracking-wider items-center w-full">
+              <span className="w-6 text-center" title="Mode">M</span>
+              <span className="w-6 text-center" title="Done">✓</span>
+              <span className="w-10 text-center" title="ID">WBS</span>
+              <span className="w-44 pl-2 border-l border-slate-300">Task Name</span>
+              <span className="w-32 text-center border-l border-slate-300">Volume</span>
               <span className="w-10 text-center border-l border-slate-300">Dur</span>
               <span className="w-[85px] text-center border-l border-slate-300">Start</span>
               <span className="w-[85px] text-center border-l border-slate-300">Finish</span>
               <span className="w-12 text-center border-l border-slate-300">Pred</span>
-              <span className="w-16 text-center border-l border-slate-300">Resource</span>
               <span className="w-10 text-center border-l border-slate-300">%</span>
               <span className="w-12 text-center border-l border-slate-300">Target</span>
-              <span className="w-12 text-center border-l border-slate-300">Sisa Vol</span>
+              <span className="w-12 text-center border-l border-slate-300">Sisa</span>
               <span className="w-12 text-center border-l border-slate-300">T/hr</span>
-              <span className="w-14 text-center border-l border-slate-300 bg-slate-50">Varian</span>
+              <span className="w-14 text-center border-l border-slate-300">Varian</span>
               <span className="w-12 text-center border-l border-slate-300">Slack</span>
-              <span className="w-24 text-right pr-3 border-l border-slate-300">Cost</span>
             </div>
           </div>
           <div className="h-[24px] bg-slate-50"></div>
@@ -399,7 +379,7 @@ export default function AdvancedGantt({
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className="flex border-b border-slate-200 bg-slate-100" style={{ width: totalWidth }}>
             {topGroups.map((mg, i) => (
-              <div key={i} className="text-center text-[10px] font-bold text-slate-600 border-r border-slate-300 py-1 truncate" style={{ width: mg.span * pixelsPerDay }}>{mg.name}</div>
+              <div key={i} className="text-center text-[10px] font-bold text-slate-500 border-r border-slate-300 py-1 truncate" style={{ width: mg.span * pixelsPerDay }}>{mg.name}</div>
             ))}
           </div>
           <div className="flex bg-slate-50" style={{ width: totalWidth }}>
@@ -419,8 +399,8 @@ export default function AdvancedGantt({
       </div>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* PANEL KIRI */}
-        <div ref={leftPanelRef} className="w-[1150px] border-r border-slate-300 overflow-hidden bg-white shrink-0 relative">
+        {/* PANEL KIRI BODY (Data Task) */}
+        <div ref={leftPanelRef} className="w-[938px] border-r border-slate-300 overflow-hidden bg-white shrink-0 relative">
           <div className="relative" style={{ height: displayTasks.length * ROW_HEIGHT, transform: `translateY(-${scrollTop}px)` }}>
             {displayTasks.map((t, idx) => {
               const actualIndex = idx; 
@@ -440,18 +420,20 @@ export default function AdvancedGantt({
                   </span>
                   <span className="w-6 text-center">{t.progress_percent === 100 ? <span className="text-green-600 font-bold">V</span> : <span className="text-slate-300">o</span>}</span>
                   <span className="w-10 font-mono text-slate-500 text-center">{t.wbs_code}</span>
-                  <span className={`w-44 truncate pl-1 flex items-center gap-1 ${isSummary ? 'text-black' : 'text-slate-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 4}px` }}>
+                  <span className={`w-44 truncate pl-2 flex items-center gap-1 ${isSummary ? 'text-black' : 'text-slate-800'}`} style={{ paddingLeft: `${(t.indent_level || 0) * 12 + 8}px` }}>
                     {isSummary ? <Folder className="w-3 h-3 text-slate-400 shrink-0" /> : <FileText className="w-3 h-3 text-slate-400 shrink-0" />}
                     <span className="truncate">{t.name}</span>
                   </span>
-                  <div className="w-20 px-1 border-r border-slate-100 bg-slate-50/50">
+                  
+                  <div className="w-32 px-2 border-r border-slate-100 bg-slate-50/50">
                     {!isSummary && (
-                      <div className="flex items-center gap-1">
-                        <input type="number" defaultValue={t.volume || 0} onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))} className="w-10 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px] font-bold" onFocus={(e) => e.target.select()} />
-                        <span className="text-[9px] text-slate-500 font-medium truncate">{t.satuan_hsd}</span>
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <input type="number" defaultValue={t.volume || 0} onBlur={(e) => handleLocalInlineUpdate(t.id, 'volume', Number(e.target.value))} className="w-16 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-right bg-transparent text-[11px] font-bold" onFocus={(e) => e.target.select()} />
+                        <span className="text-[9px] text-slate-500 font-bold uppercase w-6">{t.satuan_hsd}</span>
                       </div>
                     )}
                   </div>
+
                   <div className="w-10 text-center border-l border-slate-100">
                     {isSummary ? <span>{t.duration}d</span> : (
                       <input type="number" key={`dur-${t.duration}`} defaultValue={t.duration} onBlur={(e) => handleLocalInlineUpdate(t.id, 'duration', Number(e.target.value))} className="w-8 border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[11px]" onFocus={(e) => e.target.select()} />
@@ -473,34 +455,23 @@ export default function AdvancedGantt({
                   </div>
                   <div className="w-12 px-1 border-l border-slate-100">
                     {!isSummary ? (
-                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="Ketik Pre..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-black font-semibold placeholder:text-slate-400 placeholder:font-normal" />
+                      <input type="text" key={`pred-${t.predecessors}`} defaultValue={t.predecessors || ''} placeholder="..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'predecessors', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded text-center bg-transparent text-[10px] font-bold text-slate-700 placeholder:text-slate-300 placeholder:font-normal" />
                     ) : (
                       <div className="text-center text-slate-300 text-[10px]">-</div>
                     )}
                   </div>
-                  <div className="w-16 px-1 border-l border-slate-100">
-                    {!isSummary && (
-                      <input type="text" defaultValue={t.resource_names || ''} placeholder="..." onBlur={(e) => handleLocalInlineUpdate(t.id, 'resource_names', e.target.value)} className="w-full border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1 text-[10px] bg-transparent truncate placeholder:text-slate-300" />
-                    )}
-                  </div>
+                  
                   <span className="w-10 text-center font-bold text-slate-700 border-l border-slate-100">{Number(t.progress_percent || 0).toFixed(1)}%</span>
                   <span className="w-12 text-center font-bold text-indigo-700 border-l border-slate-100">{isSummary ? '-' : Number(t.smart_target || 0).toFixed(1) + '%'}</span>
                   <span className="w-12 text-center text-slate-600 font-semibold border-l border-slate-100">{isSummary ? '-' : Number(t.sisa_vol || 0).toFixed(2)}</span>
                   <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : Number(t.butuh_t_hr || 0).toFixed(3)}</span>
                   
-                  {/* KOLOM VARIAN */}
                   <span className={`w-14 text-center font-mono font-bold border-l border-slate-100 ${Number(t.varian_pct) < 0 ? 'text-red-600' : Number(t.varian_pct) > 0 ? 'text-green-600' : 'text-slate-500'}`}>
                     {isSummary ? '-' : `${Number(t.varian_pct || 0) > 0 ? '+' : ''}${Number(t.varian_pct || 0).toFixed(1)}%`}
                   </span>
                   
-                  {/* KOLOM SLACK */}
                   <span className={`w-12 text-center font-mono font-bold border-l border-slate-100 ${Number(t.slack) < 0 ? 'text-red-600' : 'text-slate-600'}`}>
                     {isSummary ? '-' : t.slack}
-                  </span>
-                  
-                  {/* KOLOM COST */}
-                  <span className="w-24 flex justify-end items-center pr-3 font-mono font-semibold text-slate-700 border-l border-slate-100">
-                    {isSummary ? '-' : formatRp(t.cost)}
                   </span>
                 </div>
               );
