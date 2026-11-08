@@ -80,7 +80,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       });
       setEditableVolumes(initialVols);
 
-      // Update Kontak Mandor pada Tanda Tangan
       if (res.contract.subcontractors?.contact_person) {
         setSignatures(prev => {
           const newSigs = [...prev];
@@ -256,7 +255,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
           nilai_dpp: fin.C_dpp,
           nilai_ppn: fin.D_ppn,
           nilai_pph: fin.F_pph42,
-          signatures: signatures // <-- FIXED: Added comma
+          signatures: signatures
         });
         loadHistory();
       }
@@ -433,7 +432,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
           <SignatureSettings signatures={signatures} onChange={setSignatures} colorTheme="emerald" />
         )}
 
-        {/* INDIKATOR MODE HARGA */}
         {data && (
           <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between">
             <span className="text-sm font-bold text-emerald-800">Mode Harga Aktif (Mengikuti SPK):</span>

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Printer, FileText, Loader2, CheckSquare, Square, Zap, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Printer, FileText, Loader2, CheckSquare, Zap, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { getBAPPData } from '@/lib/services/subcon.service';
+import { useCOA } from '@/lib/hooks/useCOA';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 
 // --- FUNGSI TERBILANG ---
@@ -24,18 +25,6 @@ function terbilang(angka: number): string {
   return helper(Math.abs(angka)).replace(/\s+/g, ' ').trim();
 }
 
-// --- STRUKTUR DEFAULT COA ---
-const INITIAL_COA: CoaItem[] = [
-  { code: '5101.001', name: 'Beban Upah Mandor', type: 'GROSS', isChecked: true, amount: 0 },
-  { code: '1151.001', name: 'Piutang Opname', type: 'GROSS', isChecked: false, amount: 0 },
-  { code: '1152.001', name: 'Kasbon Mandor (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
-  { code: '1152.002', name: 'Kasbon Mandor (Penambahan)', type: 'GROSS', isChecked: false, amount: 0 },
-  { code: '2121.001', name: 'PPh 21/23 Jasa Mandor (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
-  { code: '1151.002', name: 'PPN Masukan', type: 'GROSS', isChecked: false, amount: 0 },
-  { code: '2131.001', name: 'Retensi Proyek (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
-];
-
-
 interface CoaItem {
   code: string;
   name: string;
@@ -46,9 +35,12 @@ interface CoaItem {
 
 export function KwitansiView({ projectId, projectData, spks, showToast }: { projectId: string, projectData: any, spks: any[], showToast: any }) {
   const [loading, setLoading] = useState(false);
-  const [coaList, setCoaList] = useState<CoaItem[]>(INITIAL_COA);
+  const [coaList, setCoaList] = useState<CoaItem[]>([]);
+  
+  // INTEGRASI COA HOOK
+  const { getAccountCode, loading: loadingCOA } = useCOA();
 
-  // State Form (Tanggal Mulai & Selesai dikembalikan)
+  // State Form
   const [form, setForm] = useState({
     contractId: '',
     receipt_number: `001/PEM.KB/MDR/CKMT/X/2026`,
@@ -60,6 +52,29 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     spk_number: '',
     work_description: '',
   });
+
+  // Inisialisasi Dynamic COA List ketika data master COA selesai dimuat
+  useEffect(() => {
+    if (!loadingCOA) {
+      const codeUpah = getAccountCode('Beban Upah Mandor') || '5101';
+      const codePiutang = getAccountCode('Piutang Opname') || '1151';
+      const codeKasbon = getAccountCode('Kasbon Mandor') || '1152';
+      const codePph = getAccountCode('PPh Pasal 21') || '2122';
+      const codePpn = getAccountCode('PPN Masukan') || '1161';
+      const codeRetensi = getAccountCode('Retensi Proyek') || '2131';
+
+      const dynamicCoa: CoaItem[] = [
+        { code: `${codeUpah}.001`, name: 'Beban Upah Mandor', type: 'GROSS', isChecked: true, amount: 0 },
+        { code: `${codePiutang}.001`, name: 'Piutang Opname', type: 'GROSS', isChecked: false, amount: 0 },
+        { code: `${codeKasbon}.001`, name: 'Kasbon Mandor (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
+        { code: `${codeKasbon}.002`, name: 'Kasbon Mandor (Penambahan)', type: 'GROSS', isChecked: false, amount: 0 },
+        { code: `${codePph}.001`, name: 'PPh 21/23 Jasa Mandor (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
+        { code: `${codePpn}.001`, name: 'PPN Masukan', type: 'GROSS', isChecked: false, amount: 0 },
+        { code: `${codeRetensi}.001`, name: 'Retensi Proyek (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
+      ];
+      setCoaList(dynamicCoa);
+    }
+  }, [loadingCOA, getAccountCode]);
 
   const handleSelectSPK = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const spkId = e.target.value;
@@ -96,17 +111,18 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         taxMode: res.contract.tax_mode || 'EXCLUDE'
       });
 
+      // Gunakan nama item untuk mapping Auto-Fill agar kebal terhadap perubahan kode COA
       setCoaList(prev => prev.map(coa => {
         let amount = 0;
         let isChecked = true;
 
-        switch (coa.code) {
-          case '5101.001': amount = hitung.A_bruto; break; 
-          case '1151.002': amount = hitung.D_ppn; isChecked = hitung.D_ppn > 0; break; 
-          case '2121.001': amount = hitung.F_pph42; isChecked = hitung.F_pph42 > 0; break; 
-          case '1151.001': amount = 0; isChecked = false; break; 
-          case '1152.001': amount = hitung.K_kasbon; isChecked = hitung.K_kasbon > 0; break; 
-          case '2131.001': amount = hitung.R_retensi; isChecked = hitung.R_retensi > 0; break;
+        switch (coa.name) {
+          case 'Beban Upah Mandor': amount = hitung.A_bruto; break; 
+          case 'PPN Masukan': amount = hitung.D_ppn; isChecked = hitung.D_ppn > 0; break; 
+          case 'PPh 21/23 Jasa Mandor (Potongan)': amount = hitung.F_pph42; isChecked = hitung.F_pph42 > 0; break; 
+          case 'Piutang Opname': amount = 0; isChecked = false; break; 
+          case 'Kasbon Mandor (Potongan)': amount = hitung.K_kasbon; isChecked = hitung.K_kasbon > 0; break; 
+          case 'Retensi Proyek (Potongan)': amount = hitung.R_retensi; isChecked = hitung.R_retensi > 0; break;
           default: return coa; 
         }
 
@@ -122,7 +138,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
   };
 
   const handleReset = () => {
-    setCoaList(INITIAL_COA.map(c => ({ ...c, amount: 0, isChecked: c.code === '5101.001' })));
+    setCoaList(prev => prev.map(c => ({ ...c, amount: 0, isChecked: c.name === 'Beban Upah Mandor' })));
     showToast('Form berhasil di-reset', 'success');
   };
 
@@ -138,7 +154,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
       setLoading(true);
       const htmlContent = printArea.innerHTML;
       
-      // CSS PRINT 100% MURNI UNTUK HASIL PDF YANG SEMPURNA (ENTERPRISE GRADE)
+      // CSS PRINT 100% MURNI (TANPA FLEXBOX, MENGGUNAKAN ABSOLUTE POSITIONING)
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -148,8 +164,8 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               @page { size: A4 landscape; margin: 10mm 15mm; }
               body { margin: 0; padding: 0; background: #fff; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #1e293b; }
               
-              /* CONTAINER MENGUNCI 1 HALAMAN DENGAN FLEXBOX */
-              .container { border: 2px solid #0f766e; border-radius: 8px; padding: 25px 35px; height: 185mm; box-sizing: border-box; display: flex; flex-direction: column; page-break-inside: avoid; }
+              /* CONTAINER DI-LOCK TINGGINYA */
+              .container { position: relative; border: 2px solid #0f766e; border-radius: 8px; padding: 25px 35px; height: 185mm; box-sizing: border-box; page-break-inside: avoid; }
               
               /* HEADER */
               .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 3px double #0f766e; padding-bottom: 10px; }
@@ -178,12 +194,13 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               .total-row td { background-color: #f0fdfa !important; font-weight: bold; font-size: 11pt; border-top: 3px double #0f766e; border-bottom: 3px double #0f766e; color: #064e3b; padding: 15px 10px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }
 
               /* TERBILANG BOX */
-              .terbilang-box { background-color: #0f766e; color: white; padding: 15px 20px; border-radius: 6px; margin-bottom: 20px; display: flex; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+              .terbilang-box { background-color: #0f766e; color: white; padding: 15px 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
               .terbilang-label { font-weight: bold; text-transform: uppercase; font-size: 9pt; letter-spacing: 1px; border-right: 2px solid #2dd4bf; padding-right: 15px; margin-right: 15px; }
               .terbilang-val { font-style: italic; font-weight: bold; font-size: 12pt; color: #ccfbf1; }
 
-              /* TANDA TANGAN (MARGIN AUTO MENDORONG KE DASAR KERTAS) */
-              .sig-table { width: 100%; margin-top: auto; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
+              /* TANDA TANGAN DIKUNCI ABSOLUT DI BOTTOM */
+              .sig-wrapper { position: absolute; bottom: 20px; left: 35px; right: 35px; }
+              .sig-table { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
               .sig-table td { text-align: center; vertical-align: bottom; padding: 0 10px; border: none; }
               .sig-space { height: 65px; }
               .sig-line { border-top: 1px solid #64748b; width: 85%; margin: 0 auto 8px auto; }
@@ -191,7 +208,11 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               .sig-title { font-size: 8pt; color: #64748b; margin-bottom: 5px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
             </style>
           </head>
-          <body><div class="container">${htmlContent}</div></body>
+          <body>
+            <div class="container">
+              ${htmlContent}
+            </div>
+          </body>
         </html>
       `;
       
@@ -217,11 +238,11 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
 
   const fRp = (val: number) => new Intl.NumberFormat('id-ID').format(val);
 
+  if (loadingCOA) return <div className="p-10 text-center font-bold text-slate-500">Memuat Master COA...</div>;
+
   return (
     <div className="space-y-6">
-      {/* ======================================================== */}
       {/* WEB UI PENGATURAN */}
-      {/* ======================================================== */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print:hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -285,7 +306,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           <div>
             <div className="flex justify-between items-end mb-3">
               <div>
-                <h4 className="font-bold text-slate-800 text-base">Rincian Akun (COA)</h4>
+                <h4 className="font-bold text-slate-800 text-base">Rincian Akun (COA Dinamis)</h4>
                 <p className="text-xs text-slate-500">Centang akun, isi nominal, lalu cetak.</p>
               </div>
               <div className="flex gap-2">
@@ -346,9 +367,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         </div>
       </div>
 
-      {/* ======================================================== */}
-      {/* AREA PREVIEW PDF (MURNI TABLE, HIGH-END STYLE) */}
-      {/* ======================================================== */}
+      {/* AREA PREVIEW (STRUKTUR TABLE MURNI UNTUK PDF) */}
       {form.contractId && (
         <div className="w-full flex flex-col items-center pb-10 bg-slate-300/50 p-6 rounded-2xl print:bg-white print:p-0 overflow-x-auto">
           <div className="flex items-center gap-2 mb-4 text-slate-500 print:hidden">
@@ -357,7 +376,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           </div>
 
           <div className="w-[297mm] bg-white p-10 shadow-2xl border border-slate-300">
-            <div id="kwitansi-print-area" style={{ display: 'flex', flexDirection: 'column', minHeight: '165mm' }}>
+            <div id="kwitansi-print-area" style={{ position: 'relative', minHeight: '165mm' }}>
               
               {/* KOP SURAT (DOUBLE BORDER) */}
               <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '3px double #0f766e', paddingBottom: '10px', marginBottom: '20px' }}>
@@ -366,9 +385,9 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                     <td style={{ verticalAlign: 'bottom' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                         {projectData?.logo_url ? (
-                          <img src={projectData.logo_url} alt="Logo" style={{ height: '50px', width: 'auto', maxWidth: '150px', objectFit: 'contain' }} />
+                          <img src={projectData.logo_url} alt="Logo" style={{ height: '45px', maxWidth: '150px', objectFit: 'contain' }} />
                         ) : (
-                          <div style={{ height: '50px', width: '50px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#94a3b8' }}>LOGO</div>
+                          <div style={{ height: '45px', width: '45px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#94a3b8', fontSize: '10px' }}>LOGO</div>
                         )}
                         <div>
                           <h2 style={{ fontSize: '18pt', fontWeight: '800', textTransform: 'uppercase', margin: 0, color: '#0f172a', letterSpacing: '0.5px', lineHeight: '1.2' }}>{projectData?.company_name || 'PT. NAMA PERUSAHAAN'}</h2>
@@ -424,7 +443,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TABEL LEDGER (ZEBRA STRIPES & DOUBLE BORDER TOTAL) */}
+              {/* TABEL LEDGER */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', tableLayout: 'fixed' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#0f766e', color: 'white' }}>
@@ -451,7 +470,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                     <tr><td colSpan={5} style={{ padding: '25px', textAlign: 'center', fontStyle: 'italic', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>Belum ada akun dengan nominal yang dipilih.</td></tr>
                   )}
                   
-                  {/* TOTAL ROW (DOUBLE BORDER) */}
+                  {/* TOTAL ROW */}
                   <tr style={{ backgroundColor: '#f0fdfa', fontWeight: 'bold', fontSize: '11pt', color: '#064e3b' }}>
                     <td colSpan={2} style={{ padding: '15px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px', borderTop: '3px double #0f766e', borderBottom: '3px double #0f766e', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>Total Pembayaran Bersih (Net Take Home Pay)</td>
                     <td style={{ padding: '15px', textAlign: 'right', fontFamily: 'Courier New', borderTop: '3px double #0f766e', borderBottom: '3px double #0f766e', borderRight: '1px solid #e2e8f0' }}>{fRp(totalGross)}</td>
@@ -461,7 +480,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TERBILANG BOX (DARK TEAL BACKGROUND) */}
+              {/* TERBILANG BOX */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
                 <tbody>
                   <tr>
@@ -473,43 +492,46 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TANDA TANGAN (TABLE FIXED) */}
-              <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', marginTop: 'auto' }}>
-                <tbody>
-                  <tr>
-                    <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                      <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>KA. Divisi Infra</div>
-                      <div style={{ height: '60px' }}></div>
-                      <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                      <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>MEI SUNARKO</div>
-                    </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                      <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Ass. Divisi Infra</div>
-                      <div style={{ height: '60px' }}></div>
-                      <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                      <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>ARIF DARMAWAN</div>
-                    </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                      <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Ka. Pembelian</div>
-                      <div style={{ height: '60px' }}></div>
-                      <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                      <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>M. MAULIDIN</div>
-                    </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                      <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Site Engineer</div>
-                      <div style={{ height: '60px' }}></div>
-                      <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                      <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>SAIFUDDIN FAHMI</div>
-                    </td>
-                    <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                      <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Direktur / Mandor</div>
-                      <div style={{ height: '60px' }}></div>
-                      <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                      <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f766e' }}>{form.vendor_name || '-'}</div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              {/* TANDA TANGAN DENGAN ABSOLUTE POSITIONING (PDF RULE COMPLIANT) */}
+              <div className="sig-wrapper">
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>KA. Divisi Infra</div>
+                        <div style={{ height: '60px' }}></div>
+                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
+                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>MEI SUNARKO</div>
+                      </td>
+                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Ass. Divisi Infra</div>
+                        <div style={{ height: '60px' }}></div>
+                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
+                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>ARIF DARMAWAN</div>
+                      </td>
+                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Ka. Pembelian</div>
+                        <div style={{ height: '60px' }}></div>
+                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
+                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>M. MAULIDIN</div>
+                      </td>
+                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Site Engineer</div>
+                        <div style={{ height: '60px' }}></div>
+                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
+                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>SAIFUDDIN FAHMI</div>
+                      </td>
+                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
+                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Direktur / Mandor</div>
+                        <div style={{ height: '60px' }}></div>
+                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
+                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f766e' }}>{form.vendor_name || '-'}</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
             </div>
           </div>
         </div>

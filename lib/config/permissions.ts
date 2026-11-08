@@ -51,6 +51,9 @@ export const PERMISSIONS = {
   SUBCON_PAY: [ROLES.OWNER, ROLES.PM],
   SUBCON_RETENTION_RELEASE: [ROLES.OWNER],
 
+    // ===== FINANCE / ACCOUNTING MODULE (COA) =====
+  MANAGE_COA: [ROLES.OWNER, ROLES.PM],
+
 };
 
 // Fungsi Pengecekan Hak Akses (Case-Insensitive)
