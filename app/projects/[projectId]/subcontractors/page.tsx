@@ -13,11 +13,13 @@ import { SPKModal } from '@/components/subcon/SPKModal';
 import { HistoryModal } from '@/components/subcon/HistoryModal';
 import { AddendumModal } from '@/components/subcon/AddendumModal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { Plus, Users, FileText, Trash2, Pencil, Printer, FileSignature } from 'lucide-react';
+import { Plus, Users, FileText, Trash2, Pencil, Printer, FileSignature, Receipt, FileSpreadsheet } from 'lucide-react';
 import { BAOPView } from '@/components/subcon/BAOPView';
 import { BAPPView } from '@/components/subcon/BAPPView';
 import { BPUTKView } from '@/components/subcon/views/BPUTKView';
 import { KasbonView } from '@/components/subcon/views/KasbonView';
+import { LampiranBAPPView } from '@/components/subcon/views/LampiranBAPPView';
+import { KwitansiView } from '@/components/subcon/views/KwitansiView';
 
 export default function SubcontractorsPage() {
   const params = useParams();
@@ -53,7 +55,6 @@ export default function SubcontractorsPage() {
       const [s, sp, proj] = await Promise.all([
         listSubcontractors(projectId), 
         listSPK(projectId),
-        // Fetch lengkap untuk kebutuhan Kop Surat
         supabase.from('projects').select('name, location, company_name, contractor_address, logo_url').eq('id', projectId).single()
       ]);
       setSubcons(s);
@@ -130,11 +131,17 @@ export default function SubcontractorsPage() {
           <button onClick={() => setActiveTab('bapp')} className={`py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${activeTab === 'bapp' ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
             <FileText size={18} /> Dokumen BAPP
           </button>
+          <button onClick={() => setActiveTab('lampiran_bapp')} className={`py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${activeTab === 'lampiran_bapp' ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            <FileSpreadsheet size={18} /> Lampiran BAPP
+          </button>
           <button onClick={() => setActiveTab('bputk')} className={`py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${activeTab === 'bputk' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
             <Printer size={18} /> Biaya Upah (BPUTK)
           </button>
           <button onClick={() => setActiveTab('kasbon')} className={`py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${activeTab === 'kasbon' ? 'border-amber-600 text-amber-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
             <FileSignature size={18} /> Pengajuan Kasbon
+          </button>
+          <button onClick={() => setActiveTab('kwitansi')} className={`py-3 px-1 border-b-2 font-medium text-sm flex items-center gap-2 whitespace-nowrap ${activeTab === 'kwitansi' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            <Receipt size={18} /> Kwitansi
           </button>
         </nav>
       </div>
@@ -142,7 +149,7 @@ export default function SubcontractorsPage() {
       {loading ? (
         <div className="text-center p-12 text-slate-500">Memuat data...</div>
       ) : (
-        <div className={activeTab === 'baop' || activeTab === 'bapp' || activeTab === 'bputk' || activeTab === 'kasbon' ? '' : 'bg-white border rounded-xl shadow-sm overflow-x-auto'}>
+        <div className={['master', 'spk'].includes(activeTab) ? 'bg-white border rounded-xl shadow-sm overflow-x-auto' : ''}>
           
           {activeTab === 'master' && (
             <table className="w-full text-left text-sm min-w-[800px]">
@@ -215,7 +222,6 @@ export default function SubcontractorsPage() {
                     <td className="p-4 border-b"><StatusBadge status={spk.status} /></td>
                     <td className="p-4 border-b text-right space-x-2">
                       
-                      {/* Arahkan ke Tab Kasbon */}
                       {spk.status === 'Active' && can('SUBCON_PAY') && (
                         <button 
                           onClick={() => { 
@@ -273,6 +279,10 @@ export default function SubcontractorsPage() {
             />
           )}
 
+          {activeTab === 'lampiran_bapp' && (
+            <LampiranBAPPView projectId={projectId} spks={spks} showToast={showToast} />
+          )}
+
           {activeTab === 'bputk' && (
             <BPUTKView 
               projectId={projectId} 
@@ -288,6 +298,10 @@ export default function SubcontractorsPage() {
               spks={spks} 
               showToast={showToast} 
             />
+          )}
+
+          {activeTab === 'kwitansi' && (
+            <KwitansiView projectId={projectId} projectData={projectData} spks={spks} showToast={showToast} />
           )}
         </div>
       )}

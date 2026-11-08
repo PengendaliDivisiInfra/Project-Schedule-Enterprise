@@ -1,113 +1,117 @@
-Project Handoff Document - InfraControl PRO
-Status Proyek: 🚀 Production Ready (V32 - Enterprise RBAC, Finance, Subcontractor, BAOP, BAPP, BPUTK & Kasbon Engine)
+📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
+Status Proyek: 🚀 Production Ready (V34 - Enterprise Grade)
 Terakhir Diperbarui: 08 November 2026
-Developer Utama: [Nama Anda]
-Environment Setup: Windows PowerShell (Local), Vercel (Frontend), Railway (PDF Microservice), Supabase (Database)
+Environment Setup: Next.js 14 (App Router), Vercel (Frontend), Railway/Puppeteer (PDF Microservice), Supabase (Database).
 
-1. Status Saat Ini (Implemented Features)
-Aplikasi InfraControl PRO telah bertransformasi menjadi Sistem ERP Konstruksi Terpadu dengan standar akuntansi SAK ETAP Bab 23 dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN).
+1. EXECUTIVE SUMMARY
+InfraControl PRO telah bertransformasi secara fundamental menjadi Sistem ERP Konstruksi Terpadu (Enterprise-Grade). Sistem ini dirancang dengan arsitektur Multi-Tenant, standar akuntansi SAK ETAP Bab 23, dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN). Fokus dari rilis V34 ini adalah Immutability (Pembekuan Data Historis) dan High-Fidelity Print Engine untuk dokumen legal berskala Corporate.
 
-A. Modul Resource Plan, Material Plan, & Finance (Selesai)
-Histogram S-Curve, Kalkulasi AHSP, Net Requirement, PO (PPN/PPh), Goods Receipt.
+2. IMPLEMENTED FEATURES (STATUS SAAT INI)
+A. Core Modules (Resources, Termin, Vault)
 
-Auto-Approve, Reversing Journal (Void Payment), integrasi PO ke Kas.
+Resource & Material Plan: Histogram S-Curve, Kalkulasi AHSP, Net Requirement, PO (PPN/PPh), Goods Receipt.
 
-B. Modul Termin / Cash In (Selesai)
-Multi-tenant isolation (RLS), RBAC terpusat.
+Termin / Cash In: Multi-tenant isolation (RLS), Auto-Approve, Reversing Journal (Void Payment).
 
-Sinkronisasi otomatis dengan Master Proyek dan Cash Flow (Ledger Kas Masuk).
+Document Vault: Penyimpanan dokumen legal dan foto progress terpusat (Supabase Storage) dengan Signed URLs.
 
-C. Modul Document & Photo Vault (Selesai)
-Penyimpanan dokumen legal dan foto progress terpusat (Supabase Storage) dengan Signed URLs.
+B. Subcontractor & Financial Management
 
-D. Modul Subcontractor Management (Selesai)
-Manajemen Vendor, SPK (RAB), dan Addendum (CCO) otomatis.
+Manajemen Vendor: SPK (RAB), Addendum (CCO) otomatis, dan integrasi Audit Trail System (audit_logs).
 
-Mesin Kalkulasi SAK & KUP (lib/utils/sak-calculator.ts) untuk auto-audit.
+Kasbon & Opname Workflow: Pemisahan fitur Pengajuan Kasbon (status default Pending) dan Pencairan Opname. Dilengkapi fungsi Terbilang presisi.
 
-Audit Trail System (audit_logs) mencatat semua perubahan data.
+C. High-Fidelity Print Engine (PDF Document Generation)
 
-E. Modul Cetak BAOP & BAPP (Selesai)
-BAOP: Layout A4 Portrait, Kop Surat dinamis, format list tanpa garis tabel, fitur Terbilang otomatis.
+BAOP (Berita Acara Opname): Layout A4 Portrait, Kop Surat dinamis, tanpa garis tabel (minimalis).
 
-BAPP: Layout A4 Landscape, kalkulasi live (SAK/KUP), 6 kolom tanda tangan.
+BAPP (Berita Acara Pembayaran Prestasi): Layout A4 Landscape, kalkulasi live (SAK/KUP), Billing Statement.
 
-Print Engine: Menggunakan Puppeteer dengan injeksi Pure CSS/Inline Style (100% presisi).
+BPUTK (Biaya Pembayaran Upah): Layout A3 Landscape, Inline Edit Progress dengan Soft Validation (peringatan visual tanpa blokir input), dan Overlap Date Checker (Custom Modal).
 
-F. Modul Cetak BPUTK - Biaya Pembayaran Upah Tenaga Kerja (Selesai - V32 Baru!)
-Inline Edit Progress: Input volume "Periode Saat Ini" langsung di tabel dengan real-time calculation (Bruto, PPh, PPN, Retensi, Netto).
+Lampiran BAPP: Auto-Fetch data dari No. BAPP terpilih. Merender Timeline transaksi (Opname, Kasbon, Potongan) secara kronologis dan menghitung SAK/KUP otomatis.
 
-Soft Validation: Peringatan visual (border merah) jika input volume melebihi sisa kontrak, tanpa memblokir input (mengakomodasi kondisi lapangan).
+Kwitansi (BARU): Menarik data dari Chart of Accounts (COA) secara dinamis. Fitur Auto-Fill (SAK) untuk menarik nilai Gross, PPN, PPh, dan Retensi. Desain Ledger-Style (A4 Landscape) yang sangat premium.
 
-Overlap Date Checker: Custom Modal peringatan jika terjadi tumpang tindih tanggal opname sebelum menyimpan (Upsert Logic).
+3. ARCHITECTURE & CORE LOGIC (V34 UPGRADE)
+A. Dynamic Signatures & Freeze Data (Snapshot)
 
-Print Engine: Layout A3 Landscape presisi, mencegah double rendering antara UI dan PDF.
+Reusable Component: Ekstraksi UI ke SignatureSettings.tsx untuk digunakan di BAPP, BPUTK, Kasbon, dan Lampiran BAPP.
 
-Riwayat BPUTK: Tersimpan di bputk_documents dengan fitur Cetak Ulang (Read-Only Mode).
+JSONB Database: Kolom signatures ditambahkan ke bapp_documents, bputk_documents, dan subcontractor_payments.
 
-G. Modul Pengajuan Kasbon (Selesai - V32 Baru!)
-Dedicated Tab: Memisahkan fitur "Pengajuan Kasbon" dari "Pencairan Opname" (Clean Architecture).
+Reprint Protocol (Anti-Drift): Logika Cetak Ulang (Reprint) tidak lagi menggunakan kalkulasi engine terbaru. Sistem membaca data yang dibekukan (snapshot) dari database (nilai_dpp, nilai_ppn, signatures) untuk menjamin dokumen historis tidak berubah saat ada update pajak di masa depan.
 
-Formulir Pengajuan: Desain UI/UX kelas Enterprise (A4 Landscape) dengan Kop Surat dinamis, border hijau, dan tata letak simetris.
+B. Approval Workflow (Finance Panel)
 
-Terbilang Engine: Fungsi Terbilang yang telah diperbaiki (anti "Nol Ribu") untuk nominal Rupiah.
+Menu persetujuan baru (ApprovalWorkflowView.tsx) untuk memproses Kasbon/Opname berstatus Pending menjadi Approved atau Paid.
 
-Workflow Status: Pengajuan masuk ke database dengan status default Pending (tidak langsung memotong Cash Flow sebelum disetujui).
+C. Financial & Tax Engine Integration
 
-Riwayat Global: Menampilkan seluruh riwayat pengajuan kasbon proyek beserta status persetujuannya.
+Kalkulasi pajak (SAK/KUP) di seluruh dokumen cetak menggunakan hitungSAK() terpusat (mendukung mode EXCLUDE, INCLUDE, NON_PAJAK).
 
-2. 🛑 LESSONS LEARNED (Larangan & Keharusan Mutlak)
-PENTING: Kegagalan mematuhi aturan ini akan merusak stabilitas aplikasi.
+Auto-Fill pada Kwitansi memetakan hasil hitung engine ke Kode Akun standar (5101.001, 2121.001, dll).
 
-UI/UX: DILARANG KERAS menggunakan alert(), confirm(), atau prompt() bawaan browser. Selalu gunakan Custom Modal Confirmation (seperti pada hapus BAOP/BAPP atau tumpang tindih BPUTK).
+4. 🛑 ABSOLUTE RULES (LESSONS LEARNED)
+UI/UX: DILARANG menggunakan alert(), confirm(), atau prompt(). Gunakan komponen CustomModal.
 
-Keuangan: DILARANG melakukan Hard Delete pada data finansial (Kas, Jurnal). Gunakan Soft Delete atau Reversing Journal. (Pengecualian: Tabel riwayat cetak seperti baop_documents, bapp_documents, bputk_documents diperbolehkan Hard Delete).
+Keuangan: DILARANG Hard Delete pada data finansial. Gunakan Soft Delete atau Reversing Journal.
 
-Akses & Keamanan: DILARANG menulis logika RBAC manual di UI. Gunakan useRole() dan can('PERMISSION_KEY').
+Akses: Gunakan useRole() dan can('PERMISSION_KEY'). Jangan menulis logika RBAC manual di UI.
 
 Print Engine (Puppeteer):
 
-DILARANG menggunakan class Tailwind di dalam area cetak (id="print-area"). WAJIB menggunakan Pure CSS/Inline Style.
+DILARANG menggunakan class Tailwind (className) di area cetak (id="print-area"). WAJIB menggunakan Inline Style atau Pure CSS di dalam string HTML.
 
-DILARANG membiarkan container PDF meluap. Gunakan height absolut (misal 155mm) dan margin-top: auto pada area tanda tangan agar dijamin 1 Halaman (No Page Break).
+Anti Page-Break: Container PDF WAJIB di-lock tingginya (misal height: 185mm) dan Tanda Tangan menggunakan position: absolute; bottom: 20px; atau margin-top: auto di dalam Flex Container.
 
-Pastikan id="print-area" hanya membungkus konten inti, jangan sertakan Kop Surat di UI Web ke dalam ID tersebut (Kop surat diinjeksi terpisah via string template API PDF).
+Anti Logo Raksasa: Wajib memberikan inline style max-height: 45px; max-width: 150px; object-fit: contain; pada tag <img> logo kop surat.
 
-Database:
+Pure Table Layout: DILARANG menggunakan display: flex atau grid untuk menyusun layout 3 kolom di PDF. Gunakan <table>, <tr>, dan <td> murni (misal pada Lampiran BAPP dan Kwitansi) untuk memastikan presisi tinggi.
 
-DILARANG SELECT * pada View kompleks tanpa type casting eksplisit.
+Database: DILARANG SELECT * pada View kompleks. Wajib update RLS (Row Level Security) setiap membuat tabel baru. Selalu gunakan format desimal Indonesia (koma) pada tampilan UI.
 
-Pastikan RLS (Row Level Security) selalu di- update saat membuat tabel baru (bputk_documents, subcontractor_payments).
+5. DATABASE SCHEMA UPDATE (V34)
+Tabel Cetak (Dokumen) & Pembayaran:
 
-Perhatikan tipe kolom di Supabase (misal: kolom total yang bersifat Generated/Constraint) agar tidak terjadi error null value violates not-null constraint.
+bapp_documents, bputk_documents, baop_documents.
 
-Lokalisasi: SELALU gunakan format desimal Indonesia (koma) dan helper MoneyText untuk masking harga.
+subcontractor_payments (Kolom baru: status, signatures).
 
-3. Skema Database Krusial (Update V32)
-Tabel Utama: projects, project_members, subcontractors, subcontractor_contracts, subcontractor_spk_items, subcon_opnames, subcon_financial_logs.
+subcon_receipts (Tabel baru: Menyimpan histori Kwitansi, total_gross, total_deduction, total_net, details JSONB untuk list COA).
 
-Tabel Pembayaran: subcontractor_payments (Kolom baru: status default 'Pending', category, payment_method).
+Kolom Krusial yang Ditambahkan:
 
-Tabel Cetak (Dokumen): baop_documents, bapp_documents, bputk_documents.
+signatures (JSONB) -> Tersimpan di 3 tabel dokumen.
 
-Kolom Tambahan projects: contractor_pic_name, contractor_pic_title, contractor_address, logo_url, company_name.
+tax_mode -> Tersimpan di SPK.
 
-4. Roadmap Tersisa (Next Steps)
-Fokus utama selanjutnya adalah menyelesaikan modul pelaporan dan persetujuan:
+nilai_dpp, nilai_ppn, nilai_pph -> Tersimpan di tabel dokumen (untuk keperluan Snapshot Cetak Ulang).
 
-A. Project Master Program (PMP) Print Engine (In Progress)
+6. NEXT STEPS (ROADMAP)
+A. Project Master Program (PMP) Print Engine
 
-□ Membuat UI untuk mencetak tabel PMP - Resources (Crews).
-□ Membuat UI untuk mencetak tabel PMP - Materials.
+□ UI Cetak Tabel PMP - Resources (Crews).
+□ UI Cetak Tabel PMP - Materials.
 □ Integrasi ke data tasks (WBS), resources, dan materials.
 B. Cetak Form GAS Lainnya
 
-□ Invoice & Kwitansi Resmi (A4 Portrait).
-C. Modul Approval Workflow (Finance/PM)
+□ Invoice Resmi (A4 Portrait).
+□ Surat Perintah Kerja (SPK) / Kontrak fisik.
+C. Modul Cash Flow Lanjutan
 
-□ Membuat halaman persetujuan untuk mengubah status Kasbon/Opname dari Pending menjadi Approved atau Paid.
-5. Workflow Git & Deployment
-(Standar: npm run build Hijau -> git add . -> git commit -m "..." -> git push origin main)
+□ Rekonsiliasi Bank Otomatis.
+□ Dashboard Financial Health (Profit/Loss per proyek).
+7. WORKFLOW GIT & DEPLOYMENT
+(Standar Operasional Prosedur)
 
-Konfirmasi:
-Handoff document telah diperbarui ke versi V32. Seluruh aturan terkait Print Engine (1 Halaman CSS murni), pemisahan UI/PDF, dan skema database baru (BPUTK & Kasbon) telah didokumentasikan secara komprehensif.
+npm run build (Pastikan 0 error, validasi TypeScript lolos).
+
+git add .
+
+git commit -m "feat(V34): [Deskripsi Perubahan]"
+
+git push origin main (Otomatis trigger GitHub Actions -> Vercel/Railway).
+
+Konfirmasi Serah Terima:
+Dokumen ini mendokumentasikan V34 secara komprehensif. Seluruh aturan mutlak terkait Print Engine, pemisahan UI/PDF, logika pembekuan data (Snapshot), dan skema database terbaru telah didokumentasikan dengan standar Enterprise tertinggi. Proyek siap untuk dilanjutkan ke fase pengembangan berikutnya.

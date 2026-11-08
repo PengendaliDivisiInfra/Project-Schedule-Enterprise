@@ -1,8 +1,3 @@
-export interface SignatureItem {
-  title: string;
-  name: string;
-}
-
 export interface Subcontractor {
   id: string;
   project_id: string;
@@ -25,7 +20,7 @@ export interface SubcontractorContract {
   retention_pct: number;
   ppn_pct: number;
   pph_pct: number;
-  tax_mode: 'EXCLUDE' | 'INCLUDE' | 'NON_PAJAK'; // Baru
+  tax_mode: 'EXCLUDE' | 'INCLUDE' | 'NON_PAJAK';
   status: 'Draft' | 'Active' | 'Completed' | 'Void';
   subcontractor_name?: string;
   total_addendum?: number;
@@ -81,6 +76,11 @@ export interface AddendumItemChange {
   unit_price: number;
 }
 
+export interface SignatureItem {
+  title: string;
+  name: string;
+}
+
 export interface BAPPData {
   contract: any;
   opnames: any[];
@@ -89,8 +89,8 @@ export interface BAPPData {
   totalOpnameSdIni: number;
   totalKasbon: number;
   totalPotongan: number;
-  baop_number: string | null; // Baru
-  nilaiDP: number; // Baru
+  baop_number: string | null;
+  nilaiDP: number;
   signatures?: SignatureItem[];
 }
 
@@ -124,4 +124,27 @@ export interface BPUTKData {
   totalKasbon: number;
   totalPotongan: number;
   signatures?: SignatureItem[];
+}
+
+// ===== TIPE UNTUK KWITANSI =====
+export interface ReceiptCOA {
+  code: string;
+  name: string;
+  amount: number;
+  type: 'GROSS' | 'DEDUCTION' | 'NET';
+}
+
+export interface SubconReceipt {
+  id?: string;
+  project_id: string;
+  contract_id: string;
+  receipt_number: string;
+  receipt_date: string;
+  location: string;
+  period_start: string;
+  period_end: string;
+  total_gross: number;
+  total_deduction: number;
+  total_net: number;
+  details: ReceiptCOA[];
 }
