@@ -229,6 +229,7 @@ export async function getBAPPData(contractId: string, startDate: string, endDate
 export async function saveBAPPDocument(payload: {
   project_id: string;
   contract_id: string;
+  bputk_id: string;
   bapp_number: string;
   period_start: string;
   period_end: string;
@@ -287,6 +288,7 @@ export async function getBAOPData(contractId: string, startDate: string, endDate
 export async function saveBAOPDocument(payload: {
   project_id: string;
   contract_id: string;
+  bputk_id: string;
   baop_number: string;
   period_start: string;
   period_end: string;
@@ -405,6 +407,7 @@ export async function saveBPUTKDocument(payload: {
   return data;
 }
 
+// Pastikan select-nya seperti ini (bintang)
 export async function getBPUTKHistory(projectId: string) {
   const { data, error } = await supabase
     .from('bputk_documents')
@@ -521,4 +524,46 @@ export async function getReceiptHistory(projectId: string) {
 export async function deleteReceipt(id: string) {
   const { error } = await supabase.from('subcon_receipts').delete().eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+// --- FUNGSI BARU UNTUK MENARIK DOKUMEN YANG SIAP DITAGIH ---
+export async function getEligibleDocuments(contractId: string) {
+  // 1. Tarik BPUTK yang belum ditagih
+  const { data: bputkData, error: errBputk } = await supabase
+    .from('bputk_documents')
+    .select('id, bputk_number, period_start, period_end, total_value, nilai_ppn, nilai_pph')
+    .eq('contract_id', contractId)
+    // .eq('is_billed', false) // Opsional: jika Anda punya flag is_billed
+    .order('created_at', { ascending: false });
+
+  if (errBputk) throw new Error(errBputk.message);
+
+  // 2. Tarik BAPP yang belum ditagih
+  const { data: bappData, error: errBapp } = await supabase
+    .from('bapp_documents')
+    .select('id, bapp_number, period_start, period_end, total_value, nilai_ppn, nilai_pph')
+    .eq('contract_id', contractId)
+    // .eq('is_billed', false)
+    .order('created_at', { ascending: false });
+
+  if (errBapp) throw new Error(errBapp.message);
+
+  // Gabungkan dengan penanda tipe
+  return [
+    ...(bputkData || []).map(d => ({ ...d, type: 'BPUTK', doc_number: d.bputk_number })),
+    ...(bappData || []).map(d => ({ ...d, type: 'BAPP', doc_number: d.bapp_number }))
+  ];
+}
+
+// Fungsi untuk menarik BPUTK yang BELUM dibuatkan BAPP/BAOP
+export async function getUnbilledBPUTKs(contractId: string) {
+  const { data, error } = await supabase
+    .from('bputk_documents')
+    .select('id, bputk_number, period_start, period_end, total_value, nilai_dpp, nilai_ppn, nilai_pph, tax_mode')
+    .eq('contract_id', contractId)
+    .eq('is_billed', false) // Hanya ambil yang belum ditagih
+    .order('created_at', { ascending: false });
+  
+  if (error) throw new Error(error.message);
+  return data || [];
 }

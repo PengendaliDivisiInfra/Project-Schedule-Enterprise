@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Printer, FileText, Loader2, Trash2, AlertTriangle, Save, AlertCircle, Settings } from 'lucide-react';
+import { Printer, FileText, Loader2, Trash2, AlertTriangle, Save, AlertCircle, Settings, CheckCircle2, Pencil } from 'lucide-react';
 import { getBPUTKData, saveBPUTKDocument, getBPUTKHistory, deleteBPUTKDocument, checkOverlappingOpnames, saveOpnameProgress } from '@/lib/services/subcon.service';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { BPUTKData, BPUTKItem, SignatureItem } from '@/lib/types/subcon';
 import { MoneyText } from '@/components/ui/MoneyText';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { supabase } from '@/lib/supabase';
 
 interface BPUTKViewProps {
   projectId: string;
@@ -27,6 +28,9 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
   const [isReprint, setIsReprint] = useState(false);
   const [reprintSnapshot, setReprintSnapshot] = useState<any>(null);
   const [showOverlapModal, setShowOverlapModal] = useState(false);
+  
+  // State Baru untuk Edit
+  const [editTarget, setEditTarget] = useState<any | null>(null);
 
   const [showSigSettings, setShowSigSettings] = useState(false);
   const [signatures, setSignatures] = useState<SignatureItem[]>([
@@ -97,10 +101,27 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
 
   const handleGenerate = (e: React.FormEvent) => {
     e.preventDefault();
+    setEditTarget(null); // Reset mode edit jika generate baru
     fetchData(form.contractId, form.tglMulai, form.tglSelesai, false);
   };
 
+  const handleEdit = (item: any) => {
+    if (item.is_billed) {
+      return showToast('Tidak dapat mengedit BPUTK yang sudah ditagihkan ke BAPP.', 'error');
+    }
+    setEditTarget(item);
+    setForm({
+      contractId: item.contract_id,
+      nomorBPUTK: item.bputk_number,
+      tglMulai: item.period_start,
+      tglSelesai: item.period_end,
+    });
+    fetchData(item.contract_id, item.period_start, item.period_end, false);
+    showToast('Mode Edit Aktif. Silakan ubah volume dan simpan ulang.', 'success');
+  };
+
   const handleReprint = (item: any) => {
+    setEditTarget(null);
     setForm({
       contractId: item.contract_id,
       nomorBPUTK: item.bputk_number,
@@ -244,24 +265,41 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
     try {
       setLoading(true);
       if (!isReprint) {
-        await saveBPUTKDocument({
-          project_id: projectId,
-          contract_id: form.contractId,
-          bputk_number: form.nomorBPUTK,
-          period_start: form.tglMulai,
-          period_end: form.tglSelesai,
-          total_value: fin.Net_transfer,
-          tax_mode: fin.taxMode,
-          nilai_dpp: fin.C_dpp,
-          nilai_ppn: fin.D_ppn,
-          nilai_pph: fin.F_pph42,
-          signatures: signatures
-        });
+        if (editTarget) {
+          // MODE EDIT: Update database
+          await supabase.from('bputk_documents').update({
+            bputk_number: form.nomorBPUTK,
+            period_start: form.tglMulai,
+            period_end: form.tglSelesai,
+            total_value: fin.Net_transfer,
+            tax_mode: fin.taxMode,
+            nilai_dpp: fin.C_dpp,
+            nilai_ppn: fin.D_ppn,
+            nilai_pph: fin.F_pph42,
+            signatures: signatures
+          }).eq('id', editTarget.id);
+          showToast('BPUTK berhasil diperbarui', 'success');
+          setEditTarget(null);
+        } else {
+          // MODE BARU: Insert database
+          await saveBPUTKDocument({
+            project_id: projectId,
+            contract_id: form.contractId,
+            bputk_number: form.nomorBPUTK,
+            period_start: form.tglMulai,
+            period_end: form.tglSelesai,
+            total_value: fin.Net_transfer,
+            tax_mode: fin.taxMode,
+            nilai_dpp: fin.C_dpp,
+            nilai_ppn: fin.D_ppn,
+            nilai_pph: fin.F_pph42,
+            signatures: signatures
+          });
+        }
         loadHistory();
       }
 
       const htmlContent = printElement.innerHTML;
-
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -333,8 +371,9 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
+      // Hard Delete karena BPUTK fisik belum masuk ranah finansial
       await deleteBPUTKDocument(deleteTarget);
-      showToast('Riwayat BPUTK berhasil dihapus', 'success');
+      showToast('Riwayat BPUTK berhasil dihapus permanen', 'success');
       loadHistory();
       setDeleteTarget(null);
     } catch (error: any) {
@@ -382,14 +421,14 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
   `;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <style dangerouslySetInnerHTML={{ __html: webStyles }} />
 
       {/* FORM FILTER */}
       <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 print:hidden">
         <div className="flex justify-between items-center border-b pb-2 mb-2">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-            <FileText className="text-emerald-600" /> Input Progress & Cetak BPUTK
+            <FileText className="text-emerald-600" /> {editTarget ? 'Edit Progress BPUTK' : 'Input Progress & Cetak BPUTK'}
           </h3>
           <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-md">
             <Settings size={16} /> Pengaturan Tanda Tangan
@@ -431,13 +470,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
         {showSigSettings && (
           <SignatureSettings signatures={signatures} onChange={setSignatures} colorTheme="emerald" />
         )}
-
-        {data && (
-          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between">
-            <span className="text-sm font-bold text-emerald-800">Mode Harga Aktif (Mengikuti SPK):</span>
-            <span className="text-sm font-bold bg-emerald-200 text-emerald-900 px-3 py-1 rounded-md">{data.contract.tax_mode || 'EXCLUDE'}</span>
-          </div>
-        )}
       </div>
 
       {/* PREVIEW AREA */}
@@ -455,15 +487,13 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
                 </button>
               )}
               <button onClick={handlePrint} disabled={loading || saving} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-colors">
-                {loading ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} {isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BPUTK'}
+                {loading ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} {editTarget ? 'Update & Cetak BPUTK' : (isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BPUTK')}
               </button>
             </div>
           </div>
 
           <div id="bputk-print-area" className="bputk-preview">
-            
             <div className="header-title">BIAYA PEMBAYARAN UPAH TENAGA KERJA</div>
-
             <table style={{ width: '60%', marginBottom: '15px', fontSize: '9pt' }}>
               <tbody>
                 <tr><td style={{ width: '150px', fontWeight: 'bold' }}>Mandor / Pelaksana</td><td style={{ width: '10px' }}>:</td><td>{currentData.contract.subcontractors?.company_name}</td></tr>
@@ -471,9 +501,11 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
                 <tr><td style={{ fontWeight: 'bold' }}>Periode Opname</td><td>:</td><td>{new Date(form.tglMulai).toLocaleDateString('id-ID')} s/d {new Date(form.tglSelesai).toLocaleDateString('id-ID')}</td></tr>
               </tbody>
             </table>
-
+            
+            {/* Table BPUTK disini (sama persis dengan kode sebelumnya) */}
             <table className="table-bputk">
-              <thead>
+               {/* ... (Isi tabel BPUTK Anda) ... */}
+               <thead>
                 <tr>
                   <th rowSpan={2} style={{ width: '3%' }}>No</th>
                   <th rowSpan={2} style={{ width: '16%' }}>Uraian Kegiatan</th>
@@ -560,6 +592,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tfoot>
             </table>
 
+            {/* SAK Box */}
             <div className="sak-box">
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
                 📐 RUMUS SAK/KUP: <span style={{ background: '#fff', padding: '1px 6px', border: '1px solid #e2e8f0', borderRadius: '3px' }}>Net = A − F + D − R − K</span> | 
@@ -571,8 +604,10 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </div>
             </div>
 
+            {/* Summary Table */}
             <table className="summary-table">
-              <tbody>
+               {/* ... (Isi summary table BPUTK Anda) ... */}
+               <tbody>
                 <tr className="bg-gray">
                   <td className="summary-label">NILAI BERSIH DIBAYARKAN (NETTO) PERIODE LALU :</td>
                   <td className="summary-val">Rp 0</td>
@@ -608,8 +643,10 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tbody>
             </table>
 
+            {/* Mutasi Table */}
             <table className="mutasi-table">
-              <tbody>
+               {/* ... (Isi mutasi table BPUTK Anda) ... */}
+               <tbody>
                 <tr>
                   <td>
                     <div className="mutasi-box" style={{ borderColor: '#dc2626' }}>
@@ -633,7 +670,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tbody>
             </table>
 
-            {/* SIGNATURE BLOCK */}
+            {/* Signature */}
             <table className="sig-table">
               <tbody>
                 <tr>
@@ -651,10 +688,10 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
         </div>
       )}
 
-      {/* HISTORY TABLE & MODALS */}
+      {/* HISTORY TABLE */}
       <div className="bg-white border rounded-xl shadow-sm overflow-x-auto print:hidden mt-10">
         <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Riwayat Pembuatan BPUTK</div>
-        <table className="w-full text-left text-sm min-w-[800px]">
+        <table className="w-full text-left text-sm min-w-[900px]">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
               <th className="p-4 border-b">No. BPUTK</th>
@@ -662,6 +699,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               <th className="p-4 border-b">Vendor / SPK</th>
               <th className="p-4 border-b">Periode</th>
               <th className="p-4 border-b">Nilai Netto</th>
+              <th className="p-4 border-b text-center">Status Penagihan</th>
               <th className="p-4 border-b text-right">Aksi</th>
             </tr>
           </thead>
@@ -676,22 +714,46 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
                 </td>
                 <td className="p-4 border-b">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
                 <td className="p-4 border-b font-bold"><MoneyText value={b.total_value} /></td>
-                <td className="p-4 border-b text-right flex justify-end items-center gap-3">
-                  <button onClick={() => handleReprint(b)} className="text-blue-600 hover:underline text-xs font-medium">
-                    Lihat / Cetak Ulang
+                
+                <td className="p-4 border-b text-center">
+                  {b.is_billed ? (
+                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold border">
+                      <CheckCircle2 size={12} className="inline mr-1" /> Sudah Ditagih
+                    </span>
+                  ) : (
+                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">
+                      ● Belum Ditagih
+                    </span>
+                  )}
+                </td>
+
+                {/* FITUR EDIT & HAPUS DENGAN PENGUNCIAN */}
+                <td className="p-4 border-b text-right flex justify-end items-center gap-2">
+                  <button onClick={() => handleReprint(b)} className="text-blue-600 hover:underline text-xs font-medium mr-2">
+                    Cetak
                   </button>
-                  <button onClick={() => setDeleteTarget(b.id)} className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" title="Hapus Riwayat">
-                    <Trash2 size={16} />
-                  </button>
+                  {!b.is_billed ? (
+                    <>
+                      <button onClick={() => handleEdit(b)} className="text-amber-600 hover:text-amber-800 p-1.5 bg-amber-50 hover:bg-amber-100 rounded-md transition-colors" title="Edit BPUTK">
+                        <Pencil size={16} />
+                      </button>
+                      <button onClick={() => setDeleteTarget(b.id)} className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" title="Hapus Permanen">
+                        <Trash2 size={16} />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-2 py-1 rounded">TERKUNCI</span>
+                  )}
                 </td>
               </tr>
             ))}
-            {history.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada riwayat BPUTK.</td></tr>}
+            {history.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Belum ada riwayat BPUTK.</td></tr>}
           </tbody>
         </table>
       </div>
 
       {/* MODAL WARNING OVERLAP */}
+      {/* ... (Sama seperti sebelumnya) ... */}
       {showOverlapModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
@@ -716,7 +778,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
         </div>
       )}
 
-      {/* ENTERPRISE MODAL CONFIRMATION (HAPUS) */}
+      {/* MODAL HAPUS */}
       {!!deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
@@ -726,7 +788,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Riwayat BPUTK</h3>
               <p className="text-sm text-slate-500">
-                Apakah Anda yakin ingin menghapus data riwayat ini? Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
+                Apakah Anda yakin ingin menghapus data riwayat ini secara permanen? Tindakan ini tidak dapat dibatalkan.
               </p>
             </div>
             <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">

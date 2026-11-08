@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { Printer, FileText, Loader2, Settings, Trash2, AlertTriangle } from 'lucide-react';
-import { getBAPPData, saveBAPPDocument, getBAPPHistory, deleteBAPPDocument } from '@/lib/services/subcon.service';
+import { getBAPPData, saveBAPPDocument, getBAPPHistory, deleteBAPPDocument, getUnbilledBPUTKs } from '@/lib/services/subcon.service';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { BAPPData, SignatureItem } from '@/lib/types/subcon';
 import { MoneyText } from '@/components/ui/MoneyText';
-import { SignatureSettings } from '@/components/shared/SignatureSettings'; // FIXED: Typo 'iimport'
+import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { supabase } from '@/lib/supabase';
 
 interface BAPPViewProps {
   projectId: string;
@@ -21,6 +22,9 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
   const [data, setData] = useState<BAPPData | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   
+  const [availableBPUTKs, setAvailableBPUTKs] = useState<any[]>([]);
+  const [selectedBputkId, setSelectedBputkId] = useState('');
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [reprintSnapshot, setReprintSnapshot] = useState<any>(null);
@@ -31,14 +35,11 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
   const [form, setForm] = useState({
     contractId: '',
     nomorBAPP: `001/KL-BAPP/BKP/${currentMonthRoman.toUpperCase()}/${new Date().getFullYear()}`,
-    tglMulai: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    tglSelesai: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
     potonganKasbon: 0,
   });
 
   const [showSigSettings, setShowSigSettings] = useState(false);
 
-  // FIXED: Hapus deklarasi ganda, sisakan satu state yang benar
   const [signatures, setSignatures] = useState<SignatureItem[]>([
     { title: 'Direksi', name: 'RIZQI BILLAH BASALAMAH' },
     { title: 'KA. Divisi Infra', name: 'MEI SUNARKO' },
@@ -61,14 +62,43 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     loadHistory();
   }, [projectId]);
 
-  const fetchData = async (contractId: string, startDate: string, endDate: string, reprint: boolean) => {
-    if (!contractId) return showToast('Silakan pilih Mandor / SPK terlebih dahulu', 'error');
+  const handleSelectSPK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const contractId = e.target.value;
+    setForm({ ...form, contractId });
+    setSelectedBputkId('');
+    setData(null);
+
+    if (contractId) {
+      try {
+        setLoading(true);
+        const bputks = await getUnbilledBPUTKs(contractId);
+        setAvailableBPUTKs(bputks);
+      } catch (err: any) {
+        showToast(err.message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setAvailableBPUTKs([]);
+    }
+  };
+
+  const handleSelectBPUTK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const bputkId = e.target.value;
+    setSelectedBputkId(bputkId);
     
-    setIsReprint(reprint);
+    if (!bputkId) {
+      setData(null);
+      return;
+    }
+
+    const selectedBputk = availableBPUTKs.find(b => b.id === bputkId);
+    if (!selectedBputk) return;
+
+    setIsReprint(false);
     setLoading(true);
-    setData(null); 
     try {
-      const res = await getBAPPData(contractId, startDate, endDate);
+      const res = await getBAPPData(form.contractId, selectedBputk.period_start, selectedBputk.period_end);
       setData(res);
       
       if (res.contract.subcontractors?.contact_person) {
@@ -85,24 +115,22 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     }
   };
 
-  const handleGenerate = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchData(form.contractId, form.tglMulai, form.tglSelesai, false);
-  };
-
   const handleReprint = (item: any) => {
     setForm({
-      ...form,
       contractId: item.contract_id,
       nomorBAPP: item.bapp_number,
-      tglMulai: item.period_start,
-      tglSelesai: item.period_end,
       potonganKasbon: 0,
     });
-    
+    setSelectedBputkId(item.bputk_id || '');
     setReprintSnapshot(item);
     if (item.signatures) setSignatures(item.signatures);
-    fetchData(item.contract_id, item.period_start, item.period_end, true);
+    
+    setIsReprint(true);
+    setLoading(true);
+    getBAPPData(item.contract_id, item.period_start, item.period_end)
+      .then(res => setData(res))
+      .catch(err => showToast(err.message, 'error'))
+      .finally(() => setLoading(false));
   };
 
   const handlePrint = async () => {
@@ -113,21 +141,30 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       setSaving(true);
       
       if (!isReprint) {
+        const selectedBputk = availableBPUTKs.find(b => b.id === selectedBputkId);
+        
         await saveBAPPDocument({
           project_id: projectId,
           contract_id: form.contractId,
+          bputk_id: selectedBputkId,
           bapp_number: form.nomorBAPP,
-          period_start: form.tglMulai,
-          period_end: form.tglSelesai,
+          period_start: selectedBputk.period_start,
+          period_end: selectedBputk.period_end,
           total_value: sakResult.Net_transfer,
           tax_mode: data.contract.tax_mode || 'EXCLUDE',
           nilai_dpp: sakResult.C_dpp,
           nilai_ppn: sakResult.D_ppn,
           nilai_pph: sakResult.F_pph42,
-          signatures: signatures // FIXED: Tambahkan koma
+          signatures: signatures
         });
+
+        // KUNCI BPUTK
+        await supabase.from('bputk_documents').update({ is_billed: true }).eq('id', selectedBputkId);
+
         loadHistory();
         onSuccess();
+        setAvailableBPUTKs(prev => prev.filter(b => b.id !== selectedBputkId));
+        setSelectedBputkId('');
       }
 
       const htmlContent = printElement.innerHTML;
@@ -140,33 +177,23 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
             <style>
               @page { size: A4 landscape; margin: 8mm 12mm; }
               body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; font-family: 'Arial', sans-serif; font-size: 8pt; color: #000; }
-              
               .doc-container { width: 100%; display: flex; flex-direction: column; }
-              
               .header-title { text-align: center; font-size: 11pt; font-weight: bold; color: #0f766e; text-decoration: underline; margin-bottom: 2px; margin-top: 0; }
               .header-subtitle { text-align: center; font-size: 8pt; font-weight: bold; margin-bottom: 10px; }
-              
               .section-title { font-weight: bold; color: #0f766e; margin-bottom: 3px; margin-top: 8px; font-size: 8pt; }
-              
               .table-layout { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
               .table-layout td { vertical-align: top; }
-              
               .data-table { width: 100%; border-collapse: collapse; }
               .data-table td { padding: 1px 0; vertical-align: top; font-size: 7.5pt; }
-              
               .list-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt; }
               .list-table td { padding: 3px 4px; border-bottom: 1px solid #e2e8f0; }
-              
               .bill-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 7.5pt; border: 1px solid #64748b; }
               .bill-table th { background-color: #f1f5f9; border: 1px solid #64748b; padding: 4px; text-align: center; font-weight: bold; }
               .bill-table td { border: 1px solid #64748b; padding: 4px; vertical-align: middle; }
-              
               .bg-yellow { background-color: #fef08a !important; }
               .bg-green { background-color: #dcfce7 !important; }
               .bg-gray { background-color: #f1f5f9 !important; }
-              
               .text-right { text-align: right; } .text-center { text-align: center; } .font-bold { font-weight: bold; }
-              
               .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 15px; page-break-inside: avoid; }
               .sig-table td { width: 16.6%; vertical-align: bottom; padding: 0 5px; }
               .sig-space { height: 40px; }
@@ -174,9 +201,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
               .sig-title { font-size: 7pt; color: #475569; }
             </style>
           </head>
-          <body>
-            ${htmlContent}
-          </body>
+          <body>${htmlContent}</body>
         </html>
       `;
 
@@ -188,7 +213,6 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       
       if (!res.ok) throw new Error('Gagal generate PDF dari server');
       const blob = await res.blob();
-      
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -196,7 +220,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       a.click();
       window.URL.revokeObjectURL(url);
       
-      showToast(isReprint ? 'PDF berhasil diunduh' : 'BAPP berhasil disimpan & diunduh', 'success');
+      showToast(isReprint ? 'PDF berhasil diunduh' : 'BAPP berhasil disimpan & BPUTK dikunci', 'success');
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -208,9 +232,16 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
+      const dataToDelete = history.find(h => h.id === deleteTarget);
       await deleteBAPPDocument(deleteTarget);
-      showToast('Riwayat BAPP berhasil dihapus', 'success');
+
+      if (dataToDelete?.bputk_id) {
+        await supabase.from('bputk_documents').update({ is_billed: false }).eq('id', dataToDelete.bputk_id);
+      }
+
+      showToast('Dokumen berhasil dihapus. BPUTK telah dibuka kembali.', 'success');
       loadHistory();
+      onSuccess();
       setDeleteTarget(null);
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -282,42 +313,43 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     <div className="space-y-6">
       <style dangerouslySetInnerHTML={{__html: webStyles}} />
 
-      {/* FORM INPUT FULL PAGE */}
       <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 print:hidden">
         <div className="flex justify-between items-center border-b pb-2 mb-2">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
-            <FileText className="text-teal-600" /> Form Berita Acara Pembayaran Prestasi (BAPP)
+            <FileText className="text-teal-600" /> Form BAPP (Berdasarkan BPUTK)
           </h3>
           <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-md">
             <Settings size={16} /> Pengaturan Tanda Tangan
           </button>
         </div>
         
-        <form onSubmit={handleGenerate} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-1">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
             <label className="block text-sm font-bold mb-1 text-slate-700">Pilih Mandor / SPK</label>
-            <select value={form.contractId} onChange={(e) => setForm({...form, contractId: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
               <option value="">-- Pilih Mandor --</option>
               {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
             </select>
           </div>
-          <div className="md:col-span-1">
+          <div>
+            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih BPUTK (Sumber Data)</label>
+            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border-teal-300 bg-teal-50 rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none font-bold text-teal-800">
+              <option value="">-- Pilih BPUTK yang belum ditagih --</option>
+              {availableBPUTKs.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.bputk_number} ({new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-sm font-bold mb-1 text-slate-700">Nomor BAPP</label>
-            <input type="text" value={form.nomorBAPP} onChange={(e) => setForm({...form, nomorBAPP: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
+            <input type="text" value={form.nomorBAPP} onChange={(e) => setForm({...form, nomorBAPP: e.target.value})} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
           </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Dari Tanggal</label>
-            <input type="date" value={form.tglMulai} onChange={(e) => setForm({...form, tglMulai: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Sampai Tanggal</label>
-            <input type="date" value={form.tglSelesai} onChange={(e) => setForm({...form, tglSelesai: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
-          </div>
-          
-          <div className="md:col-span-2">
-            <label className="block text-sm font-bold mb-1 text-slate-700">Mode Harga (Mengikuti SPK)</label>
+          <div className="md:col-span-1">
+            <label className="block text-sm font-bold mb-1 text-slate-700">Mode Harga</label>
             <div className="w-full border rounded-lg p-2 text-sm bg-slate-100 font-bold text-slate-700">
-              {data ? data.contract.tax_mode : 'Pilih Mandor untuk melihat Mode Harga'}
+              {data ? data.contract.tax_mode : 'Pilih BPUTK'}
             </div>
           </div>
           <div className="md:col-span-2">
@@ -327,25 +359,16 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
               <p className="text-red-500 text-xs mt-1 font-bold">Warning: Melebihi Sisa Kasbon ({formatRp(data.totalKasbon - data.totalPotongan)})</p>
             )}
           </div>
-          
-          <div className="md:col-span-4 flex justify-end mt-2">
-            <button type="submit" disabled={loading} className="px-6 bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors w-full md:w-auto">
-              {loading ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} Generate BAPP
-            </button>
-          </div>
-        </form>
+        </div>
 
-        {/* FIXED: Komponen SignatureSettings sekarang dipasang di sini */}
         {showSigSettings && (
           <SignatureSettings signatures={signatures} onChange={setSignatures} colorTheme="teal" />
         )}
       </div>
 
-      {/* PREVIEW AREA (A4 LANDSCAPE) - Hanya dirender 1 kali */}
       {data && sakResult && (
         <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-xl print:hidden">
           <div id="bapp-print-area" className="bapp-preview">
-            
             <div style={{ height: '100%', position: 'relative' }}>
               
               <div className="header-title">BERITA ACARA PEMBAYARAN PRESTASI (BAPP)</div>
@@ -397,11 +420,11 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                       <div className="section-title">BAP</div>
                       <table className="data-table">
                         <tbody>
-                          <tr><td style={{ width: '80px' }}>Tanggal</td><td>: {new Date(form.tglSelesai).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}</td></tr>
-                          <tr><td>Hari</td><td>: {new Date(form.tglSelesai).toLocaleDateString('id-ID', {weekday:'long'})}</td></tr>
+                          <tr><td style={{ width: '80px' }}>Tanggal</td><td>: {new Date(data.contract.period_end).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}</td></tr>
+                          <tr><td>Hari</td><td>: {new Date(data.contract.period_end).toLocaleDateString('id-ID', {weekday:'long'})}</td></tr>
                           <tr><td>No. BAOP</td><td>: {data.baop_number || '-'}</td></tr>
                           <tr><td>No. BAPP</td><td>: {form.nomorBAPP}</td></tr>
-                          <tr><td>Periode</td><td>: {new Date(form.tglMulai).toLocaleDateString('id-ID')} s/d {new Date(form.tglSelesai).toLocaleDateString('id-ID')}</td></tr>
+                          <tr><td>Periode</td><td>: {new Date(data.contract.period_start).toLocaleDateString('id-ID')} s/d {new Date(data.contract.period_end).toLocaleDateString('id-ID')}</td></tr>
                         </tbody>
                       </table>
 
@@ -556,7 +579,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
               </table>
 
               <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '8pt', fontWeight: 'bold' }}>
-                Di opname bersama | Tanggal : {new Date(form.tglSelesai).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}
+                Di opname bersama | Tanggal : {new Date(data.contract.period_end).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}
               </div>
 
               <div className="sig-table">
@@ -586,7 +609,6 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
         </div>
       )}
 
-      {/* HISTORY TABLE */}
       <div className="bg-white border rounded-xl shadow-sm overflow-x-auto print:hidden mt-10">
         <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Riwayat Pembuatan BAPP</div>
         <table className="w-full text-left text-sm min-w-[800px]">
@@ -626,7 +648,6 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
         </table>
       </div>
 
-      {/* ENTERPRISE MODAL CONFIRMATION */}
       {!!deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">

@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Printer, FileText, Loader2, CheckSquare, Zap, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Printer, FileText, Loader2, CheckSquare, Zap, RefreshCw, CheckCircle2, History, Trash2, AlertTriangle } from 'lucide-react';
+import { getEligibleDocuments } from '@/lib/services/subcon.service';
 import { getBAPPData } from '@/lib/services/subcon.service';
 import { useCOA } from '@/lib/hooks/useCOA';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
+import { supabase } from '@/lib/supabase';
 
 // --- FUNGSI TERBILANG ---
 function terbilang(angka: number): string {
@@ -35,7 +37,17 @@ interface CoaItem {
 
 export function KwitansiView({ projectId, projectData, spks, showToast }: { projectId: string, projectData: any, spks: any[], showToast: any }) {
   const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [coaList, setCoaList] = useState<CoaItem[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+
+  // State untuk Dropdown Dokumen
+  const [availableDocs, setAvailableDocs] = useState<any[]>([]);
+  const [selectedDocId, setSelectedDocId] = useState<string>('');
+
+  // State untuk Hapus
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // INTEGRASI COA HOOK
   const { getAccountCode, loading: loadingCOA } = useCOA();
@@ -53,7 +65,30 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     work_description: '',
   });
 
-  // Inisialisasi Dynamic COA List ketika data master COA selesai dimuat
+  // --- FETCH HISTORY ---
+  const fetchHistory = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('subcon_receipts')
+        .select(`
+          *,
+          subcontractor_contracts ( spk_number, subcontractors (company_name) )
+        `)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      setHistory(data || []);
+    } catch (err: any) {
+      console.error("Gagal load history:", err.message);
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, [projectId]);
+
+  // Inisialisasi Dynamic COA List
   useEffect(() => {
     if (!loadingCOA) {
       const codeUpah = getAccountCode('Beban Upah Mandor') || '5101';
@@ -74,9 +109,9 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
       ];
       setCoaList(dynamicCoa);
     }
-  }, [loadingCOA, getAccountCode]);
+  }, [loadingCOA, getAccountCode]); 
 
-  const handleSelectSPK = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSelectSPK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const spkId = e.target.value;
     const spk = spks.find(s => s.id === spkId);
     
@@ -88,13 +123,40 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         spk_number: spk.spk_number,
         work_description: spk.work_description || '-'
       }));
+
+      try {
+        const docs = await getEligibleDocuments(spk.id);
+        setAvailableDocs(docs);
+        setSelectedDocId('');
+      } catch (err) {
+        console.error(err);
+      }      
     } else {
       setForm(prev => ({ ...prev, contractId: '', vendor_name: '', spk_number: '', work_description: '' }));
+      setAvailableDocs([]);
+      setSelectedDocId('');  
+    }
+  };
+
+  const handleDocSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const docId = e.target.value;
+    setSelectedDocId(docId);
+
+    if (docId) {
+      const selectedDoc = availableDocs.find(d => d.id === docId);
+      if (selectedDoc) {
+        setForm(prev => ({
+          ...prev,
+          period_start: selectedDoc.period_start,
+          period_end: selectedDoc.period_end
+        }));
+      }
     }
   };
 
   const handleAutoFill = async () => {
     if (!form.contractId) return showToast('Pilih Mandor / SPK terlebih dahulu', 'error');
+    if (!selectedDocId) return showToast('Pilih Dokumen Referensi (BPUTK/BAPP) terlebih dahulu', 'error');
     
     setLoading(true);
     try {
@@ -111,7 +173,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         taxMode: res.contract.tax_mode || 'EXCLUDE'
       });
 
-      // Gunakan nama item untuk mapping Auto-Fill agar kebal terhadap perubahan kode COA
       setCoaList(prev => prev.map(coa => {
         let amount = 0;
         let isChecked = true;
@@ -129,7 +190,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         return { ...coa, amount, isChecked };
       }));
 
-      showToast('Nominal berhasil di Auto-Fill berdasarkan SAK', 'success');
+      showToast('Nominal berhasil di Auto-Fill berdasarkan Dokumen Referensi', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -139,12 +200,66 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
 
   const handleReset = () => {
     setCoaList(prev => prev.map(c => ({ ...c, amount: 0, isChecked: c.name === 'Beban Upah Mandor' })));
+    setSelectedDocId('');
     showToast('Form berhasil di-reset', 'success');
   };
 
   const totalGross = coaList.filter(c => c.isChecked && c.type === 'GROSS').reduce((sum, c) => sum + c.amount, 0);
   const totalDeduction = coaList.filter(c => c.isChecked && c.type === 'DEDUCTION').reduce((sum, c) => sum + c.amount, 0);
   const totalNet = totalGross - totalDeduction;
+
+  const handleSaveAndPrint = async () => {
+    if (!form.contractId) return showToast('Pilih Mandor terlebih dahulu', 'error');
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase.from('subcon_receipts').insert([{
+        project_id: projectId,
+        contract_id: form.contractId,
+        receipt_number: form.receipt_number,
+        receipt_date: form.receipt_date,
+        total_gross: totalGross,
+        total_deduction: totalDeduction,
+        total_net: totalNet,
+        details: coaList.filter(c => c.isChecked),
+        status: 'PENDING'
+      }]);
+
+      if (error) throw error;
+
+      fetchHistory();
+      showToast('Kwitansi berhasil disimpan. Masuk ke antrean pembayaran.', 'success');
+      
+      await handlePrint();
+
+    } catch (error: any) {
+      showToast(error.message, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // --- FUNGSI SOFT DELETE (VOID) ---
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('subcon_receipts')
+        .update({ status: 'VOID' }) 
+        .eq('id', deleteTarget);
+
+      if (error) throw error;
+
+      showToast('Kwitansi dibatalkan (VOID). Data hilang dari Antrean Persetujuan.', 'success');
+      fetchHistory();
+      setDeleteTarget(null);
+    } catch (error: any) {
+      showToast(error.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handlePrint = async () => {
     const printArea = document.getElementById('kwitansi-print-area');
@@ -154,7 +269,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
       setLoading(true);
       const htmlContent = printArea.innerHTML;
       
-      // CSS PRINT 100% MURNI (TANPA FLEXBOX, MENGGUNAKAN ABSOLUTE POSITIONING)
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -164,10 +278,8 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               @page { size: A4 landscape; margin: 10mm 15mm; }
               body { margin: 0; padding: 0; background: #fff; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #1e293b; }
               
-              /* CONTAINER DI-LOCK TINGGINYA */
               .container { position: relative; border: 2px solid #0f766e; border-radius: 8px; padding: 25px 35px; height: 185mm; box-sizing: border-box; page-break-inside: avoid; }
               
-              /* HEADER */
               .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 3px double #0f766e; padding-bottom: 10px; }
               .logo-img { height: 45px; max-width: 150px; object-fit: contain; }
               .company-name { font-size: 16pt; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2; }
@@ -175,13 +287,11 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               .doc-title { font-size: 24pt; font-weight: 800; color: #0f766e; letter-spacing: 2px; margin: 0; text-transform: uppercase; text-align: right; }
               .doc-subtitle { font-size: 9pt; font-weight: 500; color: #475569; margin: 3px 0 0 0; text-align: right; }
               
-              /* INFO GRID */
               .info-grid { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
               .info-grid td { padding: 10px 15px; vertical-align: top; }
               .info-label { font-weight: bold; color: #64748b; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.5px; width: 120px; }
               .info-val { font-weight: 600; color: #0f172a; font-size: 9pt; }
 
-              /* TABEL LEDGER */
               .ledger-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
               .ledger-table th { background-color: #0f766e; color: white; font-weight: bold; text-align: center; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.5px; padding: 12px 10px; border: 1px solid #0f766e; }
               .ledger-table td { padding: 12px 10px; font-size: 9pt; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
@@ -190,15 +300,12 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               .text-right { text-align: right; } .text-center { text-align: center; }
               .font-mono { font-family: 'Courier New', Courier, monospace; font-weight: 600; }
               
-              /* BARIS TOTAL */
               .total-row td { background-color: #f0fdfa !important; font-weight: bold; font-size: 11pt; border-top: 3px double #0f766e; border-bottom: 3px double #0f766e; color: #064e3b; padding: 15px 10px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }
 
-              /* TERBILANG BOX */
               .terbilang-box { background-color: #0f766e; color: white; padding: 15px 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
               .terbilang-label { font-weight: bold; text-transform: uppercase; font-size: 9pt; letter-spacing: 1px; border-right: 2px solid #2dd4bf; padding-right: 15px; margin-right: 15px; }
               .terbilang-val { font-style: italic; font-weight: bold; font-size: 12pt; color: #ccfbf1; }
 
-              /* TANDA TANGAN DIKUNCI ABSOLUT DI BOTTOM */
               .sig-wrapper { position: absolute; bottom: 20px; left: 35px; right: 35px; }
               .sig-table { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
               .sig-table td { text-align: center; vertical-align: bottom; padding: 0 10px; border: none; }
@@ -251,7 +358,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Form Kwitansi Pembayaran</h3>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">Sesuaikan data mandor dan rincian akun yang akan dibayarkan.</p>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">Pilih dokumen referensi BPUTK/BAPP untuk auto-fill.</p>
             </div>
           </div>
           <button onClick={handleReset} className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2">
@@ -282,25 +389,31 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mulai</label>
-                  <input type="date" value={form.period_start} onChange={(e) => setForm({ ...form, period_start: e.target.value })} className="w-full border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm" />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Selesai</label>
-                  <input type="date" value={form.period_end} onChange={(e) => setForm({ ...form, period_end: e.target.value })} className="w-full border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm" />
-                </div>
+            <div className="space-y-4 md:col-span-2">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Pilih Dokumen Referensi (Wajib)</label>
+                <select 
+                  value={selectedDocId} 
+                  onChange={handleDocSelect} 
+                  className="w-full border-teal-300 bg-teal-50 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm font-bold text-teal-800"
+                >
+                  <option value="">-- Pilih BPUTK / BAPP yang akan ditagih --</option>
+                  {availableDocs.map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      [{doc.type}] {doc.doc_number} - Nilai: Rp {doc.total_value?.toLocaleString('id-ID')}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">*Jika kosong, berarti belum ada BPUTK/BAPP yang diinput untuk mandor ini.</p>
               </div>
             </div>
+          </div>
 
-            <div className="flex items-end pb-0.5">
-              <button onClick={handleAutoFill} disabled={loading || !form.contractId} className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all hover:shadow-lg disabled:opacity-50">
+          <div className="flex justify-end border-b pb-6">
+             <button onClick={handleAutoFill} disabled={loading || !selectedDocId} className="w-full md:w-64 bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50">
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} className="text-amber-400" />} 
-                Auto-Fill (SAK)
+                Tarik Data (Auto-Fill)
               </button>
-            </div>
           </div>
 
           <div>
@@ -360,14 +473,15 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           </div>
 
           <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button onClick={handlePrint} disabled={loading} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-transform hover:-translate-y-0.5">
-              {loading ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} Cetak PDF Kwitansi
+            <button onClick={handleSaveAndPrint} disabled={loading || isSaving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-transform hover:-translate-y-0.5">
+              {loading || isSaving ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} 
+              {isSaving ? 'Menyimpan...' : 'Simpan & Cetak PDF Kwitansi'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* AREA PREVIEW (STRUKTUR TABLE MURNI UNTUK PDF) */}
+      {/* AREA PREVIEW */}
       {form.contractId && (
         <div className="w-full flex flex-col items-center pb-10 bg-slate-300/50 p-6 rounded-2xl print:bg-white print:p-0 overflow-x-auto">
           <div className="flex items-center gap-2 mb-4 text-slate-500 print:hidden">
@@ -378,7 +492,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           <div className="w-[297mm] bg-white p-10 shadow-2xl border border-slate-300">
             <div id="kwitansi-print-area" style={{ position: 'relative', minHeight: '165mm' }}>
               
-              {/* KOP SURAT (DOUBLE BORDER) */}
+              {/* KOP SURAT */}
               <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '3px double #0f766e', paddingBottom: '10px', marginBottom: '20px' }}>
                 <tbody>
                   <tr>
@@ -492,7 +606,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TANDA TANGAN DENGAN ABSOLUTE POSITIONING (PDF RULE COMPLIANT) */}
+              {/* TANDA TANGAN */}
               <div className="sig-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <tbody>
@@ -536,6 +650,83 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           </div>
         </div>
       )}
+
+      {/* --- TABEL RIWAYAT KWITANSI --- */}
+      <div className="bg-white border rounded-xl shadow-sm overflow-hidden print:hidden mt-10">
+        <div className="p-4 border-b bg-slate-50 flex items-center gap-2 font-bold text-slate-700">
+          <History size={18} /> Riwayat Kwitansi Pembayaran
+        </div>
+        <table className="w-full text-left text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              <th className="p-4 border-b">No. Kwitansi</th>
+              <th className="p-4 border-b">Tanggal</th>
+              <th className="p-4 border-b">Vendor / SPK</th>
+              <th className="p-4 border-b">Nilai Bersih (Net)</th>
+              <th className="p-4 border-b">Status</th>
+              <th className="p-4 border-b text-right">Aksi</th> {/* KOLOM BARU */}
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h) => (
+              <tr key={h.id} className={`hover:bg-slate-50 ${h.status === 'VOID' ? 'bg-red-50/50' : ''}`}>
+                <td className="p-4 border-b font-bold text-teal-700">{h.receipt_number}</td>
+                <td className="p-4 border-b">{new Date(h.receipt_date).toLocaleDateString('id-ID')}</td>
+                <td className="p-4 border-b">
+                  <span className="font-bold">{h.subcontractor_contracts?.subcontractors?.company_name}</span>
+                  <span className="block text-xs text-slate-500">{h.subcontractor_contracts?.spk_number}</span>
+                </td>
+                <td className="p-4 border-b text-emerald-600 font-bold">{fRp(h.total_net)}</td>
+                <td className="p-4 border-b">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${
+                    h.status === 'PAID' ? 'bg-green-100 text-green-700' : h.status === 'VOID' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {h.status || 'PENDING'}
+                  </span>
+                </td>
+                <td className="p-4 border-b text-right flex justify-end gap-2">
+                  {h.status !== 'VOID' && h.status !== 'PAID' && (
+                    <button 
+                      onClick={() => setDeleteTarget(h.id)} 
+                      className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" 
+                      title="Batalkan Kwitansi"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {history.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada riwayat kwitansi.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {/* CUSTOM MODAL CONFIRMATION (HAPUS) */}
+      {!!deleteTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+            <div className="p-6 text-center">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
+                <AlertTriangle className="h-8 w-8 text-red-600" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Batalkan Kwitansi</h3>
+              <p className="text-sm text-slate-500">
+                Apakah Anda yakin ingin membatalkan (VOID) kwitansi ini? Data tidak akan terhapus permanen dan antrean pembayaran akan dibatalkan.
+              </p>
+            </div>
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
+                Batal
+              </button>
+              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Ya, Batalkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

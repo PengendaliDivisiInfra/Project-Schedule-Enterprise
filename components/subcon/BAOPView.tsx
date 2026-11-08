@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Printer, FileText, Loader2, Trash2, AlertTriangle } from 'lucide-react';
-import { getBAOPData, saveBAOPDocument, getBAOPHistory, deleteBAOPDocument } from '@/lib/services/subcon.service';
+import { getBAOPData, saveBAOPDocument, getBAOPHistory, deleteBAOPDocument, getUnbilledBPUTKs } from '@/lib/services/subcon.service';
 import { MoneyText } from '@/components/ui/MoneyText';
+import { supabase } from '@/lib/supabase';
 
 interface BAOPViewProps {
   projectId: string;
@@ -13,9 +14,7 @@ interface BAOPViewProps {
 }
 
 function terbilang(angka: number): string {
-  // PERBAIKAN: Handle angka 0
   if (angka === 0) return "Nol"; 
-  
   angka = Math.abs(angka);
   const huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
   let hasil = "";
@@ -36,6 +35,9 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
   const [data, setData] = useState<{ contract: any, opnames: any[] } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   
+  const [availableBPUTKs, setAvailableBPUTKs] = useState<any[]>([]);
+  const [selectedBputkId, setSelectedBputkId] = useState('');
+  
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isReprint, setIsReprint] = useState(false);
@@ -45,8 +47,6 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
   const [form, setForm] = useState({
     contractId: '',
     nomorBAOP: `001/KL-BAOP/BKP/${currentMonthRoman.toUpperCase()}/${new Date().getFullYear()}`,
-    tglMulai: new Date().toISOString().split('T')[0],
-    tglSelesai: new Date().toISOString().split('T')[0],
   });
 
   const loadHistory = async () => {
@@ -62,17 +62,43 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     loadHistory();
   }, [projectId]);
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.contractId) {
-      showToast('Pilih Mandor terlebih dahulu', 'error');
+  const handleSelectSPK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const contractId = e.target.value;
+    setForm({ ...form, contractId });
+    setSelectedBputkId('');
+    setData(null);
+
+    if (contractId) {
+      try {
+        setLoading(true);
+        const bputks = await getUnbilledBPUTKs(contractId);
+        setAvailableBPUTKs(bputks);
+      } catch (err: any) {
+        showToast(err.message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setAvailableBPUTKs([]);
+    }
+  };
+
+  const handleSelectBPUTK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const bputkId = e.target.value;
+    setSelectedBputkId(bputkId);
+    
+    if (!bputkId) {
+      setData(null);
       return;
     }
-    
+
+    const selectedBputk = availableBPUTKs.find(b => b.id === bputkId);
+    if (!selectedBputk) return;
+
     setIsReprint(false);
     setLoading(true);
     try {
-      const res = await getBAOPData(form.contractId, form.tglMulai, form.tglSelesai);
+      const res = await getBAOPData(form.contractId, selectedBputk.period_start, selectedBputk.period_end);
       setData(res);
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -85,9 +111,8 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     setForm({
       contractId: item.contract_id,
       nomorBAOP: item.baop_number,
-      tglMulai: item.period_start,
-      tglSelesai: item.period_end
     });
+    setSelectedBputkId(item.bputk_id || '');
 
     setIsReprint(true);
     setLoading(true);
@@ -103,63 +128,56 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
 
   const handlePrint = async () => {
     const printElement = document.getElementById('baop-print-area');
-    if (!printElement) return;
+    if (!printElement || !data) return;
 
     try {
       setLoading(true);
       
       if (!isReprint) {
+        const selectedBputk = availableBPUTKs.find(b => b.id === selectedBputkId);
+        
         await saveBAOPDocument({
           project_id: projectId,
           contract_id: form.contractId,
+          bputk_id: selectedBputkId,
           baop_number: form.nomorBAOP,
-          period_start: form.tglMulai,
-          period_end: form.tglSelesai,
+          period_start: selectedBputk.period_start,
+          period_end: selectedBputk.period_end,
           total_value: totalNilaiOpname
         });
       }
 
       const htmlContent = printElement.innerHTML;
       
-      // CSS LEBIH KETAT AGAR TANDA TANGAN MASUK KE HALAMAN 1
       const fullHtml = `
         <!DOCTYPE html>
         <html>
           <head>
             <meta charset="utf-8">
             <style>
-              @page { size: A4 portrait; margin: 10mm 15mm; } /* Margin diperkecil */
-              body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; font-family: 'Times New Roman', Times, serif; font-size: 10.5pt; color: #000; line-height: 1.3; } /* Font sedikit dikecilkan & line-height dirapatkan */
-              
+              @page { size: A4 portrait; margin: 10mm 15mm; }
+              body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; font-family: 'Times New Roman', Times, serif; font-size: 10.5pt; color: #000; line-height: 1.3; }
               .header-kop { text-align: center; border-bottom: 3px double #000; padding-bottom: 5px; margin-bottom: 15px; }
               .header-kop img { max-height: 50px; max-width: 100px; object-fit: contain; margin-bottom: 5px; display: block; margin: 0 auto; }
               .header-kop h1 { margin: 0; font-size: 14pt; font-weight: bold; text-transform: uppercase; }
               .header-kop p { margin: 1px 0; font-size: 9.5pt; }
-              
               .doc-title { text-align: center; margin-bottom: 15px; }
               .doc-title h2 { margin: 0; font-size: 12pt; font-weight: bold; text-decoration: underline; }
               .doc-title p { margin: 3px 0 0 0; font-size: 10.5pt; font-weight: bold; }
-              
               .paragraph { text-align: justify; margin-bottom: 8px; text-indent: 30px; }
-              
               .identitas-table { width: 100%; border-collapse: collapse; margin-bottom: 3px; }
               .identitas-table td { padding: 1px 0; vertical-align: top; }
               .identitas-label { width: 100px; }
               .identitas-colon { width: 10px; }
-              
               .data-list { margin-bottom: 10px; }
               .data-item { margin-bottom: 6px; }
-              
-              /* KUNCI TANDA TANGAN */
               .sig-area { width: 100%; margin-top: 25px; page-break-inside: avoid; }
               .sig-table { width: 100%; border-collapse: collapse; text-align: center; }
               .sig-table td { width: 50%; vertical-align: bottom; padding: 0 10px; }
-              .sig-space { height: 60px; } /* Jarak TTD dirapatkan dari 80px ke 60px */
+              .sig-space { height: 60px; }
             </style>
           </head>
-          <body>
-            ${htmlContent}
-          </body>
+          <body>${htmlContent}</body>
         </html>
       `;
 
@@ -171,7 +189,6 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
       
       if (!res.ok) throw new Error('Gagal generate PDF dari server');
       const blob = await res.blob();
-      
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -183,6 +200,8 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
       if (!isReprint) {
         loadHistory();
         onSuccess();
+        setAvailableBPUTKs(prev => prev.filter(b => b.id !== selectedBputkId));
+        setSelectedBputkId('');
       }
     } catch (err: any) {
       showToast(err.message, 'error');
@@ -195,9 +214,23 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      await deleteBAOPDocument(deleteTarget);
-      showToast('Riwayat BAOP berhasil dihapus', 'success');
+      // 1. Cari data untuk tahu ID BPUTK yang terkait
+      const dataToDelete = history.find(h => h.id === deleteTarget);
+      
+      // 2. Hapus permanen dokumen BAOP (FIXED)
+      await deleteBAOPDocument(deleteTarget); 
+
+      // 3. Buka kembali kunci BPUTK (Ubah is_billed = false)
+      if (dataToDelete?.bputk_id) {
+        await supabase
+          .from('bputk_documents')
+          .update({ is_billed: false })
+          .eq('id', dataToDelete.bputk_id);
+      }
+
+      showToast('Dokumen berhasil dihapus. BPUTK telah dibuka kembali.', 'success');
       loadHistory();
+      onSuccess(); // Refresh parent data
       setDeleteTarget(null);
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -205,7 +238,7 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
       setIsDeleting(false);
     }
   };
-
+  
   const totalNilaiOpname = data?.opnames.reduce((sum, op) => sum + Number(op.total), 0) || 0;
   const nilaiKontrak = data?.contract?.contract_value || 1;
   const persentaseProgres = ((totalNilaiOpname / nilaiKontrak) * 100).toFixed(2);
@@ -221,7 +254,6 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     return acc;
   }, {});
 
-  // CSS UNTUK TAMPILAN WEB (SAMA DENGAN PDF)
   const webPreviewStyles = `
     .doc-a4 { width: 210mm; min-height: 297mm; padding: 10mm 15mm; box-sizing: border-box; margin: 0 auto; background: #fff; font-family: 'Times New Roman', Times, serif; font-size: 10.5pt; line-height: 1.3; color: #000; }
     .header-kop { text-align: center; border-bottom: 3px double #000; padding-bottom: 5px; margin-bottom: 15px; }
@@ -248,40 +280,39 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     <div className="space-y-6">
       <style dangerouslySetInnerHTML={{__html: webPreviewStyles}} />
 
-      {/* FORM INPUT */}
       <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 print:hidden">
         <h3 className="font-bold text-lg text-slate-800 border-b pb-2 mb-2 flex items-center gap-2">
-          <FileText className="text-amber-600" /> Buat Dokumen BAOP Baru
+          <FileText className="text-amber-600" /> Buat Dokumen BAOP (Berdasarkan BPUTK)
         </h3>
-        <form onSubmit={handleGenerate} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="md:col-span-1">
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
             <label className="block text-sm font-bold mb-1 text-slate-700">Pilih Mandor / SPK</label>
-            <select value={form.contractId} onChange={(e) => setForm({...form, contractId: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
               <option value="">-- Pilih Mandor --</option>
               {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
             </select>
           </div>
-          <div className="md:col-span-1">
+          
+          <div>
+            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih BPUTK (Sumber Data)</label>
+            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border-amber-300 bg-amber-50 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none font-bold text-amber-800">
+              <option value="">-- Pilih BPUTK --</option>
+              {availableBPUTKs.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.bputk_number} ({new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className="block text-sm font-bold mb-1 text-slate-700">Nomor BAOP</label>
-            <input type="text" value={form.nomorBAOP} onChange={(e) => setForm({...form, nomorBAOP: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+            <input type="text" value={form.nomorBAOP} onChange={(e) => setForm({...form, nomorBAOP: e.target.value})} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
           </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Tgl Mulai</label>
-            <input type="date" value={form.tglMulai} onChange={(e) => setForm({...form, tglMulai: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Tgl Selesai</label>
-            <input type="date" value={form.tglSelesai} onChange={(e) => setForm({...form, tglSelesai: e.target.value})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
-          </div>
-          <div className="md:col-span-4 flex justify-end mt-2">
-            <button type="submit" disabled={loading} className="px-6 bg-slate-800 hover:bg-slate-900 text-white py-2.5 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors">
-              {loading ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} Tampilkan Pratinjau
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
 
-      {/* PREVIEW AREA (UI) */}
       {data && (
         <div className="w-full flex flex-col items-center pb-10">
           <div className="bg-white shadow-xl" style={{ width: '210mm' }}>
@@ -301,7 +332,7 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
                 </div>
 
                 <p className="paragraph">
-                  Pada hari ini, <b>{new Date(form.tglSelesai).toLocaleDateString('id-ID', { weekday: 'long' })}</b> tanggal <b>{new Date(form.tglSelesai).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</b>, 
+                  Pada hari ini, <b>{new Date(data.contract.period_end).toLocaleDateString('id-ID', { weekday: 'long' })}</b> tanggal <b>{new Date(data.contract.period_end).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</b>, 
                   bertempat di lokasi proyek <b>{data.contract.projects?.name}</b> yang beralamat di <b>{data.contract.projects?.location}</b>, 
                   kami yang bertanda tangan di bawah ini:
                 </p>
@@ -328,7 +359,7 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
 
                 <p className="paragraph">
                   Dengan ini menerangkan bahwa <b>PIHAK KESATU</b> dan <b>PIHAK KEDUA</b> telah melakukan pemeriksaan, pengukuran, dan opname fisik bersama secara komprehensif 
-                  untuk periode {new Date(form.tglMulai).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })} s/d {new Date(form.tglSelesai).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}, 
+                  untuk periode {new Date(data.contract.period_start).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })} s/d {new Date(data.contract.period_end).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}, 
                   terhadap pekerjaan {data.contract.work_description} sebagai berikut:
                 </p>
 
@@ -398,7 +429,6 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
         </div>
       )}
 
-      {/* HISTORY TABLE */}
       <div className="bg-white border rounded-xl shadow-sm overflow-x-auto print:hidden mt-10">
         <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Riwayat Pembuatan BAOP</div>
         <table className="w-full text-left text-sm min-w-[800px]">
@@ -438,7 +468,6 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
         </table>
       </div>
 
-      {/* ENTERPRISE MODAL CONFIRMATION */}
       {!!deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">

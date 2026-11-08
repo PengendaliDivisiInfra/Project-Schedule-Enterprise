@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRole } from '@/lib/hooks/useRole';
+import { useCOA } from '@/lib/hooks/useCOA'; // Import Hook COA
 import { createTerminDraft } from '@/lib/services/termin.service';
 import { ProjectTermin } from '@/lib/types/termin';
 
@@ -16,6 +17,7 @@ interface Props {
 
 export function TerminFormModal({ isOpen, onClose, projectId, contractId, onSuccess, showToast }: Props) {
   const { can } = useRole();
+  const { getAccountCode } = useCOA(); // Panggil Hook COA
   const canViewPrice = can('VIEW_PRICE');
 
   const [loading, setLoading] = useState(false);
@@ -36,11 +38,27 @@ export function TerminFormModal({ isOpen, onClose, projectId, contractId, onSucc
     e.preventDefault();
     setLoading(true);
     try {
-      await createTerminDraft({
+      // 1. Tarik Kode COA secara Dinamis dari Master COA
+      const dynamicCoa = {
+        coa_kas: getAccountCode('Kas dan Bank Proyek') || '1111',
+        coa_pendapatan: getAccountCode('Pendapatan Jasa Konstruksi') || '4111',
+        coa_ppn: getAccountCode('Utang PPN Keluaran') || '2141',
+        coa_pph: getAccountCode('PPh Pasal 4(2)') || '5901',
+        coa_dp: getAccountCode('Kasbon Mandor') || '1152', 
+        coa_retensi: getAccountCode('Retensi Proyek') || '1154',
+      };
+
+      // 2. Gabungkan dengan form data
+      const payload = {
         ...form,
         project_id: projectId,
         contract_id: contractId,
-      });
+        ...dynamicCoa // Suntikkan kode COA ke payload
+      };
+
+      // 3. Simpan ke database (Service Anda sudah menangani perhitungan retensi)
+      await createTerminDraft(payload as any); // Gunakan 'as any' jika tipe CreateTerminInput belum diupdate
+      
       showToast('Draft termin berhasil dibuat', 'success');
       onSuccess();
       onClose();
