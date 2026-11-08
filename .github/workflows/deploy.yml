@@ -20,7 +20,8 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci
+      # FIXED: Menambahkan --ignore-scripts untuk mencegah error 504 saat download binary supabase
+      - run: npm ci --ignore-scripts
       - run: npm run lint
         continue-on-error: true
       - run: npm run build
@@ -57,4 +58,3 @@ jobs:
       - run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - run: vercel deploy --prebuilt --prod --archive=tgz --token=${{ secrets.VERCEL_TOKEN }}
-

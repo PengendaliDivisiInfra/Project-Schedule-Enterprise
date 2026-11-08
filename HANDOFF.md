@@ -1,92 +1,59 @@
 📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
-Status Proyek: 🚀 Production Ready (V34 - Enterprise Grade)
-Terakhir Diperbarui: 08 November 2026
+Status Proyek: 🚀 Production Ready (V34.1 - Enterprise Grade)
+Terakhir Diperbarui: 09 November 2026
 Environment Setup: Next.js 14 (App Router), Vercel (Frontend), Railway/Puppeteer (PDF Microservice), Supabase (Database).
 
 1. EXECUTIVE SUMMARY
-InfraControl PRO telah bertransformasi secara fundamental menjadi Sistem ERP Konstruksi Terpadu (Enterprise-Grade). Sistem ini dirancang dengan arsitektur Multi-Tenant, standar akuntansi SAK ETAP Bab 23, dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN). Fokus dari rilis V34 ini adalah Immutability (Pembekuan Data Historis) dan High-Fidelity Print Engine untuk dokumen legal berskala Corporate.
+InfraControl PRO adalah Sistem ERP Konstruksi Terpadu (Enterprise-Grade) dengan arsitektur Multi-Tenant, standar akuntansi SAK ETAP Bab 23, dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN). Fokus rilis V34.1 adalah **Sinkronisasi Dokumen (Single Source of Truth)** dari SPK -> BPUTK -> BAPP/BAOP -> Kwitansi, **Pre-Audit SAK/KUP**, dan **Dynamic Chart of Accounts (COA)**.
 
-2. IMPLEMENTED FEATURES (STATUS SAAT INI)
-A. Core Modules (Resources, Termin, Vault)
+2. IMPLEMENTED FEATURES (V34.1)
+A. Master COA Dinamis (Baru)
+- Tabel `chart_of_accounts` dengan RLS.
+- Menu "Manajemen Kode Akun" (Create, Edit, Soft Delete/Inaktif).
+- Hook `useCOA()` untuk menarik kode akun secara dinamis ke Kwitansi & BPUTK (tidak ada lagi hardcode 5101, 2121, dll).
 
-Resource & Material Plan: Histogram S-Curve, Kalkulasi AHSP, Net Requirement, PO (PPN/PPh), Goods Receipt.
+B. Termin Klien & Jurnal SP2D (Baru)
+- Modul input Termin Klien manual (karena pengajuan via Dinas).
+- Input Nomor SP2D, SPM, NTPN.
+- **Trigger Otomatis**: Saat SP2D diinput, sistem otomatis membuat Jurnal Umum (Debet Kas, Debet Piutang Retensi, Debet Beban PPh, Kredit Pendapatan, Kredit Utang PPN).
 
-Termin / Cash In: Multi-tenant isolation (RLS), Auto-Approve, Reversing Journal (Void Payment).
+C. Subcontractor Workflow (Sinkronisasi & Anti Double Billing)
+- **BPUTK** adalah *Single Source of Truth* (fisik). Status: `Belum Ditagih` / `Sudah Ditagih`.
+- **BAPP & BAOP** menarik data dari BPUTK via dropdown. Tanggal dan volume terkunci otomatis.
+- **Anti Double Billing**: BPUTK yang sudah ditarik ke BAPP/BAOP tidak akan muncul lagi di dropdown (`is_billed = true`).
+- **Fitur Edit/Hapus**: 
+  - BPUTK: Boleh diedit/hapus HANYA saat "Belum Ditagih".
+  - BAPP/BAOP: Jika dihapus, sistem otomatis membuka kunci BPUTK terkait.
+  - Kwitansi & Kasbon: Wajib *Soft Delete* (VOID) jika sudah masuk antrean Finance. Hard delete hanya boleh saat status `Pending`.
 
-Document Vault: Penyimpanan dokumen legal dan foto progress terpusat (Supabase Storage) dengan Signed URLs.
+D. Payment Center (Persetujuan & Pembayaran)
+- Tab baru khusus Finance/PM.
+- Menggabungkan antrean Kasbon & Kwitansi (View SQL).
+- **Compliance Engine (Pre-Audit)**: Sebelum tombol "Bayar" bisa diklik, sistem mengecek: Validasi Nominal, Kepatuhan Pajak (PPN/PPh), dan Keseimbangan Jurnal. Jika Audit Gagal (merah), pembayaran diblokir.
 
-B. Subcontractor & Financial Management
+E. UI/UX Enterprise (Workflow Stepper & Guide Drawer)
+- **WorkflowStepper**: Indikator horizontal (1. SPK -> 2. BPUTK -> 3. BAPP -> 4. Kwitansi -> 5. Bayar) di atas setiap halaman Subcon.
+- **GuideDrawer**: Tombol melayang "Panduan" di kanan bawah, memunculkan Side Drawer berisi SOP spesifik sesuai tab yang sedang aktif.
 
-Manajemen Vendor: SPK (RAB), Addendum (CCO) otomatis, dan integrasi Audit Trail System (audit_logs).
+3. ARCHITECTURE & CORE LOGIC
+- **Financial Engine (`sak-calculator.ts`)**: Semua kalkulasi DPP, PPN, PPh, Retensi, Net Transfer WAJIB menggunakan `hitungSAK()`.
+- **Snapshot / Freeze Data**: Nilai `nilai_dpp`, `nilai_ppn`, `nilai_pph`, dan `signatures` disimpan permanen ke database saat cetak, agar saat Reprint nilai historis tidak berubah.
+- **PDF Microservice**: `/api/generate-pdf` (Next.js) -> Railway (Puppeteer).
 
-Kasbon & Opname Workflow: Pemisahan fitur Pengajuan Kasbon (status default Pending) dan Pencairan Opname. Dilengkapi fungsi Terbilang presisi.
+4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
+1. UI/UX: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib gunakan `ConfirmModal` atau Custom Modal.
+2. Database: DILARANG Hard Delete pada data finansial (Kwitansi, Kasbon). Gunakan Soft Delete (status = 'Void').
+3. Print Engine (Puppeteer):
+   - NO TAILWIND IN PDF: Gunakan Inline Style/Pure CSS murni.
+   - NO FLEXBOX/GRID IN PDF: Gunakan `<table>` murni untuk layout.
+   - ANTI PAGE-BREAK: Container height di-lock (misal 185mm). Tanda tangan absolute bottom.
+   - LOGO LIMIT: `max-height: 45px; max-width: 150px; object-fit: contain;`.
+   - Wajib update RLS setiap membuat tabel baru.
 
-C. High-Fidelity Print Engine (PDF Document Generation)
-
-BAOP (Berita Acara Opname): Layout A4 Portrait, Kop Surat dinamis, tanpa garis tabel (minimalis).
-
-BAPP (Berita Acara Pembayaran Prestasi): Layout A4 Landscape, kalkulasi live (SAK/KUP), Billing Statement.
-
-BPUTK (Biaya Pembayaran Upah): Layout A3 Landscape, Inline Edit Progress dengan Soft Validation (peringatan visual tanpa blokir input), dan Overlap Date Checker (Custom Modal).
-
-Lampiran BAPP: Auto-Fetch data dari No. BAPP terpilih. Merender Timeline transaksi (Opname, Kasbon, Potongan) secara kronologis dan menghitung SAK/KUP otomatis.
-
-Kwitansi (BARU): Menarik data dari Chart of Accounts (COA) secara dinamis. Fitur Auto-Fill (SAK) untuk menarik nilai Gross, PPN, PPh, dan Retensi. Desain Ledger-Style (A4 Landscape) yang sangat premium.
-
-3. ARCHITECTURE & CORE LOGIC (V34 UPGRADE)
-A. Dynamic Signatures & Freeze Data (Snapshot)
-
-Reusable Component: Ekstraksi UI ke SignatureSettings.tsx untuk digunakan di BAPP, BPUTK, Kasbon, dan Lampiran BAPP.
-
-JSONB Database: Kolom signatures ditambahkan ke bapp_documents, bputk_documents, dan subcontractor_payments.
-
-Reprint Protocol (Anti-Drift): Logika Cetak Ulang (Reprint) tidak lagi menggunakan kalkulasi engine terbaru. Sistem membaca data yang dibekukan (snapshot) dari database (nilai_dpp, nilai_ppn, signatures) untuk menjamin dokumen historis tidak berubah saat ada update pajak di masa depan.
-
-B. Approval Workflow (Finance Panel)
-
-Menu persetujuan baru (ApprovalWorkflowView.tsx) untuk memproses Kasbon/Opname berstatus Pending menjadi Approved atau Paid.
-
-C. Financial & Tax Engine Integration
-
-Kalkulasi pajak (SAK/KUP) di seluruh dokumen cetak menggunakan hitungSAK() terpusat (mendukung mode EXCLUDE, INCLUDE, NON_PAJAK).
-
-Auto-Fill pada Kwitansi memetakan hasil hitung engine ke Kode Akun standar (5101.001, 2121.001, dll).
-
-4. 🛑 ABSOLUTE RULES (LESSONS LEARNED)
-UI/UX: DILARANG menggunakan alert(), confirm(), atau prompt(). Gunakan komponen CustomModal.
-
-Keuangan: DILARANG Hard Delete pada data finansial. Gunakan Soft Delete atau Reversing Journal.
-
-Akses: Gunakan useRole() dan can('PERMISSION_KEY'). Jangan menulis logika RBAC manual di UI.
-
-Print Engine (Puppeteer):
-
-DILARANG menggunakan class Tailwind (className) di area cetak (id="print-area"). WAJIB menggunakan Inline Style atau Pure CSS di dalam string HTML.
-
-Anti Page-Break: Container PDF WAJIB di-lock tingginya (misal height: 185mm) dan Tanda Tangan menggunakan position: absolute; bottom: 20px; atau margin-top: auto di dalam Flex Container.
-
-Anti Logo Raksasa: Wajib memberikan inline style max-height: 45px; max-width: 150px; object-fit: contain; pada tag <img> logo kop surat.
-
-Pure Table Layout: DILARANG menggunakan display: flex atau grid untuk menyusun layout 3 kolom di PDF. Gunakan <table>, <tr>, dan <td> murni (misal pada Lampiran BAPP dan Kwitansi) untuk memastikan presisi tinggi.
-
-Database: DILARANG SELECT * pada View kompleks. Wajib update RLS (Row Level Security) setiap membuat tabel baru. Selalu gunakan format desimal Indonesia (koma) pada tampilan UI.
-
-5. DATABASE SCHEMA UPDATE (V34)
-Tabel Cetak (Dokumen) & Pembayaran:
-
-bapp_documents, bputk_documents, baop_documents.
-
-subcontractor_payments (Kolom baru: status, signatures).
-
-subcon_receipts (Tabel baru: Menyimpan histori Kwitansi, total_gross, total_deduction, total_net, details JSONB untuk list COA).
-
-Kolom Krusial yang Ditambahkan:
-
-signatures (JSONB) -> Tersimpan di 3 tabel dokumen.
-
-tax_mode -> Tersimpan di SPK.
-
-nilai_dpp, nilai_ppn, nilai_pph -> Tersimpan di tabel dokumen (untuk keperluan Snapshot Cetak Ulang).
+5. NEXT STEPS (ROADMAP)
+- A. Project Master Program (PMP) Print Engine (Cetak Tabel Resources & Materials).
+- B. Cetak Form GAS Lainnya (Invoice Resmi, SPK Fisik).
+- C. Modul Cash Flow Lanjutan (Dashboard Financial Health).
 
 6. NEXT STEPS (ROADMAP)
 A. Project Master Program (PMP) Print Engine
