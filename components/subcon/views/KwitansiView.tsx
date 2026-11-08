@@ -25,7 +25,7 @@ function terbilang(angka: number): string {
 }
 
 // --- STRUKTUR DEFAULT COA ---
-const INITIAL_COA = [
+const INITIAL_COA: CoaItem[] = [
   { code: '5101.001', name: 'Beban Upah Mandor', type: 'GROSS', isChecked: true, amount: 0 },
   { code: '1151.001', name: 'Piutang Opname', type: 'GROSS', isChecked: false, amount: 0 },
   { code: '1152.001', name: 'Kasbon Mandor (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
@@ -34,6 +34,7 @@ const INITIAL_COA = [
   { code: '1151.002', name: 'PPN Masukan', type: 'GROSS', isChecked: false, amount: 0 },
   { code: '2131.001', name: 'Retensi Proyek (Potongan)', type: 'DEDUCTION', isChecked: false, amount: 0 },
 ];
+
 
 interface CoaItem {
   code: string;
