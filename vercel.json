@@ -1,4 +1,5 @@
 {
+  "installCommand": "npm install --ignore-scripts",
   "functions": {
     "app/api/generate-pdf/route.js": {
       "memory": 1024,
