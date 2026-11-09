@@ -5,7 +5,7 @@ import { useProject } from '../context/ProjectContext';
 import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat, Wallet, Building2
+  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat, Wallet, Building2, PieChart
 } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
@@ -14,7 +14,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   const projectContext = useProject(); 
   const currentProjectId = projectContext?.activeProjectId;
 
-  // Robust Role Detection: Prioritaskan currentUser, lalu ProjectContext
+  // Robust Role Detection
   const rawRole = (currentUser?.role || projectContext?.userRole || 'pelaksana').toLowerCase().trim();
   let role = 'pelaksana'; 
   if (rawRole.includes('owner')) role = 'owner';
@@ -36,6 +36,10 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
       { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin', 'pm'] },
       { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin', 'pm'] },
       { name: 'Master Project Report', path: '/reports/master', icon: FileText, roles: ['owner', 'admin', 'pm'] },
+      // --- MENU BARU: P&L ---
+      ...(currentProjectId ? [
+        { name: 'Laba Rugi (P&L)', path: `/projects/${currentProjectId}/reports/pnl`, icon: PieChart, roles: ['owner', 'admin', 'pm'] },
+      ] : []),
     ]},
     { group: 'MANAJEMEN BIAYA', items: [
       { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin', 'pm'] },
@@ -56,7 +60,6 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
     { group: 'SISTEM', items: [
       { name: 'Pengaturan Proyek', path: '/settings/project', icon: FileText, roles: ['owner', 'admin', 'pm'] },
       { name: 'Manajemen Tim', path: '/settings/team', icon: Users, roles: ['owner', 'admin', 'pm'] },
-      // PERBAIKAN: Admin dan PM juga bisa lihat Database Proyek & Audit Logs
       { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner', 'admin', 'pm'] },
       { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, roles: ['owner', 'admin', 'pm'] },
       { name: 'Audit Logs', path: '/logs', icon: ShieldCheck, roles: ['owner', 'admin', 'pm'] },
@@ -64,7 +67,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   ];
 
   return (
-    <aside className={`bg-[#0F172A] text-slate-300 flex flex-col h-screen shrink-0 transition-all duration-300 z-40 relative ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
+    <aside className={`bg-[#0F172A] text-slate-300 flex flex-col h-screen shrink-0 transition-all duration-300 z-40 relative print:hidden ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
       <div className="h-[64px] flex items-center px-4 border-b border-slate-800 shrink-0">
         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 overflow-hidden p-0.5">
           <img src="/logo-infrastruktur.jpeg" alt="InfraControl Logo" className="w-full h-full object-cover rounded-lg" />

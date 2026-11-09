@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useRole } from '@/lib/hooks/useRole';
 import { supabase } from '@/lib/supabase';
 import { listSubcontractors, listSPK, softDeleteSubcontractor, softDeleteSPK } from '@/lib/services/subcon.service';
@@ -39,10 +40,11 @@ export default function SubcontractorsPage() {
   const [activeTab, setActiveTab] = useState('master');
 
   const [isGuideOpen, setIsGuideOpen] = useState(false);
-
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   const [isSubconModalOpen, setIsSubconModalOpen] = useState(false);
+  const [editingSubcon, setEditingSubcon] = useState<Subcontractor | null>(null); // <-- STATE BARU
+  
   const [isSPKModalOpen, setIsSPKModalOpen] = useState(false);
   const [selectedSPK, setSelectedSPK] = useState<any>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -79,14 +81,6 @@ export default function SubcontractorsPage() {
                 <p className="text-amber-700 text-xs leading-relaxed">
                   Input volume fisik di sini adalah <strong>Single Source of Truth</strong>. Jangan memasukkan angka pajak atau retensi. Sistem menghitungnya otomatis di BAPP.
                 </p>
-              </div>
-              <div>
-                <h4 className="font-bold text-slate-800 mb-2 border-b pb-2">Alur Kerja</h4>
-                <ol className="list-decimal list-inside space-y-2 text-slate-600 text-xs">
-                  <li>Pilih Mandor & Atur Periode Tanggal.</li>
-                  <li>Isi kolom kuning (Periode Saat Ini) dengan volume aktual.</li>
-                  <li>Klik <strong>Simpan Progress</strong> lalu <strong>Cetak BPUTK</strong>.</li>
-                </ol>
               </div>
             </div>
           )
@@ -228,7 +222,7 @@ export default function SubcontractorsPage() {
         </div>
         
         {activeTab === 'master' && can('SUBCON_CREATE') && (
-          <button onClick={() => setIsSubconModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm font-medium">
+          <button onClick={() => { setEditingSubcon(null); setIsSubconModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 shadow-sm font-medium">
             <Users size={18} /> Tambah Vendor
           </button>
         )}
@@ -286,6 +280,7 @@ export default function SubcontractorsPage() {
                   <th className="p-4 border-b">Contact Person</th>
                   <th className="p-4 border-b">No. Telepon</th>
                   <th className="p-4 border-b">Bank & Rekening</th>
+                  <th className="p-4 border-b">Kualifikasi PPh</th>
                   <th className="p-4 border-b text-right">Aksi</th>
                 </tr>
               </thead>
@@ -299,16 +294,24 @@ export default function SubcontractorsPage() {
                     <td className="p-4 border-b">{s.contact_person || '-'}</td>
                     <td className="p-4 border-b">{s.phone || '-'}</td>
                     <td className="p-4 border-b">{s.bank_name ? `${s.bank_name} - ${s.bank_account}` : '-'}</td>
+                    <td className="p-4 border-b text-xs text-indigo-700 font-medium">
+                      {s.pph_category || 'Kecil (1.75%)'}
+                    </td>
                     <td className="p-4 border-b text-right">
                       {can('SUBCON_CREATE') && (
-                        <button onClick={() => setDeleteTarget({ id: s.id, type: 'vendor' })} className="text-red-500 hover:text-red-700 p-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors" title="Hapus Vendor">
-                          <Trash2 size={16} />
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => { setEditingSubcon(s); setIsSubconModalOpen(true); }} className="text-indigo-600 hover:text-indigo-800 p-2 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors" title="Edit Vendor">
+                            <Pencil size={16} />
+                          </button>
+                          <button onClick={() => setDeleteTarget({ id: s.id, type: 'vendor' })} className="text-red-500 hover:text-red-700 p-2 bg-red-50 rounded-lg hover:bg-red-100 transition-colors" title="Hapus Vendor">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   </tr>
                 ))}
-                {subcons.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-500">Belum ada vendor subkon.</td></tr>}
+                {subcons.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada vendor subkon.</td></tr>}
               </tbody>
             </table>
           )}
@@ -349,6 +352,15 @@ export default function SubcontractorsPage() {
                     <td className="p-4 border-b"><StatusBadge status={spk.status} /></td>
                     <td className="p-4 border-b text-right space-x-2">
                       
+                      <Link 
+                        href={`/projects/${projectId}/subcontractors/spk/${spk.id}/print`}
+                        className="text-slate-600 hover:text-slate-900 text-xs font-medium inline-flex items-center gap-1"
+                        title="Cetak PDF SPK"
+                      >
+                        <Printer size={14} /> Cetak
+                      </Link>
+                      <span className="text-slate-300">|</span>
+
                       {spk.status === 'Active' && can('SUBCON_PAY') && (
                         <button 
                           onClick={() => { 
@@ -416,8 +428,25 @@ export default function SubcontractorsPage() {
         {guide.content}
       </GuideDrawer>
 
-      <SubcontractorModal isOpen={isSubconModalOpen} onClose={() => setIsSubconModalOpen(false)} projectId={projectId} onSuccess={loadData} showToast={showToast} />
-      <SPKModal isOpen={isSPKModalOpen} onClose={() => { setIsSPKModalOpen(false); setEditingSPK(null); }} projectId={projectId} subcontractors={subcons} onSuccess={loadData} showToast={showToast} editingSPK={editingSPK} />
+      <SubcontractorModal 
+        isOpen={isSubconModalOpen} 
+        onClose={() => { setIsSubconModalOpen(false); setEditingSubcon(null); }} 
+        projectId={projectId} 
+        onSuccess={loadData} 
+        showToast={showToast} 
+        editingSubcon={editingSubcon} 
+      />
+      
+      <SPKModal 
+        isOpen={isSPKModalOpen} 
+        onClose={() => { setIsSPKModalOpen(false); setEditingSPK(null); }} 
+        projectId={projectId} 
+        subcontractors={subcons} 
+        onSuccess={loadData} 
+        showToast={showToast} 
+        editingSPK={editingSPK} 
+      />
+      
       <HistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} contractId={selectedSPK?.id || null} />
       <AddendumModal isOpen={isAddendumModalOpen} onClose={() => setIsAddendumModalOpen(false)} spk={selectedSPK} onSuccess={loadData} showToast={showToast} />
       <ConfirmModal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDeleteConfirm} title={deleteTarget?.type === 'vendor' ? 'Hapus Vendor' : 'Batalkan SPK'} message={deleteTarget?.type === 'vendor' ? 'Hapus vendor ini?' : 'Batalkan SPK ini?'} isLoading={isDeleting} />

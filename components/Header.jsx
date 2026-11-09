@@ -40,7 +40,8 @@ export default function Header({ toggleSidebar }) {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-50 relative">
+    // TAMBAHKAN print:hidden DI SINI
+    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 shadow-sm z-50 relative print:hidden">
       <div className="flex items-center gap-4">
         <button onClick={toggleSidebar} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg">
           <Menu size={20} />

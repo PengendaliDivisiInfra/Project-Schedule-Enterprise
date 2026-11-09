@@ -8,6 +8,8 @@ export interface Subcontractor {
   bank_name: string | null;
   bank_account: string | null;
   is_active: boolean;
+  pph_category?: string | null; 
+  pph_rate?: number | null;     
 }
 
 export interface SubcontractorContract {
@@ -25,6 +27,15 @@ export interface SubcontractorContract {
   subcontractor_name?: string;
   total_addendum?: number;
   final_contract_value?: number;
+
+  parent_spk_id?: string | null;
+  bq_items?: any[] | null;
+  spk_snapshot?: any | null;
+  ktp_url?: string | null;
+  signature_pihak_1?: string | null;
+  signature_pihak_2?: string | null;
+  signature_pihak_1_title?: string | null;
+  signature_pihak_2_title?: string | null; 
 }
 
 export interface SubcontractorSPKItem {

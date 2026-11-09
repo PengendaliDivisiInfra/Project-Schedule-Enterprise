@@ -396,7 +396,6 @@ export default function MasterReportPage() {
 
         return {
           ...res,
-          // Memaksa pengambilan satuan dari Task (wbs_tasks) jika di view resource kosong
           satuan: task.satuan_hsd || task.satuan || task.unit || res.satuan || res.unit || '-',
           total_kebutuhan: sisaTotalKebutuhan,
           kebutuhan_harian: task.sisa_hari > 0 ? (sisaTotalKebutuhan / task.sisa_hari) : 0,
@@ -692,10 +691,11 @@ export default function MasterReportPage() {
         </html>
       `;
 
-      const response = await fetch('https://pdf-service-repo-production.up.railway.app/generate-pdf', {
+      // FIXED: Mengubah URL Railway menjadi API Route Next.js
+      const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: htmlString, scale: pdfScale })
+        body: JSON.stringify({ html: htmlString, scale: pdfScale, format: 'A3', isLandscape: true })
       });
 
       if (!response.ok) throw new Error('Server gagal mencetak PDF. Cek terminal.');
@@ -741,7 +741,6 @@ export default function MasterReportPage() {
         </div>
       )}
 
-      {/* PERBAIKAN: Max-width dihilangkan agar full width */}
       <div className="w-full mb-6 print:hidden">
         <button onClick={() => window.history.back()} className="text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-2 mb-4">
           <ArrowLeft size={16}/> Kembali ke Dashboard

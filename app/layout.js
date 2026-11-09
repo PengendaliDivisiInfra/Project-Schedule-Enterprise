@@ -12,9 +12,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className={`${jakarta.className} flex bg-slate-50 h-screen overflow-hidden text-slate-800`}>
+      {/* Tambahkan print:bg-white di body */}
+      <body className={`${jakarta.className} flex bg-slate-50 h-screen overflow-hidden text-slate-800 print:bg-white print:h-auto print:overflow-visible`}>
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        
+        {/* Tambahkan print:p-0, print:m-0, print:w-full di main */}
+        <main className="flex-1 overflow-y-auto p-6 md:p-8 print:p-0 print:m-0 print:w-full print:overflow-visible">
           {children}
         </main>
       </body>

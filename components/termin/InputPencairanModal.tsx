@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Loader2, Save, Landmark } from 'lucide-react';
 
@@ -20,11 +20,24 @@ export function InputPencairanModal({ isOpen, onClose, terminData, onSuccess, sh
     sp2d_number: '',
     spm_number: '',
     ntpn_number: '',
-    // Nilai potongan (bisa auto-fill dari terminData jika ada)
-    potongan_dp: terminData?.potongan_dp || 0,
-    nilai_ppn: terminData?.nilai_ppn || 0,
-    nilai_pph: terminData?.nilai_pph || 0,
+    potongan_dp: 0,
+    nilai_ppn: 0,
+    nilai_pph: 0,
   });
+
+  // TAMBAHKAN USE-EFFECT INI UNTUK SINKRONISASI DATA SAAT MODAL DIBUKA
+  useEffect(() => {
+    if (isOpen && terminData) {
+      setForm({
+        sp2d_number: terminData.sp2d_number || '',
+        spm_number: terminData.spm_number || '',
+        ntpn_number: terminData.ntpn_number || '',
+        potongan_dp: terminData.potongan_dp || 0,
+        nilai_ppn: terminData.nilai_ppn || 0,
+        nilai_pph: terminData.nilai_pph || 0,
+      });
+    }
+  }, [isOpen, terminData]);
 
   if (!isOpen || !terminData) return null;
 
@@ -33,7 +46,7 @@ export function InputPencairanModal({ isOpen, onClose, terminData, onSuccess, sh
     setLoading(true);
 
     try {
-      // 1. Update tabel project_termins dengan data SP2D
+      // Update tabel project_termins dengan data SP2D
       // Ini akan otomatis memicu Trigger generate_gl_on_sp2d di database
       const { error } = await supabase
         .from('project_termins')
@@ -44,7 +57,7 @@ export function InputPencairanModal({ isOpen, onClose, terminData, onSuccess, sh
           potongan_dp: form.potongan_dp,
           nilai_ppn: form.nilai_ppn,
           nilai_pph: form.nilai_pph,
-          // status: 'Paid' // Opsional: jika ada kolom status
+          // status: 'Paid' // Opsional: sesuaikan jika ada kolom status
         })
         .eq('id', terminData.id);
 
@@ -62,7 +75,7 @@ export function InputPencairanModal({ isOpen, onClose, terminData, onSuccess, sh
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-scale-in">
         
         {/* HEADER MODAL */}
         <div className="bg-indigo-600 p-5 text-white flex items-center gap-3">

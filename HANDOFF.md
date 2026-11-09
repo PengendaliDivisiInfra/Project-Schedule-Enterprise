@@ -1,74 +1,59 @@
 📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
 Status Proyek: 🚀 Production Ready (V34.1 - Enterprise Grade)
 Terakhir Diperbarui: 09 November 2026
-Environment Setup: Next.js 14 (App Router), Vercel (Frontend), Railway/Puppeteer (PDF Microservice), Supabase (Database).
+Environment Setup: Next.js 14, Vercel, Railway (Puppeteer), Supabase (PostgreSQL, RLS, Storage).
 
 1. EXECUTIVE SUMMARY
-InfraControl PRO adalah Sistem ERP Konstruksi Terpadu (Enterprise-Grade) dengan arsitektur Multi-Tenant, standar akuntansi SAK ETAP Bab 23, dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN). Fokus rilis V34.1 adalah **Sinkronisasi Dokumen (Single Source of Truth)** dari SPK -> BPUTK -> BAPP/BAOP -> Kwitansi, **Pre-Audit SAK/KUP**, dan **Dynamic Chart of Accounts (COA)**.
+InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi SAK ETAP Bab 23 dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN). Fokus V34.1 adalah Sinkronisasi Dokumen, Pre-Audit SAK/KUP, Dynamic COA, dan High-Fidelity Print Engine (PMP & Subcon/SPK).
 
 2. IMPLEMENTED FEATURES (V34.1)
-A. Master COA Dinamis (Baru)
-- Tabel `chart_of_accounts` dengan RLS.
-- Menu "Manajemen Kode Akun" (Create, Edit, Soft Delete/Inaktif).
-- Hook `useCOA()` untuk menarik kode akun secara dinamis ke Kwitansi & BPUTK (tidak ada lagi hardcode 5101, 2121, dll).
+A. Master COA & Termin Klien
+- COA dinamis via `useCOA()`.
+- SP2D auto-journal (Debet Kas, Kredit Pendapatan, dll).
 
-B. Termin Klien & Jurnal SP2D (Baru)
-- Modul input Termin Klien manual (karena pengajuan via Dinas).
-- Input Nomor SP2D, SPM, NTPN.
-- **Trigger Otomatis**: Saat SP2D diinput, sistem otomatis membuat Jurnal Umum (Debet Kas, Debet Piutang Retensi, Debet Beban PPh, Kredit Pendapatan, Kredit Utang PPN).
+B. Subcontractor Workflow (Sinkronisasi & Anti Double Billing)
+- BPUTK sebagai *Single Source of Truth*. Status `is_billed` mencegah *double billing*.
+- BAPP/BAOP menarik data BPUTK via dropdown terkunci.
+- Soft Delete diterapkan pada Kwitansi, Kasbon, dan SPK.
 
-C. Subcontractor Workflow (Sinkronisasi & Anti Double Billing)
-- **BPUTK** adalah *Single Source of Truth* (fisik). Status: `Belum Ditagih` / `Sudah Ditagih`.
-- **BAPP & BAOP** menarik data dari BPUTK via dropdown. Tanggal dan volume terkunci otomatis.
-- **Anti Double Billing**: BPUTK yang sudah ditarik ke BAPP/BAOP tidak akan muncul lagi di dropdown (`is_billed = true`).
-- **Fitur Edit/Hapus**: 
-  - BPUTK: Boleh diedit/hapus HANYA saat "Belum Ditagih".
-  - BAPP/BAOP: Jika dihapus, sistem otomatis membuka kunci BPUTK terkait.
-  - Kwitansi & Kasbon: Wajib *Soft Delete* (VOID) jika sudah masuk antrean Finance. Hard delete hanya boleh saat status `Pending`.
+C. Payment Center (Persetujuan & Pembayaran)
+- Menggabungkan antrean Kasbon & Kwitansi.
+- **Compliance Engine (Pre-Audit)**: Memblokir pembayaran jika validasi pajak/DPP/Netto gagal.
 
-D. Payment Center (Persetujuan & Pembayaran)
-- Tab baru khusus Finance/PM.
-- Menggabungkan antrean Kasbon & Kwitansi (View SQL).
-- **Compliance Engine (Pre-Audit)**: Sebelum tombol "Bayar" bisa diklik, sistem mengecek: Validasi Nominal, Kepatuhan Pajak (PPN/PPh), dan Keseimbangan Jurnal. Jika Audit Gagal (merah), pembayaran diblokir.
+D. UI/UX Enterprise (Workflow Stepper & Guide Drawer)
+- Terintegrasi di setiap halaman Subcon.
 
-E. UI/UX Enterprise (Workflow Stepper & Guide Drawer)
-- **WorkflowStepper**: Indikator horizontal (1. SPK -> 2. BPUTK -> 3. BAPP -> 4. Kwitansi -> 5. Bayar) di atas setiap halaman Subcon.
-- **GuideDrawer**: Tombol melayang "Panduan" di kanan bawah, memunculkan Side Drawer berisi SOP spesifik sesuai tab yang sedang aktif.
+E. **SPK & Master Vendor Print Engine (BARU)**
+- **Master Vendor Upgrade**: CRUD lengkap, Dropdown Kualifikasi SBU (PP 9/2022), dan Upload KTP.
+- **Form SPK**: Mendukung Mode Pajak (Exclude/Include/Non-Pajak). Tarif PPh otomatis ditarik dari Master Vendor. Validasi input (PPN/PPh disabled jika Non-Pajak).
+- **PDF Engine A4**: Layout presisi, TTD Dinamis (Nama & Jabatan), penomoran halaman otomatis (`Halaman X dari Y`), Kotak Paraf di footer, dan format BQ dengan garis putus-putus.
+
+F. PMP Print Engine (A3)
+- Mencetak 4 halaman (Time Schedule, EVM Matrix, Resources, Materials) via Railway Puppeteer.
 
 3. ARCHITECTURE & CORE LOGIC
-- **Financial Engine (`sak-calculator.ts`)**: Semua kalkulasi DPP, PPN, PPh, Retensi, Net Transfer WAJIB menggunakan `hitungSAK()`.
-- **Snapshot / Freeze Data**: Nilai `nilai_dpp`, `nilai_ppn`, `nilai_pph`, dan `signatures` disimpan permanen ke database saat cetak, agar saat Reprint nilai historis tidak berubah.
-- **PDF Microservice**: `/api/generate-pdf` (Next.js) -> Railway (Puppeteer).
+- **Financial Engine (`sak-calculator.ts`)**: Kalkulasi DPP, PPN, PPh, Retensi WAJIB via `hitungSAK()`.
+- **Snapshot / Freeze Data**: Nilai `nilai_dpp`, `nilai_ppn`, `nilai_pph` disimpan permanen saat cetak (reprint membaca snapshot).
+- **PDF Microservice**: `/api/generate-pdf` (Next.js) -> Railway (Puppeteer). Mendukung `footerTemplate` untuk penomoran halaman.
+- **Supabase Storage**: Bucket `ktp_documents` (Public) digunakan untuk upload KTP Mandor di form SPK.
 
 4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
-1. UI/UX: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib gunakan `ConfirmModal` atau Custom Modal.
-2. Database: DILARANG Hard Delete pada data finansial (Kwitansi, Kasbon). Gunakan Soft Delete (status = 'Void').
+1. UI/UX: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib `ConfirmModal` atau Custom Modal.
+2. Database: DILARANG Hard Delete pada data finansial. Gunakan Soft Delete (status = 'Void').
 3. Print Engine (Puppeteer):
-   - NO TAILWIND IN PDF: Gunakan Inline Style/Pure CSS murni.
-   - NO FLEXBOX/GRID IN PDF: Gunakan `<table>` murni untuk layout.
-   - ANTI PAGE-BREAK: Container height di-lock (misal 185mm). Tanda tangan absolute bottom.
+   - NO TAILWIND IN PDF: Inline Style/Pure CSS murni.
+   - NO FLEXBOX/GRID IN PDF: `<table>` murni.
+   - ANTI PAGE-BREAK: Multi-page gunakan `@page` margin (bawah 45mm) dan `position: fixed` untuk footer paraf. Single page gunakan `height: 185mm`.
    - LOGO LIMIT: `max-height: 45px; max-width: 150px; object-fit: contain;`.
-   - Wajib update RLS setiap membuat tabel baru.
+   - Wajib update RLS setiap membuat tabel/bucket baru.
 
 5. NEXT STEPS (ROADMAP)
-- A. Project Master Program (PMP) Print Engine (Cetak Tabel Resources & Materials).
-- B. Cetak Form GAS Lainnya (Invoice Resmi, SPK Fisik).
-- C. Modul Cash Flow Lanjutan (Dashboard Financial Health).
+- A. Cetak Form GAS Lainnya (Invoice Resmi A4, Kontrak Fisik).
+- B. Modul Cash Flow Lanjutan (Dashboard Financial Health / Profit-Loss).
 
-6. NEXT STEPS (ROADMAP)
-A. Project Master Program (PMP) Print Engine
+6. WORKFLOW GIT & DEPLOYMENT
+npm run build (0 error) -> git add . -> git commit -m "feat(V34): [Deskripsi]" -> git push origin main.
 
-□ UI Cetak Tabel PMP - Resources (Crews).
-□ UI Cetak Tabel PMP - Materials.
-□ Integrasi ke data tasks (WBS), resources, dan materials.
-B. Cetak Form GAS Lainnya
-
-□ Invoice Resmi (A4 Portrait).
-□ Surat Perintah Kerja (SPK) / Kontrak fisik.
-C. Modul Cash Flow Lanjutan
-
-□ Rekonsiliasi Bank Otomatis.
-□ Dashboard Financial Health (Profit/Loss per proyek).
 7. WORKFLOW GIT & DEPLOYMENT
 (Standar Operasional Prosedur)
 
