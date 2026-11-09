@@ -39,7 +39,7 @@ export async function listAuditLogs(projectId?: string) {
     const profile = profilesMap[log.user_id];
     
     // Ambil name, jika kosong ambil email, jika kosong tampilkan ID
-    const displayName = profile?.name || profile?.email || (log.user_id ? `User (${log.user_id.substring(0, 5)})` : 'System');
+    const displayName = profile?.full_name|| profile?.email || (log.user_id ? `User (${log.user_id.substring(0, 5)})` : 'System');
     
     // Ambil role dari profil, jika kosong tampilkan 'Unknown'
     const displayRole = profile?.role || 'User';

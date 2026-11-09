@@ -28,14 +28,12 @@ export default function ProfitLossPage() {
   // State Pengaturan Tanda Tangan (Dengan Inisialisasi LocalStorage)
   const [isSigSettingsOpen, setIsSigSettingsOpen] = useState(false);
   const [signatures, setSignatures] = useState(() => {
-    // Cek apakah ada data tersimpan di browser
     if (typeof window !== 'undefined' && projectId) {
       const saved = localStorage.getItem(`pnl_sig_${projectId}`);
       if (saved) {
         try { return JSON.parse(saved); } catch (e) { console.error(e); }
       }
     }
-    // Jika tidak ada, gunakan default
     return {
       financeName: 'Finance / Admin',
       financeTitle: '',
@@ -49,29 +47,33 @@ export default function ProfitLossPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // 1. Simpan Otomatis ke LocalStorage saat form TTD diubah
+  // 1. Simpan Otomatis ke LocalStorage
   useEffect(() => {
     if (typeof window !== 'undefined' && projectId) {
       localStorage.setItem(`pnl_sig_${projectId}`, JSON.stringify(signatures));
     }
   }, [signatures, projectId]);
 
-  // 2. Ambil Nama User Login (Hanya jika belum pernah diatur sebelumnya)
+  // 2. Ambil Nama User Login (FIX: Menggunakan full_name)
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('name, email').eq('id', user.id).single();
+        // Ambil full_name dan email sesuai skema database Anda
+        const { data: profile } = await supabase.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle();
         
         let displayName = 'Finance / Admin';
-        if (profile?.name) {
-          displayName = profile.name;
-        } else if (user.email) {
+        
+        // Prioritaskan full_name dari tabel profiles
+        if (profile?.full_name) {
+          displayName = profile.full_name;
+        } 
+        // Fallback ke email jika full_name kosong
+        else if (user.email) {
           const emailPrefix = user.email.split('@')[0];
           displayName = emailPrefix.charAt(0).toUpperCase() + emailPrefix.slice(1);
         }
         
-        // HANYA timpa nama jika user belum pernah mengubah pengaturan TTD
         setSignatures(prev => {
           if (prev.financeName === 'Finance / Admin') {
             return { ...prev, financeName: displayName };
