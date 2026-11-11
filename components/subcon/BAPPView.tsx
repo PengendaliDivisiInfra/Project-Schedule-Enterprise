@@ -158,7 +158,6 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
           signatures: signatures
         });
 
-        // KUNCI BPUTK
         await supabase.from('bputk_documents').update({ is_billed: true }).eq('id', selectedBputkId);
 
         loadHistory();
@@ -252,30 +251,9 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
 
   const sakResult = data ? (
     isReprint && reprintSnapshot ? {
-      A_bruto: data.totalOpnameSdIni, 
-      B_potonganDP: data.nilaiDP,
-      C_dpp: Number(reprintSnapshot.nilai_dpp || 0),
-      D_ppn: Number(reprintSnapshot.nilai_ppn || 0),
-      E_invoice: Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0),
-      F_pph42: Number(reprintSnapshot.nilai_pph || 0),
-      G_invoiceBersih: (Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0)) - Number(reprintSnapshot.nilai_pph || 0),
-      R_retensi: 0,
-      K_kasbon: form.potonganKasbon,
-      Net_transfer: Number(reprintSnapshot.total_value || 0),
-      persenProgres: data.contract.contract_value > 0 ? (data.totalOpnameSdIni / data.contract.contract_value) : 0,
-      taxMode: reprintSnapshot.tax_mode || 'EXCLUDE',
-      ppnPct: data.contract.ppn_pct || 11,
-      pphPct: data.contract.pph_pct || 2,
-      retPct: data.contract.retention_pct || 5
+      A_bruto: data.totalOpnameSdIni, B_potonganDP: data.nilaiDP, C_dpp: Number(reprintSnapshot.nilai_dpp || 0), D_ppn: Number(reprintSnapshot.nilai_ppn || 0), E_invoice: Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0), F_pph42: Number(reprintSnapshot.nilai_pph || 0), G_invoiceBersih: (Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0)) - Number(reprintSnapshot.nilai_pph || 0), R_retensi: 0, K_kasbon: form.potonganKasbon, Net_transfer: Number(reprintSnapshot.total_value || 0), persenProgres: data.contract.contract_value > 0 ? (data.totalOpnameSdIni / data.contract.contract_value) : 0, taxMode: reprintSnapshot.tax_mode || 'EXCLUDE', ppnPct: data.contract.ppn_pct || 11, pphPct: data.contract.pph_pct || 2, retPct: data.contract.retention_pct || 5
     } : hitungSAK({
-      bruttoSd: data.totalOpnameSdIni,
-      nilaiKontrak: data.contract.contract_value,
-      nilaiDP: data.nilaiDP,
-      pphRate: data.contract.pph_pct || 2,
-      ppnRate: data.contract.ppn_pct || 11,
-      retensiRate: data.contract.retention_pct || 5,
-      kasbonDeduct: form.potonganKasbon,
-      taxMode: data.contract.tax_mode || 'EXCLUDE'
+      bruttoSd: data.totalOpnameSdIni, nilaiKontrak: data.contract.contract_value, nilaiDP: data.nilaiDP, pphRate: data.contract.pph_pct || 2, ppnRate: data.contract.ppn_pct || 11, retensiRate: data.contract.retention_pct || 5, kasbonDeduct: form.potonganKasbon, taxMode: data.contract.tax_mode || 'EXCLUDE'
     })
   ) : null;
 
@@ -313,27 +291,27 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     <div className="space-y-6">
       <style dangerouslySetInnerHTML={{__html: webStyles}} />
 
-      <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 print:hidden">
-        <div className="flex justify-between items-center border-b pb-2 mb-2">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 print:hidden">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-3">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
             <FileText className="text-teal-600" /> Form BAPP (Berdasarkan BPUTK)
           </h3>
-          <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-md">
-            <Settings size={16} /> Pengaturan Tanda Tangan
+          <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors border border-slate-200">
+            <Settings size={16} /> Pengaturan TTD
           </button>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih Mandor / SPK</label>
-            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih Mandor / SPK</label>
+            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-medium">
               <option value="">-- Pilih Mandor --</option>
               {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih BPUTK (Sumber Data)</label>
-            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border-teal-300 bg-teal-50 rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none font-bold text-teal-800">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih BPUTK (Sumber Data)</label>
+            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border border-teal-300 bg-teal-50 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-bold text-teal-800">
               <option value="">-- Pilih BPUTK yang belum ditagih --</option>
               {availableBPUTKs.map(b => (
                 <option key={b.id} value={b.id}>
@@ -343,20 +321,20 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
             </select>
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Nomor BAPP</label>
-            <input type="text" value={form.nomorBAPP} onChange={(e) => setForm({...form, nomorBAPP: e.target.value})} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Nomor BAPP</label>
+            <input type="text" value={form.nomorBAPP} onChange={(e) => setForm({...form, nomorBAPP: e.target.value})} disabled={isReprint} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-mono" />
           </div>
           <div className="md:col-span-1">
-            <label className="block text-sm font-bold mb-1 text-slate-700">Mode Harga</label>
-            <div className="w-full border rounded-lg p-2 text-sm bg-slate-100 font-bold text-slate-700">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Mode Harga</label>
+            <div className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-100 font-bold text-slate-700 shadow-sm">
               {data ? data.contract.tax_mode : 'Pilih BPUTK'}
             </div>
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-bold mb-1 text-slate-700">Potongan Kasbon Periode Ini - Rp</label>
-            <input type="number" value={form.potonganKasbon} onChange={(e) => setForm({...form, potonganKasbon: Number(e.target.value)})} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-teal-500 outline-none" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Potongan Kasbon Periode Ini - Rp</label>
+            <input type="number" value={form.potonganKasbon} onChange={(e) => setForm({...form, potonganKasbon: Number(e.target.value)})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all tabular-nums" />
             {data && form.potonganKasbon > (data.totalKasbon - data.totalPotongan) && (
-              <p className="text-red-500 text-xs mt-1 font-bold">Warning: Melebihi Sisa Kasbon ({formatRp(data.totalKasbon - data.totalPotongan)})</p>
+              <p className="text-rose-500 text-xs font-bold mt-1.5 flex items-center gap-1"><AlertTriangle size={12}/> Melebihi Sisa Kasbon ({formatRp(data.totalKasbon - data.totalPotongan)})</p>
             )}
           </div>
         </div>
@@ -367,7 +345,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       </div>
 
       {data && sakResult && (
-        <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-xl print:hidden">
+        <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-2xl print:hidden">
           <div id="bapp-print-area" className="bapp-preview">
             <div style={{ height: '100%', position: 'relative' }}>
               
@@ -434,54 +412,18 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                       <div className="section-title">RINCIAN PEMBAYARAN — REKONSILIASI BILLING (A → C)</div>
                       <table className="list-table">
                         <tbody>
-                          <tr>
-                            <td style={{ width: '70%' }}>1. Nilai Prestasi s/d Periode Lalu (Bruto)</td>
-                            <td className="text-right">: {formatRp(data.totalOpnameSdIni - data.opnames.reduce((sum, o) => sum + Number(o.total), 0))}</td>
-                          </tr>
-                          <tr>
-                            <td>2. Nilai Prestasi Periode Ini (Bruto)</td>
-                            <td className="text-right">: {formatRp(data.opnames.reduce((sum, o) => sum + Number(o.total), 0))}</td>
-                          </tr>
-                          <tr>
-                            <td>3. Total Prestasi s/d Saat Ini (Bruto) [A]</td>
-                            <td className="text-right font-bold">: {formatRp(sakResult.A_bruto)}</td>
-                          </tr>
-                          <tr>
-                            <td>4. (-) Potongan Pengembalian DP [B]</td>
-                            <td className="text-right">: ({formatRp(sakResult.B_potonganDP)})</td>
-                          </tr>
-                          <tr className="bg-yellow">
-                            <td className="font-bold">5. Dasar Pengenaan Pajak (DPP) [C = A - B]</td>
-                            <td className="text-right font-bold">: {formatRp(sakResult.C_dpp)}</td>
-                          </tr>
-                          <tr>
-                            <td>6. (+) Pajak Pertambahan Nilai (PPN {data.contract.ppn_pct || 11}%) [D]</td>
-                            <td className="text-right">: {formatRp(sakResult.D_ppn)}</td>
-                          </tr>
-                          <tr className="bg-green">
-                            <td className="font-bold">7. Total Nilai Invoice / Piutang [E = C + D]</td>
-                            <td className="text-right font-bold">: {formatRp(sakResult.E_invoice)}</td>
-                          </tr>
-                          <tr>
-                            <td>8. (-) Pajak Penghasilan PPh Pasal 4(2) [{data.contract.pph_pct || 2}%] [F]</td>
-                            <td className="text-right">: ({formatRp(sakResult.F_pph42)})</td>
-                          </tr>
-                          <tr>
-                            <td>9. (-) Retensi Proyek ({data.contract.retention_pct || 5}%) [R]</td>
-                            <td className="text-right">: ({formatRp(sakResult.R_retensi)})</td>
-                          </tr>
-                          <tr>
-                            <td>10. (-) Potongan Kasbon & Pembayaran Lainnya [K]</td>
-                            <td className="text-right">: ({formatRp(sakResult.K_kasbon)})</td>
-                          </tr>
-                          <tr>
-                            <td className="font-bold pt-2">TOTAL DIBAYARKAN (NETTO) PERIODE INI [E - F - R - K]</td>
-                            <td className="text-right font-bold pt-2 text-teal-700">: {formatRp(sakResult.Net_transfer)}</td>
-                          </tr>
-                          <tr>
-                            <td className="font-bold">Akumulasi Pembayaran (Netto) s/d Saat Ini</td>
-                            <td className="text-right font-bold">: {formatRp(sakResult.Net_transfer)}</td>
-                          </tr>
+                          <tr><td style={{ width: '70%' }}>1. Nilai Prestasi s/d Periode Lalu (Bruto)</td><td className="text-right">: {formatRp(data.totalOpnameSdIni - data.opnames.reduce((sum, o) => sum + Number(o.total), 0))}</td></tr>
+                          <tr><td>2. Nilai Prestasi Periode Ini (Bruto)</td><td className="text-right">: {formatRp(data.opnames.reduce((sum, o) => sum + Number(o.total), 0))}</td></tr>
+                          <tr><td>3. Total Prestasi s/d Saat Ini (Bruto) [A]</td><td className="text-right font-bold">: {formatRp(sakResult.A_bruto)}</td></tr>
+                          <tr><td>4. (-) Potongan Pengembalian DP [B]</td><td className="text-right">: ({formatRp(sakResult.B_potonganDP)})</td></tr>
+                          <tr className="bg-yellow"><td className="font-bold">5. Dasar Pengenaan Pajak (DPP) [C = A - B]</td><td className="text-right font-bold">: {formatRp(sakResult.C_dpp)}</td></tr>
+                          <tr><td>6. (+) Pajak Pertambahan Nilai (PPN {data.contract.ppn_pct || 11}%) [D]</td><td className="text-right">: {formatRp(sakResult.D_ppn)}</td></tr>
+                          <tr className="bg-green"><td className="font-bold">7. Total Nilai Invoice / Piutang [E = C + D]</td><td className="text-right font-bold">: {formatRp(sakResult.E_invoice)}</td></tr>
+                          <tr><td>8. (-) Pajak Penghasilan PPh Pasal 4(2) [{data.contract.pph_pct || 2}%] [F]</td><td className="text-right">: ({formatRp(sakResult.F_pph42)})</td></tr>
+                          <tr><td>9. (-) Retensi Proyek ({data.contract.retention_pct || 5}%) [R]</td><td className="text-right">: ({formatRp(sakResult.R_retensi)})</td></tr>
+                          <tr><td>10. (-) Potongan Kasbon & Pembayaran Lainnya [K]</td><td className="text-right">: ({formatRp(sakResult.K_kasbon)})</td></tr>
+                          <tr><td className="font-bold pt-2">TOTAL DIBAYARKAN (NETTO) PERIODE INI [E - F - R - K]</td><td className="text-right font-bold pt-2 text-teal-700">: {formatRp(sakResult.Net_transfer)}</td></tr>
+                          <tr><td className="font-bold">Akumulasi Pembayaran (Netto) s/d Saat Ini</td><td className="text-right font-bold">: {formatRp(sakResult.Net_transfer)}</td></tr>
                         </tbody>
                       </table>
 
@@ -507,41 +449,13 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td className="text-center font-bold">A</td>
-                    <td>Nilai Progres Bruto (s/d periode ini)</td>
-                    <td className="text-right">{formatRp(sakResult.A_bruto)}</td>
-                  </tr>
-                  <tr>
-                    <td className="text-center font-bold">B</td>
-                    <td>Potongan Pengembalian DP</td>
-                    <td className="text-right">({formatRp(sakResult.B_potonganDP)})</td>
-                  </tr>
-                  <tr className="bg-yellow">
-                    <td className="text-center font-bold">C</td>
-                    <td>Dasar Pengenaan Pajak (DPP) (C = A - B)</td>
-                    <td className="text-right">{formatRp(sakResult.C_dpp)}</td>
-                  </tr>
-                  <tr>
-                    <td className="text-center font-bold">D</td>
-                    <td>PPN {data.contract.ppn_pct || 11}% (D = C × {data.contract.ppn_pct || 11}%)</td>
-                    <td className="text-right">{formatRp(sakResult.D_ppn)}</td>
-                  </tr>
-                  <tr className="bg-green">
-                    <td className="text-center font-bold">E</td>
-                    <td>Total Nilai Invoice / Piutang (E = C + D)</td>
-                    <td className="text-right font-bold">{formatRp(sakResult.E_invoice)}</td>
-                  </tr>
-                  <tr>
-                    <td className="text-center font-bold">F</td>
-                    <td>Potongan PPh Pasal 4 ayat 2 (Jasa Konstruksi) (F = C × Tarif PPh)</td>
-                    <td className="text-right">({formatRp(sakResult.F_pph42)})</td>
-                  </tr>
-                  <tr>
-                    <td className="text-center font-bold">G</td>
-                    <td>Sisa Kas yang Diterima (Net Transfer) (G = E - F)</td>
-                    <td className="text-right font-bold">{formatRp(sakResult.G_invoiceBersih)}</td>
-                  </tr>
+                  <tr><td className="text-center font-bold">A</td><td>Nilai Progres Bruto (s/d periode ini)</td><td className="text-right">{formatRp(sakResult.A_bruto)}</td></tr>
+                  <tr><td className="text-center font-bold">B</td><td>Potongan Pengembalian DP</td><td className="text-right">({formatRp(sakResult.B_potonganDP)})</td></tr>
+                  <tr className="bg-yellow"><td className="text-center font-bold">C</td><td>Dasar Pengenaan Pajak (DPP) (C = A - B)</td><td className="text-right">{formatRp(sakResult.C_dpp)}</td></tr>
+                  <tr><td className="text-center font-bold">D</td><td>PPN {data.contract.ppn_pct || 11}% (D = C × {data.contract.ppn_pct || 11}%)</td><td className="text-right">{formatRp(sakResult.D_ppn)}</td></tr>
+                  <tr className="bg-green"><td className="text-center font-bold">E</td><td>Total Nilai Invoice / Piutang (E = C + D)</td><td className="text-right font-bold">{formatRp(sakResult.E_invoice)}</td></tr>
+                  <tr><td className="text-center font-bold">F</td><td>Potongan PPh Pasal 4 ayat 2 (Jasa Konstruksi) (F = C × Tarif PPh)</td><td className="text-right">({formatRp(sakResult.F_pph42)})</td></tr>
+                  <tr><td className="text-center font-bold">G</td><td>Sisa Kas yang Diterima (Net Transfer) (G = E - F)</td><td className="text-right font-bold">{formatRp(sakResult.G_invoiceBersih)}</td></tr>
                 </tbody>
               </table>
 
@@ -550,28 +464,24 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                   <tr>
                     <td style={{ width: '50%', paddingRight: '10px' }}>
                       <div className="bill-table bg-gray" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">Nilai Kontrak:</span>
-                        <span className="font-bold">{formatRp(data.contract.contract_value)}</span>
+                        <span className="font-bold">Nilai Kontrak:</span><span className="font-bold">{formatRp(data.contract.contract_value)}</span>
                       </div>
                     </td>
                     <td style={{ width: '50%' }}>
                       <div className="bill-table bg-gray" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">% Progress Opname:</span>
-                        <span className="font-bold">{sakResult.persenProgres > 0 ? (sakResult.persenProgres * 100).toFixed(2) : 0}%</span>
+                        <span className="font-bold">% Progress Opname:</span><span className="font-bold">{sakResult.persenProgres > 0 ? (sakResult.persenProgres * 100).toFixed(2) : 0}%</span>
                       </div>
                     </td>
                   </tr>
                   <tr>
                     <td style={{ paddingRight: '10px' }}>
                       <div className="bill-table bg-yellow" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">Nilai DP Awal:</span>
-                        <span className="font-bold">{formatRp(data.nilaiDP)}</span>
+                        <span className="font-bold">Nilai DP Awal:</span><span className="font-bold">{formatRp(data.nilaiDP)}</span>
                       </div>
                     </td>
                     <td>
                       <div className="bill-table bg-green" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">Retensi ({data.contract.retention_pct || 5}%):</span>
-                        <span className="font-bold">{formatRp(sakResult.R_retensi)}</span>
+                        <span className="font-bold">Retensi ({data.contract.retention_pct || 5}%):</span><span className="font-bold">{formatRp(sakResult.R_retensi)}</span>
                       </div>
                     </td>
                   </tr>
@@ -597,74 +507,76 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                   </tbody>
                 </table>
               </div>
-
             </div>
           </div>
           
           <div className="mt-6 flex justify-end w-full max-w-[297mm] print:hidden">
-             <button onClick={handlePrint} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-lg font-bold flex items-center gap-2 shadow-md transition-colors">
+             <button onClick={handlePrint} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-md transition-colors">
               {saving ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} {isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BAPP'}
              </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white border rounded-xl shadow-sm overflow-x-auto print:hidden mt-10">
-        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Riwayat Pembuatan BAPP</div>
-        <table className="w-full text-left text-sm min-w-[800px]">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="p-4 border-b">No. BAPP</th>
-              <th className="p-4 border-b">Tanggal Dibuat</th>
-              <th className="p-4 border-b">Vendor / SPK</th>
-              <th className="p-4 border-b">Periode</th>
-              <th className="p-4 border-b">Nilai Netto</th>
-              <th className="p-4 border-b text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((b) => (
-              <tr key={b.id} className="hover:bg-slate-50">
-                <td className="p-4 border-b font-bold text-teal-700">{b.bapp_number}</td>
-                <td className="p-4 border-b">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b">
-                  <span className="font-bold">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
-                  <span className="block text-xs text-slate-500">{b.subcontractor_contracts?.spk_number}</span>
-                </td>
-                <td className="p-4 border-b">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b font-bold"><MoneyText value={b.total_value} /></td>
-                <td className="p-4 border-b text-right flex justify-end items-center gap-3">
-                  <button onClick={() => handleReprint(b)} className="text-blue-600 hover:underline text-xs font-medium">
-                    Lihat / Cetak Ulang
-                  </button>
-                  <button onClick={() => setDeleteTarget(b.id)} className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" title="Hapus Riwayat">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
+      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden print:hidden mt-10">
+        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700 flex justify-between items-center">
+          <span>Riwayat Pembuatan BAPP</span>
+        </div>
+        <div className="overflow-x-auto max-h-[60vh]">
+          <table className="w-full text-left text-sm min-w-[900px]">
+            <thead className="bg-slate-50 border-b border-slate-300">
+              <tr className="text-slate-600 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">No. BAPP</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Tanggal Dibuat</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Vendor / SPK</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Periode</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Nilai Netto</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Aksi</th>
               </tr>
-            ))}
-            {history.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada riwayat BAPP.</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {history.length === 0 ? (
+                <tr><td colSpan={6} className="p-16 text-center text-slate-400 font-medium italic">Belum ada riwayat BAPP.</td></tr>
+              ) : history.map((b) => (
+                <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="p-4 font-bold font-mono text-teal-700">{b.bapp_number}</td>
+                  <td className="p-4 font-medium text-slate-600">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4">
+                    <span className="font-bold text-slate-800">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
+                    <span className="block text-xs text-slate-500 font-mono mt-0.5">{b.subcontractor_contracts?.spk_number}</span>
+                  </td>
+                  <td className="p-4 text-slate-600">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4 text-right tabular-nums font-bold text-emerald-600"><MoneyText value={b.total_value} /></td>
+                  <td className="p-4 text-right flex justify-end items-center gap-2">
+                    <button onClick={() => handleReprint(b)} className="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
+                      Cetak Ulang
+                    </button>
+                    <button onClick={() => setDeleteTarget(b.id)} className="text-rose-500 hover:text-rose-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors" title="Hapus Riwayat">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {!!deleteTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-rose-100 mb-4 border border-rose-200">
+                <AlertTriangle className="h-8 w-8 text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Riwayat BAPP</h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 font-medium">
                 Apakah Anda yakin ingin menghapus data riwayat ini? Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
               </p>
             </div>
-            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">
-              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
-                Batal
-              </button>
-              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t border-slate-100">
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Batal</button>
+              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-6 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 flex items-center gap-2 transition-all">
                 {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Ya, Hapus
               </button>
             </div>

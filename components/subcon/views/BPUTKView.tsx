@@ -29,7 +29,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
   const [reprintSnapshot, setReprintSnapshot] = useState<any>(null);
   const [showOverlapModal, setShowOverlapModal] = useState(false);
   
-  // State Baru untuk Edit
   const [editTarget, setEditTarget] = useState<any | null>(null);
 
   const [showSigSettings, setShowSigSettings] = useState(false);
@@ -101,7 +100,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
 
   const handleGenerate = (e: React.FormEvent) => {
     e.preventDefault();
-    setEditTarget(null); // Reset mode edit jika generate baru
+    setEditTarget(null);
     fetchData(form.contractId, form.tglMulai, form.tglSelesai, false);
   };
 
@@ -161,13 +160,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       totalNilaiSisa += nilaiSisa;
 
       return {
-        ...item,
-        volSaatIni,
-        nilaiSaatIni,
-        volSd,
-        nilaiSd,
-        volSisa,
-        nilaiSisa
+        ...item, volSaatIni, nilaiSaatIni, volSd, nilaiSd, volSisa, nilaiSisa
       };
     });
 
@@ -190,33 +183,12 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       const ppn = Number(reprintSnapshot.nilai_ppn || 0);
       const pph = Number(reprintSnapshot.nilai_pph || 0);
       return {
-        A_bruto: currentData.totalNilaiSaatIni,
-        B_potonganDP: 0,
-        C_dpp: dpp,
-        D_ppn: ppn,
-        E_invoice: dpp + ppn,
-        F_pph42: pph,
-        G_invoiceBersih: (dpp + ppn) - pph,
-        R_retensi: 0,
-        K_kasbon: currentData.totalPotongan,
-        Net_transfer: Number(reprintSnapshot.total_value || 0),
-        persenProgres: 0,
-        taxMode: reprintSnapshot.tax_mode as any,
-        ppnPct: currentData.contract.ppn_pct || 11,
-        pphPct: currentData.contract.pph_pct || 2,
-        retPct: currentData.contract.retention_pct || 5
+        A_bruto: currentData.totalNilaiSaatIni, B_potonganDP: 0, C_dpp: dpp, D_ppn: ppn, E_invoice: dpp + ppn, F_pph42: pph, G_invoiceBersih: (dpp + ppn) - pph, R_retensi: 0, K_kasbon: currentData.totalPotongan, Net_transfer: Number(reprintSnapshot.total_value || 0), persenProgres: 0, taxMode: reprintSnapshot.tax_mode as any, ppnPct: currentData.contract.ppn_pct || 11, pphPct: currentData.contract.pph_pct || 2, retPct: currentData.contract.retention_pct || 5
       };
     }
 
     return hitungSAK({
-      bruttoSd: currentData.totalNilaiSaatIni,
-      nilaiKontrak: currentData.contract.contract_value,
-      nilaiDP: 0,
-      pphRate: currentData.contract.pph_pct || 2,
-      ppnRate: currentData.contract.ppn_pct || 11,
-      retensiRate: currentData.contract.retention_pct || 5,
-      kasbonDeduct: currentData.totalPotongan,
-      taxMode: currentData.contract.tax_mode || 'EXCLUDE'
+      bruttoSd: currentData.totalNilaiSaatIni, nilaiKontrak: currentData.contract.contract_value, nilaiDP: 0, pphRate: currentData.contract.pph_pct || 2, ppnRate: currentData.contract.ppn_pct || 11, retensiRate: currentData.contract.retention_pct || 5, kasbonDeduct: currentData.totalPotongan, taxMode: currentData.contract.tax_mode || 'EXCLUDE'
     });
   };
 
@@ -244,9 +216,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
     setShowOverlapModal(false);
     try {
       const itemsToSave = currentData!.items.map(i => ({
-        item_id: i.id,
-        volume: i.volSaatIni,
-        price: i.hargaSatuan
+        item_id: i.id, volume: i.volSaatIni, price: i.hargaSatuan
       }));
       await saveOpnameProgress(form.contractId, form.tglSelesai, itemsToSave);
       showToast('Progress fisik berhasil disimpan', 'success');
@@ -266,34 +236,14 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       setLoading(true);
       if (!isReprint) {
         if (editTarget) {
-          // MODE EDIT: Update database
           await supabase.from('bputk_documents').update({
-            bputk_number: form.nomorBPUTK,
-            period_start: form.tglMulai,
-            period_end: form.tglSelesai,
-            total_value: fin.Net_transfer,
-            tax_mode: fin.taxMode,
-            nilai_dpp: fin.C_dpp,
-            nilai_ppn: fin.D_ppn,
-            nilai_pph: fin.F_pph42,
-            signatures: signatures
+            bputk_number: form.nomorBPUTK, period_start: form.tglMulai, period_end: form.tglSelesai, total_value: fin.Net_transfer, tax_mode: fin.taxMode, nilai_dpp: fin.C_dpp, nilai_ppn: fin.D_ppn, nilai_pph: fin.F_pph42, signatures: signatures
           }).eq('id', editTarget.id);
           showToast('BPUTK berhasil diperbarui', 'success');
           setEditTarget(null);
         } else {
-          // MODE BARU: Insert database
           await saveBPUTKDocument({
-            project_id: projectId,
-            contract_id: form.contractId,
-            bputk_number: form.nomorBPUTK,
-            period_start: form.tglMulai,
-            period_end: form.tglSelesai,
-            total_value: fin.Net_transfer,
-            tax_mode: fin.taxMode,
-            nilai_dpp: fin.C_dpp,
-            nilai_ppn: fin.D_ppn,
-            nilai_pph: fin.F_pph42,
-            signatures: signatures
+            project_id: projectId, contract_id: form.contractId, bputk_number: form.nomorBPUTK, period_start: form.tglMulai, period_end: form.tglSelesai, total_value: fin.Net_transfer, tax_mode: fin.taxMode, nilai_dpp: fin.C_dpp, nilai_ppn: fin.D_ppn, nilai_pph: fin.F_pph42, signatures: signatures
           });
         }
         loadHistory();
@@ -344,14 +294,11 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       `;
 
       const res = await fetch('/api/generate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: fullHtml, format: 'A3', isLandscape: true })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: fullHtml, format: 'A3', isLandscape: true })
       });
 
       if (!res.ok) throw new Error('Gagal generate PDF dari server');
       const blob = await res.blob();
-
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -371,7 +318,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      // Hard Delete karena BPUTK fisik belum masuk ranah finansial
       await deleteBPUTKDocument(deleteTarget);
       showToast('Riwayat BPUTK berhasil dihapus permanen', 'success');
       loadHistory();
@@ -425,43 +371,43 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       <style dangerouslySetInnerHTML={{ __html: webStyles }} />
 
       {/* FORM FILTER */}
-      <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 print:hidden">
-        <div className="flex justify-between items-center border-b pb-2 mb-2">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 print:hidden">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-3">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
             <FileText className="text-emerald-600" /> {editTarget ? 'Edit Progress BPUTK' : 'Input Progress & Cetak BPUTK'}
           </h3>
-          <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm text-slate-500 hover:text-slate-800 flex items-center gap-1 bg-slate-100 px-3 py-1.5 rounded-md">
-            <Settings size={16} /> Pengaturan Tanda Tangan
+          <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors border border-slate-200">
+            <Settings size={16} /> Pengaturan TTD
           </button>
         </div>
         
-        <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs mb-4 border border-blue-200 flex items-start gap-2">
-          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-          <p><strong>Informasi:</strong> Silakan edit kolom <b>Periode Saat Ini (Warna Kuning)</b> di tabel bawah, lalu klik <b>Simpan Progress</b>. Volume yang diinput akan dicatat sebagai progress per tanggal <b>{new Date(form.tglSelesai).toLocaleDateString('id-ID')}</b>.</p>
+        <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm mb-5 border border-blue-200 flex items-start gap-3 shadow-sm">
+          <AlertCircle size={20} className="mt-0.5 flex-shrink-0" />
+          <p className="font-medium"><strong>Informasi:</strong> Silakan edit kolom <b>Periode Saat Ini (Warna Kuning)</b> di tabel bawah, lalu klik <b>Simpan Progress</b>. Volume yang diinput akan dicatat sebagai progress per tanggal <b>{new Date(form.tglSelesai).toLocaleDateString('id-ID')}</b>.</p>
         </div>
 
         <form onSubmit={handleGenerate} className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="md:col-span-1">
-            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih Mandor</label>
-            <select value={form.contractId} onChange={(e) => setForm({ ...form, contractId: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih Mandor</label>
+            <select value={form.contractId} onChange={(e) => setForm({ ...form, contractId: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all font-medium">
               <option value="">-- Pilih Mandor --</option>
               {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
             </select>
           </div>
           <div className="md:col-span-1">
-            <label className="block text-sm font-bold mb-1 text-slate-700">Nomor BPUTK</label>
-            <input type="text" value={form.nomorBPUTK} onChange={(e) => setForm({ ...form, nomorBPUTK: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Nomor BPUTK</label>
+            <input type="text" value={form.nomorBPUTK} onChange={(e) => setForm({ ...form, nomorBPUTK: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all font-mono" />
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Dari Tanggal</label>
-            <input type="date" value={form.tglMulai} onChange={(e) => setForm({ ...form, tglMulai: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Dari Tanggal</label>
+            <input type="date" value={form.tglMulai} onChange={(e) => setForm({ ...form, tglMulai: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" />
           </div>
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Sampai Tanggal</label>
-            <input type="date" value={form.tglSelesai} onChange={(e) => setForm({ ...form, tglSelesai: e.target.value })} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Sampai Tanggal</label>
+            <input type="date" value={form.tglSelesai} onChange={(e) => setForm({ ...form, tglSelesai: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all" />
           </div>
           <div className="flex items-end">
-            <button type="submit" disabled={loading} className="w-full px-4 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg font-bold flex justify-center items-center gap-2 transition-colors">
+            <button type="submit" disabled={loading} className="w-full px-4 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold flex justify-center items-center gap-2 transition-all shadow-md shadow-emerald-500/20">
               {loading ? <Loader2 className="animate-spin" size={18} /> : <FileText size={18} />} Tampilkan
             </button>
           </div>
@@ -474,19 +420,19 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
 
       {/* PREVIEW AREA */}
       {currentData && fin && (
-        <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-xl print:bg-white print:p-0">
+        <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-2xl print:bg-white print:p-0">
           
           <div className="w-full max-w-[420mm] flex justify-between items-center mb-4 print:hidden">
-            <div className="text-sm text-slate-600 font-medium">
-              Total Netto Periode Ini: <span className="font-bold text-emerald-700 text-lg ml-1"><MoneyText value={fin.Net_transfer} /></span>
+            <div className="text-sm font-bold text-slate-600 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200">
+              Total Netto Periode Ini: <span className="text-emerald-700 text-lg ml-1 tabular-nums"><MoneyText value={fin.Net_transfer} /></span>
             </div>
             <div className="flex gap-3">
               {!isReprint && (
-                <button onClick={handleSaveProgress} disabled={saving || loading} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-colors">
+                <button onClick={handleSaveProgress} disabled={saving || loading} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-md transition-all">
                   {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />} Simpan Progress
                 </button>
               )}
-              <button onClick={handlePrint} disabled={loading || saving} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-md transition-colors">
+              <button onClick={handlePrint} disabled={loading || saving} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-md transition-all">
                 {loading ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} {editTarget ? 'Update & Cetak BPUTK' : (isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BPUTK')}
               </button>
             </div>
@@ -502,9 +448,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tbody>
             </table>
             
-            {/* Table BPUTK disini (sama persis dengan kode sebelumnya) */}
             <table className="table-bputk">
-               {/* ... (Isi tabel BPUTK Anda) ... */}
                <thead>
                 <tr>
                   <th rowSpan={2} style={{ width: '3%' }}>No</th>
@@ -592,7 +536,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tfoot>
             </table>
 
-            {/* SAK Box */}
             <div className="sak-box">
               <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
                 📐 RUMUS SAK/KUP: <span style={{ background: '#fff', padding: '1px 6px', border: '1px solid #e2e8f0', borderRadius: '3px' }}>Net = A − F + D − R − K</span> | 
@@ -604,9 +547,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </div>
             </div>
 
-            {/* Summary Table */}
             <table className="summary-table">
-               {/* ... (Isi summary table BPUTK Anda) ... */}
                <tbody>
                 <tr className="bg-gray">
                   <td className="summary-label">NILAI BERSIH DIBAYARKAN (NETTO) PERIODE LALU :</td>
@@ -643,9 +584,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tbody>
             </table>
 
-            {/* Mutasi Table */}
             <table className="mutasi-table">
-               {/* ... (Isi mutasi table BPUTK Anda) ... */}
                <tbody>
                 <tr>
                   <td>
@@ -670,7 +609,6 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               </tbody>
             </table>
 
-            {/* Signature */}
             <table className="sig-table">
               <tbody>
                 <tr>
@@ -689,88 +627,91 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       )}
 
       {/* HISTORY TABLE */}
-      <div className="bg-white border rounded-xl shadow-sm overflow-x-auto print:hidden mt-10">
-        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Riwayat Pembuatan BPUTK</div>
-        <table className="w-full text-left text-sm min-w-[900px]">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="p-4 border-b">No. BPUTK</th>
-              <th className="p-4 border-b">Tanggal Dibuat</th>
-              <th className="p-4 border-b">Vendor / SPK</th>
-              <th className="p-4 border-b">Periode</th>
-              <th className="p-4 border-b">Nilai Netto</th>
-              <th className="p-4 border-b text-center">Status Penagihan</th>
-              <th className="p-4 border-b text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((b) => (
-              <tr key={b.id} className="hover:bg-slate-50">
-                <td className="p-4 border-b font-bold text-emerald-700">{b.bputk_number}</td>
-                <td className="p-4 border-b">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b">
-                  <span className="font-bold">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
-                  <span className="block text-xs text-slate-500">{b.subcontractor_contracts?.spk_number}</span>
-                </td>
-                <td className="p-4 border-b">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b font-bold"><MoneyText value={b.total_value} /></td>
-                
-                <td className="p-4 border-b text-center">
-                  {b.is_billed ? (
-                    <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold border">
-                      <CheckCircle2 size={12} className="inline mr-1" /> Sudah Ditagih
-                    </span>
-                  ) : (
-                    <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold border border-green-200">
-                      ● Belum Ditagih
-                    </span>
-                  )}
-                </td>
-
-                {/* FITUR EDIT & HAPUS DENGAN PENGUNCIAN */}
-                <td className="p-4 border-b text-right flex justify-end items-center gap-2">
-                  <button onClick={() => handleReprint(b)} className="text-blue-600 hover:underline text-xs font-medium mr-2">
-                    Cetak
-                  </button>
-                  {!b.is_billed ? (
-                    <>
-                      <button onClick={() => handleEdit(b)} className="text-amber-600 hover:text-amber-800 p-1.5 bg-amber-50 hover:bg-amber-100 rounded-md transition-colors" title="Edit BPUTK">
-                        <Pencil size={16} />
-                      </button>
-                      <button onClick={() => setDeleteTarget(b.id)} className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" title="Hapus Permanen">
-                        <Trash2 size={16} />
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-2 py-1 rounded">TERKUNCI</span>
-                  )}
-                </td>
+      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden print:hidden mt-10">
+        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700 flex justify-between items-center">
+          <span>Riwayat Pembuatan BPUTK</span>
+        </div>
+        <div className="overflow-x-auto max-h-[60vh]">
+          <table className="w-full text-left text-sm min-w-[900px]">
+            <thead className="bg-slate-50 border-b border-slate-300">
+              <tr className="text-slate-600 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">No. BPUTK</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Tanggal Dibuat</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Vendor / SPK</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Periode</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Nilai Netto</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-center sticky top-0 bg-slate-50 z-10">Status</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Aksi</th>
               </tr>
-            ))}
-            {history.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">Belum ada riwayat BPUTK.</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {history.length === 0 ? (
+                <tr><td colSpan={7} className="p-16 text-center text-slate-400 font-medium italic">Belum ada riwayat BPUTK.</td></tr>
+              ) : history.map((b) => (
+                <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="p-4 font-bold font-mono text-emerald-700">{b.bputk_number}</td>
+                  <td className="p-4 font-medium text-slate-600">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4">
+                    <span className="font-bold text-slate-800">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
+                    <span className="block text-xs text-slate-500 font-mono mt-0.5">{b.subcontractor_contracts?.spk_number}</span>
+                  </td>
+                  <td className="p-4 text-slate-600">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4 text-right tabular-nums font-bold text-emerald-600"><MoneyText value={b.total_value} /></td>
+                  
+                  <td className="p-4 text-center">
+                    {b.is_billed ? (
+                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold border border-slate-200">
+                        <CheckCircle2 size={12} className="inline mr-1" /> Sudah Ditagih
+                      </span>
+                    ) : (
+                      <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold border border-emerald-200">
+                        ● Belum Ditagih
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="p-4 text-right flex justify-end items-center gap-2">
+                    <button onClick={() => handleReprint(b)} className="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
+                      Cetak
+                    </button>
+                    {!b.is_billed ? (
+                      <>
+                        <button onClick={() => handleEdit(b)} className="text-amber-600 hover:text-amber-800 p-1.5 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors" title="Edit BPUTK">
+                          <Pencil size={14} />
+                        </button>
+                        <button onClick={() => setDeleteTarget(b.id)} className="text-rose-500 hover:text-rose-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors" title="Hapus Permanen">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-2 py-1 rounded-lg border border-slate-200">TERKUNCI</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* MODAL WARNING OVERLAP */}
-      {/* ... (Sama seperti sebelumnya) ... */}
       {showOverlapModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 mb-4">
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 mb-4 border border-amber-200">
                 <AlertTriangle className="h-8 w-8 text-amber-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Peringatan Tumpang Tindih</h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 font-medium">
                 Ditemukan data opname sebelumnya pada periode tanggal ini. Jika Anda melanjutkan, data lama akan <b>ditimpa (di-update)</b> dengan data baru yang Anda inputkan. Lanjutkan?
               </p>
             </div>
-            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">
-              <button onClick={() => setShowOverlapModal(false)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t border-slate-100">
+              <button onClick={() => setShowOverlapModal(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">
                 Batal
               </button>
-              <button onClick={processSave} disabled={saving} className="px-4 py-2 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+              <button onClick={processSave} disabled={saving} className="px-6 py-2.5 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md shadow-amber-500/20 flex items-center gap-2 transition-all">
                 {saving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />} Ya, Timpa Data
               </button>
             </div>
@@ -780,22 +721,22 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
 
       {/* MODAL HAPUS */}
       {!!deleteTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-rose-100 mb-4 border border-rose-200">
+                <AlertTriangle className="h-8 w-8 text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Riwayat BPUTK</h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 font-medium">
                 Apakah Anda yakin ingin menghapus data riwayat ini secara permanen? Tindakan ini tidak dapat dibatalkan.
               </p>
             </div>
-            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">
-              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t border-slate-100">
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">
                 Batal
               </button>
-              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-6 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 flex items-center gap-2 transition-all">
                 {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Ya, Hapus
               </button>
             </div>

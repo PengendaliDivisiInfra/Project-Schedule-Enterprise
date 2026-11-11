@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getSPKHistory } from '@/lib/services/subcon.service';
 import { supabase } from '@/lib/supabase';
-import { X, History, FileText } from 'lucide-react';
+import { X, History, FileText, Activity, AlertCircle, CheckCircle2 } from 'lucide-react'; // <-- CheckCircle2 DITAMBAHKAN DI SINI
 
 export function HistoryModal({ isOpen, onClose, contractId }: { isOpen: boolean, onClose: () => void, contractId: string | null }) {
   const [logs, setLogs] = useState<any[]>([]);
@@ -14,13 +14,10 @@ export function HistoryModal({ isOpen, onClose, contractId }: { isOpen: boolean,
   useEffect(() => {
     if (isOpen && contractId) {
       setLoading(true);
-      
       const fetchHistory = async () => {
-        // 1. Ambil Audit Logs
         const auditData = await getSPKHistory(contractId);
         setLogs(auditData);
 
-        // 2. Ambil Data Addendum
         const { data: addData } = await supabase
           .from('subcontractor_addendums')
           .select('*')
@@ -30,62 +27,67 @@ export function HistoryModal({ isOpen, onClose, contractId }: { isOpen: boolean,
         setAddendums(addData || []);
         setLoading(false);
       };
-
       fetchHistory();
     }
   }, [isOpen, contractId]);
 
   if (!isOpen) return null;
 
+  const tabClass = (isActive: boolean) => `pb-3 px-2 font-bold text-sm flex items-center gap-2 border-b-2 transition-colors ${isActive ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`;
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl p-6 max-h-[85vh] flex flex-col">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
         
-        {/* Header Modal */}
-        <div className="flex justify-between items-center mb-4 border-b pb-2">
-          <h2 className="text-xl font-bold flex items-center gap-2"><History className="text-blue-600"/> Riwayat Perubahan</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700"><X size={20}/></button>
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><History className="text-indigo-600"/> Riwayat Perubahan</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-rose-500 bg-white p-1.5 rounded-lg border border-slate-200 transition-colors"><X size={20}/></button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-4 mb-4">
-          <button onClick={() => setActiveTab('addendum')} className={`pb-2 px-1 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'addendum' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>
+        <div className="flex gap-6 px-6 pt-4 border-b border-slate-200 bg-slate-50/50">
+          <button onClick={() => setActiveTab('addendum')} className={tabClass(activeTab === 'addendum')}>
             <FileText size={16}/> Riwayat Addendum
           </button>
-          <button onClick={() => setActiveTab('audit')} className={`pb-2 px-1 font-medium text-sm flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'audit' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>
-            <History size={16}/> Audit Sistem (Log)
+          <button onClick={() => setActiveTab('audit')} className={tabClass(activeTab === 'audit')}>
+            <Activity size={16}/> Audit Sistem (Log)
           </button>
         </div>
         
-        <div className="overflow-y-auto flex-1 space-y-4 pr-2">
+        <div className="p-6 overflow-y-auto flex-1 space-y-4 bg-slate-50">
           {loading ? (
-            <p className="text-center text-slate-500 py-8">Memuat riwayat...</p>
+            <p className="text-center text-slate-500 py-10 font-bold">Memuat riwayat...</p>
           ) : (
             <>
               {/* TAB 1: ADDENDUM */}
               {activeTab === 'addendum' && (
                 <>
                   {addendums.length === 0 ? (
-                    <p className="text-center text-slate-500 py-8">Belum ada riwayat Addendum pada SPK ini.</p>
+                    <div className="py-16 flex flex-col items-center justify-center text-slate-400">
+                      <FileText size={48} className="mb-4 opacity-20" />
+                      <p className="font-bold text-lg text-slate-600">Belum ada riwayat Addendum.</p>
+                    </div>
                   ) : (
                     addendums.map((add) => (
-                      <div key={add.id} className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-                        <div className="flex justify-between items-start mb-2">
+                      <div key={add.id} className="bg-white p-5 rounded-xl border border-amber-200 shadow-sm relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-amber-500"></div>
+                        <div className="flex justify-between items-start mb-3">
                           <div>
-                            <span className="bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase">Addendum #{add.addendum_no}</span>
-                            <h4 className="font-bold text-amber-900 mt-1">{add.title}</h4>
-                            <p className="text-sm text-amber-800">{add.description}</p>
+                            <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded border border-amber-200 uppercase tracking-wider">Addendum #{add.addendum_no}</span>
+                            <h4 className="font-bold text-slate-800 text-base mt-1">{add.title}</h4>
+                            <p className="text-sm text-slate-600 font-medium mt-1">{add.description}</p>
                           </div>
-                          <span className="text-xs text-amber-600 font-medium">{new Date(add.created_at).toLocaleDateString('id-ID')}</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{new Date(add.created_at).toLocaleDateString('id-ID')}</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 mt-3 text-sm border-t border-amber-200 pt-2">
+                        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-slate-100">
                           <div>
-                            <p className="text-slate-500 text-xs">Nilai Kontrak Lama</p>
-                            <p className="font-bold text-slate-700">Rp {Number(add.old_contract_value).toLocaleString('id-ID')}</p>
+                            <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">Nilai Kontrak Lama</p>
+                            <p className="font-bold text-slate-700 tabular-nums">Rp {Number(add.old_contract_value).toLocaleString('id-ID')}</p>
                           </div>
                           <div>
-                            <p className="text-slate-500 text-xs">Nilai Kontrak Baru</p>
-                            <p className="font-bold text-green-700">Rp {Number(add.new_contract_value).toLocaleString('id-ID')}</p>
+                            <p className="text-slate-500 text-[10px] uppercase font-bold tracking-wider mb-1">Nilai Kontrak Baru</p>
+                            <p className="font-bold text-emerald-600 tabular-nums">Rp {Number(add.new_contract_value).toLocaleString('id-ID')}</p>
                           </div>
                         </div>
                       </div>
@@ -98,23 +100,26 @@ export function HistoryModal({ isOpen, onClose, contractId }: { isOpen: boolean,
               {activeTab === 'audit' && (
                 <>
                   {logs.length === 0 ? (
-                    <p className="text-center text-slate-500 py-8">Belum ada log sistem.</p>
+                    <div className="py-16 flex flex-col items-center justify-center text-slate-400">
+                      <Activity size={48} className="mb-4 opacity-20" />
+                      <p className="font-bold text-lg text-slate-600">Belum ada log sistem.</p>
+                    </div>
                   ) : (
                     logs.map((log) => (
-                      <div key={log.id} className="bg-slate-50 p-4 rounded-lg border text-sm">
-                        <div className="flex justify-between text-xs text-slate-500 mb-3 border-b pb-2">
-                          <span>Aksi: <strong className="uppercase text-blue-600 bg-blue-100 px-2 py-0.5 rounded">{log.action}</strong></span>
-                          <span>{new Date(log.created_at).toLocaleString('id-ID')}</span>
+                      <div key={log.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between text-xs mb-3 border-b border-slate-100 pb-2">
+                          <span className="font-bold text-slate-600">Aksi: <strong className="uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{log.action}</strong></span>
+                          <span className="font-bold text-slate-400">{new Date(log.created_at).toLocaleString('id-ID')}</span>
                         </div>
                         {log.action === 'UPDATE' && (
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-red-50 p-2 rounded text-xs text-red-700 overflow-x-auto">
-                              <p className="font-bold mb-1">Sebelum:</p>
-                              <pre>{JSON.stringify(log.old_data, null, 2)}</pre>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="bg-rose-50 p-3 rounded-lg border border-rose-100 text-[11px] text-rose-800 overflow-x-auto">
+                              <p className="font-bold mb-1 flex items-center gap-1"><AlertCircle size={12}/> Sebelum:</p>
+                              <pre className="font-mono">{JSON.stringify(log.old_data, null, 2)}</pre>
                             </div>
-                            <div className="bg-green-50 p-2 rounded text-xs text-green-700 overflow-x-auto">
-                              <p className="font-bold mb-1">Sesudah:</p>
-                              <pre>{JSON.stringify(log.new_data, null, 2)}</pre>
+                            <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 text-[11px] text-emerald-800 overflow-x-auto">
+                              <p className="font-bold mb-1 flex items-center gap-1"><CheckCircle2 size={12}/> Sesudah:</p>
+                              <pre className="font-mono">{JSON.stringify(log.new_data, null, 2)}</pre>
                             </div>
                           </div>
                         )}

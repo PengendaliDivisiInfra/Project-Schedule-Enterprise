@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Printer, FileText, Loader2, CheckSquare, Zap, RefreshCw, CheckCircle2, History, Trash2, AlertTriangle } from 'lucide-react';
+import { Printer, FileText, Loader2, CheckSquare, Zap, RefreshCw, CheckCircle2, History, Trash2, AlertTriangle, Settings } from 'lucide-react';
 import { getEligibleDocuments } from '@/lib/services/subcon.service';
 import { getBAPPData } from '@/lib/services/subcon.service';
 import { useCOA } from '@/lib/hooks/useCOA';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { supabase } from '@/lib/supabase';
 
-// --- FUNGSI TERBILANG ---
 function terbilang(angka: number): string {
   if (angka === 0) return "Nol";
   const huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
@@ -40,43 +39,25 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
   const [isSaving, setIsSaving] = useState(false);
   const [coaList, setCoaList] = useState<CoaItem[]>([]);
   const [history, setHistory] = useState<any[]>([]);
-
-  // State untuk Dropdown Dokumen
   const [availableDocs, setAvailableDocs] = useState<any[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
 
-  // State untuk Hapus
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // INTEGRASI COA HOOK
   const { getAccountCode, loading: loadingCOA } = useCOA();
 
-  // State Form
   const [form, setForm] = useState({
-    contractId: '',
-    receipt_number: `001/PEM.KB/MDR/CKMT/X/2026`,
-    receipt_date: new Date().toISOString().split('T')[0],
-    location: projectData?.location || '',
+    contractId: '', receipt_number: `001/PEM.KB/MDR/CKMT/X/2026`,
+    receipt_date: new Date().toISOString().split('T')[0], location: projectData?.location || '',
     period_start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     period_end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
-    vendor_name: '',
-    spk_number: '',
-    work_description: '',
+    vendor_name: '', spk_number: '', work_description: '',
   });
 
-  // --- FETCH HISTORY ---
   const fetchHistory = async () => {
     try {
-      const { data, error } = await supabase
-        .from('subcon_receipts')
-        .select(`
-          *,
-          subcontractor_contracts ( spk_number, subcontractors (company_name) )
-        `)
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false });
-      
+      const { data, error } = await supabase.from('subcon_receipts').select(`*, subcontractor_contracts ( spk_number, subcontractors (company_name) )`).eq('project_id', projectId).order('created_at', { ascending: false });
       if (error) throw error;
       setHistory(data || []);
     } catch (err: any) {
@@ -88,7 +69,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     fetchHistory();
   }, [projectId]);
 
-  // Inisialisasi Dynamic COA List
   useEffect(() => {
     if (!loadingCOA) {
       const codeUpah = getAccountCode('Beban Upah Mandor') || '5101';
@@ -116,41 +96,24 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     const spk = spks.find(s => s.id === spkId);
     
     if (spk) {
-      setForm(prev => ({
-        ...prev,
-        contractId: spk.id,
-        vendor_name: spk.subcontractor_name,
-        spk_number: spk.spk_number,
-        work_description: spk.work_description || '-'
-      }));
-
+      setForm(prev => ({ ...prev, contractId: spk.id, vendor_name: spk.subcontractor_name, spk_number: spk.spk_number, work_description: spk.work_description || '-' }));
       try {
         const docs = await getEligibleDocuments(spk.id);
         setAvailableDocs(docs);
         setSelectedDocId('');
-      } catch (err) {
-        console.error(err);
-      }      
+      } catch (err) { console.error(err); }      
     } else {
       setForm(prev => ({ ...prev, contractId: '', vendor_name: '', spk_number: '', work_description: '' }));
-      setAvailableDocs([]);
-      setSelectedDocId('');  
+      setAvailableDocs([]); setSelectedDocId('');  
     }
   };
 
   const handleDocSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const docId = e.target.value;
     setSelectedDocId(docId);
-
     if (docId) {
       const selectedDoc = availableDocs.find(d => d.id === docId);
-      if (selectedDoc) {
-        setForm(prev => ({
-          ...prev,
-          period_start: selectedDoc.period_start,
-          period_end: selectedDoc.period_end
-        }));
-      }
+      if (selectedDoc) setForm(prev => ({ ...prev, period_start: selectedDoc.period_start, period_end: selectedDoc.period_end }));
     }
   };
 
@@ -161,22 +124,13 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     setLoading(true);
     try {
       const res = await getBAPPData(form.contractId, form.period_start, form.period_end);
-      
       const hitung = hitungSAK({
-        bruttoSd: res.totalOpnameSdIni,
-        nilaiKontrak: res.contract.contract_value,
-        nilaiDP: res.nilaiDP,
-        pphRate: res.contract.pph_pct || 2,
-        ppnRate: res.contract.ppn_pct || 11,
-        retensiRate: res.contract.retention_pct || 5,
-        kasbonDeduct: res.totalPotongan,
-        taxMode: res.contract.tax_mode || 'EXCLUDE'
+        bruttoSd: res.totalOpnameSdIni, nilaiKontrak: res.contract.contract_value, nilaiDP: res.nilaiDP, pphRate: res.contract.pph_pct || 2, ppnRate: res.contract.ppn_pct || 11, retensiRate: res.contract.retention_pct || 5, kasbonDeduct: res.totalPotongan, taxMode: res.contract.tax_mode || 'EXCLUDE'
       });
 
       setCoaList(prev => prev.map(coa => {
         let amount = 0;
         let isChecked = true;
-
         switch (coa.name) {
           case 'Beban Upah Mandor': amount = hitung.A_bruto; break; 
           case 'PPN Masukan': amount = hitung.D_ppn; isChecked = hitung.D_ppn > 0; break; 
@@ -186,10 +140,8 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           case 'Retensi Proyek (Potongan)': amount = hitung.R_retensi; isChecked = hitung.R_retensi > 0; break;
           default: return coa; 
         }
-
         return { ...coa, amount, isChecked };
       }));
-
       showToast('Nominal berhasil di Auto-Fill berdasarkan Dokumen Referensi', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -210,28 +162,16 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
 
   const handleSaveAndPrint = async () => {
     if (!form.contractId) return showToast('Pilih Mandor terlebih dahulu', 'error');
-    
     setIsSaving(true);
     try {
       const { error } = await supabase.from('subcon_receipts').insert([{
-        project_id: projectId,
-        contract_id: form.contractId,
-        receipt_number: form.receipt_number,
-        receipt_date: form.receipt_date,
-        total_gross: totalGross,
-        total_deduction: totalDeduction,
-        total_net: totalNet,
-        details: coaList.filter(c => c.isChecked),
-        status: 'PENDING'
+        project_id: projectId, contract_id: form.contractId, receipt_number: form.receipt_number, receipt_date: form.receipt_date,
+        total_gross: totalGross, total_deduction: totalDeduction, total_net: totalNet, details: coaList.filter(c => c.isChecked), status: 'PENDING'
       }]);
-
       if (error) throw error;
-
       fetchHistory();
       showToast('Kwitansi berhasil disimpan. Masuk ke antrean pembayaran.', 'success');
-      
       await handlePrint();
-
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -239,21 +179,14 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     }
   };
 
-  // --- FUNGSI SOFT DELETE (VOID) ---
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase
-        .from('subcon_receipts')
-        .update({ status: 'VOID' }) 
-        .eq('id', deleteTarget);
-
+      const { error } = await supabase.from('subcon_receipts').update({ status: 'VOID' }).eq('id', deleteTarget);
       if (error) throw error;
-
       showToast('Kwitansi dibatalkan (VOID). Data hilang dari Antrean Persetujuan.', 'success');
-      fetchHistory();
-      setDeleteTarget(null);
+      fetchHistory(); setDeleteTarget(null);
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -264,11 +197,9 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
   const handlePrint = async () => {
     const printArea = document.getElementById('kwitansi-print-area');
     if (!printArea) return;
-
     try {
       setLoading(true);
       const htmlContent = printArea.innerHTML;
-      
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -277,35 +208,27 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
             <style>
               @page { size: A4 landscape; margin: 10mm 15mm; }
               body { margin: 0; padding: 0; background: #fff; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #1e293b; }
-              
               .container { position: relative; border: 2px solid #0f766e; border-radius: 8px; padding: 25px 35px; height: 185mm; box-sizing: border-box; page-break-inside: avoid; }
-              
               .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 3px double #0f766e; padding-bottom: 10px; }
               .logo-img { height: 45px; max-width: 150px; object-fit: contain; }
               .company-name { font-size: 16pt; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2; }
               .company-sub { font-size: 8.5pt; font-weight: 600; color: #64748b; margin: 2px 0 0 0; text-transform: uppercase; letter-spacing: 1px; }
               .doc-title { font-size: 24pt; font-weight: 800; color: #0f766e; letter-spacing: 2px; margin: 0; text-transform: uppercase; text-align: right; }
               .doc-subtitle { font-size: 9pt; font-weight: 500; color: #475569; margin: 3px 0 0 0; text-align: right; }
-              
               .info-grid { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; }
               .info-grid td { padding: 10px 15px; vertical-align: top; }
               .info-label { font-weight: bold; color: #64748b; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.5px; width: 120px; }
               .info-val { font-weight: 600; color: #0f172a; font-size: 9pt; }
-
               .ledger-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; table-layout: fixed; }
               .ledger-table th { background-color: #0f766e; color: white; font-weight: bold; text-align: center; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.5px; padding: 12px 10px; border: 1px solid #0f766e; }
               .ledger-table td { padding: 12px 10px; font-size: 9pt; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; }
               .ledger-table tr:nth-child(even) { background-color: #f8fafc; }
-              
               .text-right { text-align: right; } .text-center { text-align: center; }
               .font-mono { font-family: 'Courier New', Courier, monospace; font-weight: 600; }
-              
               .total-row td { background-color: #f0fdfa !important; font-weight: bold; font-size: 11pt; border-top: 3px double #0f766e; border-bottom: 3px double #0f766e; color: #064e3b; padding: 15px 10px; border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; }
-
               .terbilang-box { background-color: #0f766e; color: white; padding: 15px 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
               .terbilang-label { font-weight: bold; text-transform: uppercase; font-size: 9pt; letter-spacing: 1px; border-right: 2px solid #2dd4bf; padding-right: 15px; margin-right: 15px; }
               .terbilang-val { font-style: italic; font-weight: bold; font-size: 12pt; color: #ccfbf1; }
-
               .sig-wrapper { position: absolute; bottom: 20px; left: 35px; right: 35px; }
               .sig-table { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
               .sig-table td { text-align: center; vertical-align: bottom; padding: 0 10px; border: none; }
@@ -315,27 +238,16 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               .sig-title { font-size: 8pt; color: #64748b; margin-bottom: 5px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
             </style>
           </head>
-          <body>
-            <div class="container">
-              ${htmlContent}
-            </div>
-          </body>
+          <body><div class="container">${htmlContent}</div></body>
         </html>
       `;
-      
-      const res = await fetch('/api/generate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: fullHtml, format: 'A4', isLandscape: true })
-      });
+      const res = await fetch('/api/generate-pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: fullHtml, format: 'A4', isLandscape: true }) });
       if (!res.ok) throw new Error('Gagal generate PDF');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = `Kwitansi_${form.receipt_number.replace(/\//g, '_')}.pdf`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+      a.href = url; a.download = `Kwitansi_${form.receipt_number.replace(/\//g, '_')}.pdf`;
+      a.click(); window.URL.revokeObjectURL(url);
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -351,9 +263,9 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     <div className="space-y-6">
       {/* WEB UI PENGATURAN */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden print:hidden">
-        <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-teal-100 text-teal-700 rounded-lg">
+            <div className="p-2 bg-teal-100 text-teal-700 rounded-xl border border-teal-200">
               <FileText size={20} />
             </div>
             <div>
@@ -361,56 +273,50 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               <p className="text-xs text-slate-500 font-medium mt-0.5">Pilih dokumen referensi BPUTK/BAPP untuk auto-fill.</p>
             </div>
           </div>
-          <button onClick={handleReset} className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2">
+          <button onClick={handleReset} className="px-4 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors flex items-center gap-2 shadow-sm">
             <RefreshCw size={14} /> Reset Form
           </button>
         </div>
 
-        <div className="p-6 space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Pilih Mandor / SPK</label>
-                <select value={form.contractId} onChange={handleSelectSPK} className="w-full border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm font-medium">
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih Mandor / SPK</label>
+                <select value={form.contractId} onChange={handleSelectSPK} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-medium">
                   <option value="">-- Pilih Mandor --</option>
                   {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">No. Kwitansi</label>
-                <input type="text" value={form.receipt_number} onChange={(e) => setForm({ ...form, receipt_number: e.target.value })} className="w-full border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm" />
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">No. Kwitansi</label>
+                <input type="text" value={form.receipt_number} onChange={(e) => setForm({ ...form, receipt_number: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-mono" />
               </div>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tanggal Kwitansi</label>
-                <input type="date" value={form.receipt_date} onChange={(e) => setForm({ ...form, receipt_date: e.target.value })} className="w-full border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm" />
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Tanggal Kwitansi</label>
+                <input type="date" value={form.receipt_date} onChange={(e) => setForm({ ...form, receipt_date: e.target.value })} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all" />
               </div>
             </div>
 
             <div className="space-y-4 md:col-span-2">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Pilih Dokumen Referensi (Wajib)</label>
-                <select 
-                  value={selectedDocId} 
-                  onChange={handleDocSelect} 
-                  className="w-full border-teal-300 bg-teal-50 rounded-xl p-3 text-sm focus:ring-2 focus:ring-teal-500 outline-none shadow-sm font-bold text-teal-800"
-                >
+                <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih Dokumen Referensi (Wajib)</label>
+                <select value={selectedDocId} onChange={handleDocSelect} className="w-full border border-teal-300 bg-teal-50 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-bold text-teal-800">
                   <option value="">-- Pilih BPUTK / BAPP yang akan ditagih --</option>
                   {availableDocs.map(doc => (
-                    <option key={doc.id} value={doc.id}>
-                      [{doc.type}] {doc.doc_number} - Nilai: Rp {doc.total_value?.toLocaleString('id-ID')}
-                    </option>
+                    <option key={doc.id} value={doc.id}>[{doc.type}] {doc.doc_number} - Nilai: Rp {doc.total_value?.toLocaleString('id-ID')}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-slate-500 mt-1">*Jika kosong, berarti belum ada BPUTK/BAPP yang diinput untuk mandor ini.</p>
+                <p className="text-[10px] text-slate-500 mt-1 font-medium">*Jika kosong, berarti belum ada BPUTK/BAPP yang diinput untuk mandor ini.</p>
               </div>
             </div>
           </div>
 
-          <div className="flex justify-end border-b pb-6">
-             <button onClick={handleAutoFill} disabled={loading || !selectedDocId} className="w-full md:w-64 bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50">
+          <div className="flex justify-end border-b border-slate-100 pb-5">
+             <button onClick={handleAutoFill} disabled={loading || !selectedDocId} className="w-full md:w-64 bg-slate-900 hover:bg-slate-800 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-all disabled:opacity-50">
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <Zap size={18} className="text-amber-400" />} 
                 Tarik Data (Auto-Fill)
               </button>
@@ -420,7 +326,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
             <div className="flex justify-between items-end mb-3">
               <div>
                 <h4 className="font-bold text-slate-800 text-base">Rincian Akun (COA Dinamis)</h4>
-                <p className="text-xs text-slate-500">Centang akun, isi nominal, lalu cetak.</p>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">Centang akun, isi nominal, lalu cetak.</p>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setCoaList(prev => prev.map(c => ({...c, isChecked: true})))} className="text-xs font-bold text-slate-600 hover:bg-slate-200 px-3 py-1.5 rounded-lg bg-slate-100 border border-slate-200 transition-colors">Pilih Semua</button>
@@ -473,7 +379,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
           </div>
 
           <div className="flex justify-end pt-4 border-t border-slate-100">
-            <button onClick={handleSaveAndPrint} disabled={loading || isSaving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 shadow-lg transition-transform hover:-translate-y-0.5">
+            <button onClick={handleSaveAndPrint} disabled={loading || isSaving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-md shadow-teal-500/20 transition-all disabled:opacity-50">
               {loading || isSaving ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} 
               {isSaving ? 'Menyimpan...' : 'Simpan & Cetak PDF Kwitansi'}
             </button>
@@ -481,18 +387,17 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         </div>
       </div>
 
-      {/* AREA PREVIEW */}
+      {/* AREA PREVIEW (SAMA PERSIS DENGAN HTML PRINT AREA) */}
       {form.contractId && (
-        <div className="w-full flex flex-col items-center pb-10 bg-slate-300/50 p-6 rounded-2xl print:bg-white print:p-0 overflow-x-auto">
-          <div className="flex items-center gap-2 mb-4 text-slate-500 print:hidden">
+        <div className="w-full flex flex-col items-center pb-10 bg-slate-200 p-6 rounded-2xl print:hidden overflow-x-auto">
+          <div className="flex items-center gap-2 mb-4 text-slate-500">
             <CheckCircle2 size={18} className="text-teal-600" />
             <p className="text-xs font-bold tracking-widest uppercase">Live Preview Dokumen Kwitansi</p>
           </div>
 
-          <div className="w-[297mm] bg-white p-10 shadow-2xl border border-slate-300">
+          <div className="w-[297mm] bg-white p-8 shadow-2xl border border-slate-300">
             <div id="kwitansi-print-area" style={{ position: 'relative', minHeight: '165mm' }}>
               
-              {/* KOP SURAT */}
               <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '3px double #0f766e', paddingBottom: '10px', marginBottom: '20px' }}>
                 <tbody>
                   <tr>
@@ -517,39 +422,23 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* INFO GRID */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
                 <tbody>
                   <tr>
                     <td style={{ width: '50%', padding: '12px 20px', verticalAlign: 'top', borderRight: '1px solid #e2e8f0' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <tbody>
-                          <tr>
-                            <td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', paddingBottom: '5px', width: '130px' }}>Sudah Terima Dari</td>
-                            <td style={{ fontSize: '9.5pt', fontWeight: '600', color: '#0f172a', paddingBottom: '5px' }}>: {projectData?.company_name || '-'}</td>
-                          </tr>
-                          <tr>
-                            <td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', paddingBottom: '5px' }}>Diserahkan Kepada</td>
-                            <td style={{ fontSize: '9.5pt', fontWeight: 'bold', color: '#0f766e', paddingBottom: '5px' }}>: {form.vendor_name}</td>
-                          </tr>
-                          <tr>
-                            <td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Jenis Pekerjaan</td>
-                            <td style={{ fontSize: '9.5pt', fontWeight: '500', color: '#0f172a' }}>: {form.work_description}</td>
-                          </tr>
+                          <tr><td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', paddingBottom: '5px', width: '130px' }}>Sudah Terima Dari</td><td style={{ fontSize: '9.5pt', fontWeight: '600', color: '#0f172a', paddingBottom: '5px' }}>: {projectData?.company_name || '-'}</td></tr>
+                          <tr><td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', paddingBottom: '5px' }}>Diserahkan Kepada</td><td style={{ fontSize: '9.5pt', fontWeight: 'bold', color: '#0f766e', paddingBottom: '5px' }}>: {form.vendor_name}</td></tr>
+                          <tr><td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Jenis Pekerjaan</td><td style={{ fontSize: '9.5pt', fontWeight: '500', color: '#0f172a' }}>: {form.work_description}</td></tr>
                         </tbody>
                       </table>
                     </td>
                     <td style={{ width: '50%', padding: '12px 20px', verticalAlign: 'top' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <tbody>
-                          <tr>
-                            <td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', paddingBottom: '5px', width: '90px' }}>Tanggal</td>
-                            <td style={{ fontSize: '9.5pt', fontWeight: '500', color: '#0f172a', paddingBottom: '5px' }}>: {new Date(form.receipt_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'})}</td>
-                          </tr>
-                          <tr>
-                            <td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Lokasi Proyek</td>
-                            <td style={{ fontSize: '9.5pt', fontWeight: '500', color: '#0f172a' }}>: {form.location}</td>
-                          </tr>
+                          <tr><td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', paddingBottom: '5px', width: '90px' }}>Tanggal</td><td style={{ fontSize: '9.5pt', fontWeight: '500', color: '#0f172a', paddingBottom: '5px' }}>: {new Date(form.receipt_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'long', year: 'numeric'})}</td></tr>
+                          <tr><td style={{ fontSize: '8pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Lokasi Proyek</td><td style={{ fontSize: '9.5pt', fontWeight: '500', color: '#0f172a' }}>: {form.location}</td></tr>
                         </tbody>
                       </table>
                     </td>
@@ -557,7 +446,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TABEL LEDGER */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '25px', tableLayout: 'fixed' }}>
                 <thead>
                   <tr style={{ backgroundColor: '#0f766e', color: 'white' }}>
@@ -584,7 +472,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                     <tr><td colSpan={5} style={{ padding: '25px', textAlign: 'center', fontStyle: 'italic', color: '#94a3b8', borderBottom: '1px solid #e2e8f0', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>Belum ada akun dengan nominal yang dipilih.</td></tr>
                   )}
                   
-                  {/* TOTAL ROW */}
                   <tr style={{ backgroundColor: '#f0fdfa', fontWeight: 'bold', fontSize: '11pt', color: '#064e3b' }}>
                     <td colSpan={2} style={{ padding: '15px', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px', borderTop: '3px double #0f766e', borderBottom: '3px double #0f766e', borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>Total Pembayaran Bersih (Net Take Home Pay)</td>
                     <td style={{ padding: '15px', textAlign: 'right', fontFamily: 'Courier New', borderTop: '3px double #0f766e', borderBottom: '3px double #0f766e', borderRight: '1px solid #e2e8f0' }}>{fRp(totalGross)}</td>
@@ -594,7 +481,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TERBILANG BOX */}
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
                 <tbody>
                   <tr>
@@ -606,7 +492,6 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                 </tbody>
               </table>
 
-              {/* TANDA TANGAN */}
               <div className="sig-wrapper">
                 <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
                   <tbody>
@@ -651,82 +536,77 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
         </div>
       )}
 
-      {/* --- TABEL RIWAYAT KWITANSI --- */}
-      <div className="bg-white border rounded-xl shadow-sm overflow-hidden print:hidden mt-10">
+      {/* TABEL RIWAYAT KWITANSI */}
+      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden print:hidden mt-10">
         <div className="p-4 border-b bg-slate-50 flex items-center gap-2 font-bold text-slate-700">
           <History size={18} /> Riwayat Kwitansi Pembayaran
         </div>
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="p-4 border-b">No. Kwitansi</th>
-              <th className="p-4 border-b">Tanggal</th>
-              <th className="p-4 border-b">Vendor / SPK</th>
-              <th className="p-4 border-b">Nilai Bersih (Net)</th>
-              <th className="p-4 border-b">Status</th>
-              <th className="p-4 border-b text-right">Aksi</th> {/* KOLOM BARU */}
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((h) => (
-              <tr key={h.id} className={`hover:bg-slate-50 ${h.status === 'VOID' ? 'bg-red-50/50' : ''}`}>
-                <td className="p-4 border-b font-bold text-teal-700">{h.receipt_number}</td>
-                <td className="p-4 border-b">{new Date(h.receipt_date).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b">
-                  <span className="font-bold">{h.subcontractor_contracts?.subcontractors?.company_name}</span>
-                  <span className="block text-xs text-slate-500">{h.subcontractor_contracts?.spk_number}</span>
-                </td>
-                <td className="p-4 border-b text-emerald-600 font-bold">{fRp(h.total_net)}</td>
-                <td className="p-4 border-b">
-                  <span className={`px-2 py-1 rounded text-xs font-bold ${
-                    h.status === 'PAID' ? 'bg-green-100 text-green-700' : h.status === 'VOID' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                  }`}>
-                    {h.status || 'PENDING'}
-                  </span>
-                </td>
-                <td className="p-4 border-b text-right flex justify-end gap-2">
-                  {h.status !== 'VOID' && h.status !== 'PAID' && (
-                    <button 
-                      onClick={() => setDeleteTarget(h.id)} 
-                      className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" 
-                      title="Batalkan Kwitansi"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </td>
+        <div className="overflow-x-auto max-h-[60vh]">
+          <table className="w-full text-left text-sm min-w-[900px]">
+            <thead className="bg-slate-50 border-b border-slate-300">
+              <tr className="text-slate-600 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">No. Kwitansi</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Tanggal</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Vendor / SPK</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Nilai Bersih (Net)</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-center sticky top-0 bg-slate-50 z-10">Status</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Aksi</th>
               </tr>
-            ))}
-            {history.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada riwayat kwitansi.</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {history.length === 0 ? (
+                <tr><td colSpan={6} className="p-16 text-center text-slate-400 font-medium italic">Belum ada riwayat kwitansi.</td></tr>
+              ) : history.map((h) => (
+                <tr key={h.id} className={`hover:bg-slate-50/80 transition-colors ${h.status === 'VOID' ? 'bg-rose-50/30' : ''}`}>
+                  <td className="p-4 font-bold font-mono text-teal-700">{h.receipt_number}</td>
+                  <td className="p-4 font-medium text-slate-600">{new Date(h.receipt_date).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4">
+                    <span className="font-bold text-slate-800">{h.subcontractor_contracts?.subcontractors?.company_name}</span>
+                    <span className="block text-xs text-slate-500 font-mono mt-0.5">{h.subcontractor_contracts?.spk_number}</span>
+                  </td>
+                  <td className="p-4 text-right tabular-nums font-bold text-emerald-600">{fRp(h.total_net)}</td>
+                  <td className="p-4 text-center">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold border ${
+                      h.status === 'PAID' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : h.status === 'VOID' ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}>
+                      {h.status || 'PENDING'}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right flex justify-end gap-2">
+                    {h.status !== 'VOID' && h.status !== 'PAID' && (
+                      <button onClick={() => setDeleteTarget(h.id)} className="text-rose-500 hover:text-rose-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors" title="Batalkan Kwitansi">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* CUSTOM MODAL CONFIRMATION (HAPUS) */}
       {!!deleteTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-rose-100 mb-4 border border-rose-200">
+                <AlertTriangle className="h-8 w-8 text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Batalkan Kwitansi</h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 font-medium">
                 Apakah Anda yakin ingin membatalkan (VOID) kwitansi ini? Data tidak akan terhapus permanen dan antrean pembayaran akan dibatalkan.
               </p>
             </div>
-            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">
-              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
-                Batal
-              </button>
-              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t border-slate-100">
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Batal</button>
+              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-6 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 flex items-center gap-2 transition-all">
                 {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Ya, Batalkan
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Subcontractor } from '@/lib/types/subcon';
+import { Users, X, Save, Loader2 } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -52,7 +53,6 @@ export function SubcontractorModal({ isOpen, onClose, projectId, onSuccess, show
 
   if (!isOpen) return null;
 
-  // 👇 LOGIKA DROPDOWN PPH (Termasuk 0%) 👇
   const handlePphChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
     let rate = 1.75;
@@ -88,55 +88,59 @@ export function SubcontractorModal({ isOpen, onClose, projectId, onSuccess, show
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 overflow-y-auto pt-10 pb-10">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-6">
-        <h2 className="text-xl font-bold mb-4">{isEditMode ? 'Edit Vendor Subkon' : 'Tambah Vendor Subkon'}</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          
-          <div className="grid grid-cols-2 gap-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <Users className="text-indigo-600" /> {isEditMode ? 'Edit Vendor Subkon' : 'Tambah Vendor Subkon'}
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-rose-500 bg-white p-1.5 rounded-lg border border-slate-200 transition-colors"><X size={20}/></button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
              <div>
-              <label className="block text-sm font-medium mb-1">Nama Perusahaan</label>
-              <input type="text" required value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} className="w-full border rounded p-2" />
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Nama Perusahaan</label>
+              <input type="text" required value={form.company_name} onChange={e => setForm({...form, company_name: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Contact Person (Mandor/PIC)</label>
-              <input type="text" required value={form.contact_person} onChange={e => setForm({...form, contact_person: e.target.value})} className="w-full border rounded p-2" />
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Contact Person (Mandor/PIC)</label>
+              <input type="text" required value={form.contact_person} onChange={e => setForm({...form, contact_person: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Alamat Perusahaan</label>
-            <textarea required value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border rounded p-2" rows={2} />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Alamat Perusahaan</label>
+            <textarea required value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none resize-none" rows={2} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-5">
             <div>
-              <label className="block text-sm font-medium mb-1">Bank</label>
-              <input type="text" required value={form.bank_name} onChange={e => setForm({...form, bank_name: e.target.value})} className="w-full border rounded p-2" placeholder="Cth: BCA" />
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Bank</label>
+              <input type="text" required value={form.bank_name} onChange={e => setForm({...form, bank_name: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none" placeholder="Cth: BCA" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">No. Rekening</label>
-              <input type="text" required value={form.bank_account} onChange={e => setForm({...form, bank_account: e.target.value})} className="w-full border rounded p-2" />
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">No. Rekening</label>
+              <input type="text" required value={form.bank_account} onChange={e => setForm({...form, bank_account: e.target.value})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none tabular-nums" />
             </div>
           </div>
 
-          {/* DROPDOWN PPh FINAL DENGAN OPSI 0% */}
-          <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
-            <label className="block text-sm font-bold text-amber-800 mb-2">Kualifikasi SBU & Tarif PPh Final (PP No. 9/2022)</label>
-            <select value={form.pph_category} onChange={handlePphChange} className="w-full border rounded p-2 text-sm bg-white">
+          <div className="bg-amber-50 p-5 rounded-xl border border-amber-200 shadow-sm">
+            <label className="block text-xs font-bold text-amber-800 mb-1.5 uppercase tracking-wider">Kualifikasi SBU & Tarif PPh Final (PP No. 9/2022)</label>
+            <select value={form.pph_category} onChange={handlePphChange} className="w-full border border-amber-300 rounded-xl p-2.5 text-sm bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none font-medium text-slate-800">
               <option value="Kecil (1.75%)">Pelaksanaan Konstruksi - Kualifikasi Kecil (1.75%)</option>
               <option value="Menengah/Besar (2.65%)">Pelaksanaan Konstruksi - Kualifikasi Menengah/Besar/EPC (2.65%)</option>
               <option value="Tanpa SBU (4.00%)">Pelaksanaan Konstruksi - Tanpa Sertifikasi SBU (4.00%)</option>
               <option value="Konsultan (3.50%)">Jasa Konsultansi Konstruksi (3.50%)</option>
-              <option value="Tanpa PPh (0%)">Tanpa PPh Final (0%)</option> {/* <-- OPSI BARU */}
+              <option value="Tanpa PPh (0%)">Tanpa PPh Final (0%)</option>
             </select>
-            <p className="text-xs text-amber-700 mt-2">*Tarif ini akan otomatis digunakan pada saat pembuatan SPK.</p>
+            <p className="text-[11px] text-amber-700 mt-2 font-medium">*Tarif ini akan otomatis digunakan pada saat pembuatan SPK.</p>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 border-t pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-50" disabled={loading}>Batal</button>
-            <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold" disabled={loading}>
-              {loading ? 'Menyimpan...' : 'Simpan Vendor'}
+          <div className="flex justify-end gap-3 pt-5 border-t border-slate-100 mt-6">
+            <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors" disabled={loading}>Batal</button>
+            <button type="submit" className="px-6 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-500/20 flex items-center gap-2 transition-all" disabled={loading}>
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} {loading ? 'Menyimpan...' : 'Simpan Vendor'}
             </button>
           </div>
         </form>

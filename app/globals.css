@@ -132,3 +132,26 @@ aside, aside *, nav, .sidebar-container {
     background-color: #f8fafc !important; /* Zebra striping */
   }
 }
+
+/* =========================================
+   5. ENTERPRISE UI UTILITIES
+   ========================================= */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom Scrollbar untuk Tabel Enterprise */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

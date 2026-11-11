@@ -214,23 +214,14 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      // 1. Cari data untuk tahu ID BPUTK yang terkait
       const dataToDelete = history.find(h => h.id === deleteTarget);
-      
-      // 2. Hapus permanen dokumen BAOP (FIXED)
       await deleteBAOPDocument(deleteTarget); 
-
-      // 3. Buka kembali kunci BPUTK (Ubah is_billed = false)
       if (dataToDelete?.bputk_id) {
-        await supabase
-          .from('bputk_documents')
-          .update({ is_billed: false })
-          .eq('id', dataToDelete.bputk_id);
+        await supabase.from('bputk_documents').update({ is_billed: false }).eq('id', dataToDelete.bputk_id);
       }
-
       showToast('Dokumen berhasil dihapus. BPUTK telah dibuka kembali.', 'success');
       loadHistory();
-      onSuccess(); // Refresh parent data
+      onSuccess(); 
       setDeleteTarget(null);
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -280,23 +271,23 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
     <div className="space-y-6">
       <style dangerouslySetInnerHTML={{__html: webPreviewStyles}} />
 
-      <div className="bg-white p-5 rounded-xl border shadow-sm space-y-4 print:hidden">
-        <h3 className="font-bold text-lg text-slate-800 border-b pb-2 mb-2 flex items-center gap-2">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 print:hidden">
+        <h3 className="font-bold text-lg text-slate-800 border-b border-slate-100 pb-3 mb-3 flex items-center gap-2">
           <FileText className="text-amber-600" /> Buat Dokumen BAOP (Berdasarkan BPUTK)
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih Mandor / SPK</label>
-            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih Mandor / SPK</label>
+            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-medium">
               <option value="">-- Pilih Mandor --</option>
               {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
             </select>
           </div>
           
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Pilih BPUTK (Sumber Data)</label>
-            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border-amber-300 bg-amber-50 rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none font-bold text-amber-800">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih BPUTK (Sumber Data)</label>
+            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border border-amber-300 bg-amber-50 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-bold text-amber-800">
               <option value="">-- Pilih BPUTK --</option>
               {availableBPUTKs.map(b => (
                 <option key={b.id} value={b.id}>
@@ -307,15 +298,15 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
           </div>
 
           <div>
-            <label className="block text-sm font-bold mb-1 text-slate-700">Nomor BAOP</label>
-            <input type="text" value={form.nomorBAOP} onChange={(e) => setForm({...form, nomorBAOP: e.target.value})} disabled={isReprint} className="w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-amber-500 outline-none" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Nomor BAOP</label>
+            <input type="text" value={form.nomorBAOP} onChange={(e) => setForm({...form, nomorBAOP: e.target.value})} disabled={isReprint} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none transition-all font-mono" />
           </div>
         </div>
       </div>
 
       {data && (
-        <div className="w-full flex flex-col items-center pb-10">
-          <div className="bg-white shadow-xl" style={{ width: '210mm' }}>
+        <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-2xl print:hidden">
+          <div className="bg-white shadow-xl rounded-sm">
              <div id="baop-print-area" className="doc-a4">
                 <div className="header-kop">
                   {data.contract.projects?.logo_url && (
@@ -422,69 +413,72 @@ export function BAOPView({ projectId, spks, onSuccess, showToast }: BAOPViewProp
           </div>
           
           <div className="mt-6 flex justify-end w-full max-w-[210mm] print:hidden">
-             <button onClick={handlePrint} disabled={loading} className="bg-amber-500 hover:bg-amber-600 text-white px-8 py-3 rounded-lg font-bold flex items-center gap-2 shadow-md transition-colors">
+             <button onClick={handlePrint} disabled={loading} className="bg-amber-600 hover:bg-amber-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-md transition-all">
               {loading ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} {isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BAOP'}
             </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white border rounded-xl shadow-sm overflow-x-auto print:hidden mt-10">
-        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700">Riwayat Pembuatan BAOP</div>
-        <table className="w-full text-left text-sm min-w-[800px]">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr>
-              <th className="p-4 border-b">No. BAOP</th>
-              <th className="p-4 border-b">Tanggal Dibuat</th>
-              <th className="p-4 border-b">Vendor / SPK</th>
-              <th className="p-4 border-b">Periode</th>
-              <th className="p-4 border-b">Total Nilai</th>
-              <th className="p-4 border-b text-right">Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((b) => (
-              <tr key={b.id} className="hover:bg-slate-50">
-                <td className="p-4 border-b font-bold text-amber-700">{b.baop_number}</td>
-                <td className="p-4 border-b">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b">
-                  <span className="font-bold">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
-                  <span className="block text-xs text-slate-500">{b.subcontractor_contracts?.spk_number}</span>
-                </td>
-                <td className="p-4 border-b">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
-                <td className="p-4 border-b font-bold"><MoneyText value={b.total_value} /></td>
-                <td className="p-4 border-b text-right flex justify-end items-center gap-3">
-                  <button onClick={() => handleReprint(b)} className="text-blue-600 hover:underline text-xs font-medium">
-                    Lihat / Cetak Ulang
-                  </button>
-                  <button onClick={() => setDeleteTarget(b.id)} className="text-red-500 hover:text-red-700 p-1.5 bg-red-50 hover:bg-red-100 rounded-md transition-colors" title="Hapus Riwayat">
-                    <Trash2 size={16} />
-                  </button>
-                </td>
+      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden print:hidden mt-10">
+        <div className="p-4 border-b bg-slate-50 font-bold text-slate-700 flex justify-between items-center">
+          <span>Riwayat Pembuatan BAOP</span>
+        </div>
+        <div className="overflow-x-auto max-h-[60vh]">
+          <table className="w-full text-left text-sm min-w-[800px]">
+            <thead className="bg-slate-50 border-b border-slate-300">
+              <tr className="text-slate-600 text-xs uppercase tracking-wider">
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">No. BAOP</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Tanggal Dibuat</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Vendor / SPK</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Periode</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Total Nilai</th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Aksi</th>
               </tr>
-            ))}
-            {history.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-slate-500">Belum ada riwayat BAOP.</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {history.length === 0 ? (
+                <tr><td colSpan={6} className="p-16 text-center text-slate-400 font-medium italic">Belum ada riwayat BAOP.</td></tr>
+              ) : history.map((b) => (
+                <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
+                  <td className="p-4 font-bold font-mono text-amber-700">{b.baop_number}</td>
+                  <td className="p-4 font-medium text-slate-600">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4">
+                    <span className="font-bold text-slate-800">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
+                    <span className="block text-xs text-slate-500 font-mono mt-0.5">{b.subcontractor_contracts?.spk_number}</span>
+                  </td>
+                  <td className="p-4 text-slate-600">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
+                  <td className="p-4 text-right tabular-nums font-bold text-slate-800"><MoneyText value={b.total_value} /></td>
+                  <td className="p-4 text-right flex justify-end items-center gap-2">
+                    <button onClick={() => handleReprint(b)} className="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
+                      Cetak Ulang
+                    </button>
+                    <button onClick={() => setDeleteTarget(b.id)} className="text-rose-500 hover:text-rose-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors" title="Hapus Riwayat">
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {!!deleteTarget && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 text-center">
-              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-red-100 mb-4">
-                <AlertTriangle className="h-8 w-8 text-red-600" />
+              <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-rose-100 mb-4 border border-rose-200">
+                <AlertTriangle className="h-8 w-8 text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Riwayat BAOP</h3>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-slate-500 font-medium">
                 Apakah Anda yakin ingin menghapus data riwayat ini? Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
               </p>
             </div>
-            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t">
-              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
-                Batal
-              </button>
-              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+            <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t border-slate-100">
+              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Batal</button>
+              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-6 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 flex items-center gap-2 transition-all">
                 {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Ya, Hapus
               </button>
             </div>

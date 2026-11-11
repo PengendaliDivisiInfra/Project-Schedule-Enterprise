@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Printer, TrendingDown, Wallet, Info, Building2, Settings, X, Save, UserCircle } from 'lucide-react';
+import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 
 export function ReportManager({ projectId }: { projectId: string }) {
   const [activeReport, setActiveReport] = useState<'material' | 'payment'>('material');
@@ -10,11 +11,8 @@ export function ReportManager({ projectId }: { projectId: string }) {
   
   const [materialRecap, setMaterialRecap] = useState<any[]>([]);
   const [paymentRecap, setPaymentRecap] = useState<any[]>([]);
-  
-  // State untuk Data Proyek (Kop Surat)
   const [projectData, setProjectData] = useState<any>(null);
 
-  // State untuk Pengaturan TTD (LocalStorage)
   const [isSigModalOpen, setIsSigModalOpen] = useState(false);
   const [signatures, setSignatures] = useState({
     creatorName: 'Admin Logistik', creatorTitle: 'Staff Logistik',
@@ -137,111 +135,116 @@ export function ReportManager({ projectId }: { projectId: string }) {
   const formatNum = (num: number) => new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num || 0);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      
       {/* HEADER LAPORAN (Hanya Layar) */}
-      <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200 print:hidden">
-        <div className="flex gap-2">
-          <button onClick={() => setActiveReport('material')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeReport === 'material' ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200 print:hidden">
+        <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+          <button onClick={() => setActiveReport('material')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeReport === 'material' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
             <TrendingDown className="w-4 h-4" /> Rekap Material & Shortage
           </button>
-          <button onClick={() => setActiveReport('payment')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeReport === 'payment' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+          <button onClick={() => setActiveReport('payment')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${activeReport === 'payment' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
             <Wallet className="w-4 h-4" /> Rekap Pembayaran PO
           </button>
         </div>
         
-        <div className="flex gap-2">
-          <button onClick={() => setIsSigModalOpen(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm border border-slate-300 transition-colors">
-            <Settings className="w-4 h-4" /> Pengaturan TTD
+        <div className="flex gap-2 w-full md:w-auto">
+          <button onClick={() => setIsSigModalOpen(true)} className="flex-1 md:flex-none justify-center bg-white hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm border border-slate-300 transition-colors">
+            <Settings className="w-4 h-4" /> Atur TTD
           </button>
-          <button onClick={handlePrint} className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
-            <Printer className="w-4 h-4" /> Cetak Laporan Lengkap
+          <button onClick={handlePrint} className="flex-1 md:flex-none justify-center bg-slate-800 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-md transition-colors">
+            <Printer className="w-4 h-4" /> Cetak PDF
           </button>
         </div>
       </div>
 
-      {/* AREA TAMPILAN LAYAR (Hanya terlihat di Web) */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 print:hidden">
+      {/* AREA TAMPILAN LAYAR */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-0 overflow-hidden print:hidden">
         {loading ? (
-          <div className="text-center py-10 text-slate-500">Memuat data laporan...</div>
+          <div className="p-4"><SkeletonLoader rows={8} cols={7} /></div>
         ) : activeReport === 'material' ? (
           <>
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-bold text-slate-600">Filter Kategori:</label>
-                <select value={filterKategori} onChange={e => setFilterKategori(e.target.value)} className="border rounded-md p-1.5 text-sm focus:ring-1 focus:ring-blue-500 font-semibold">
+            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider">Filter Kategori:</label>
+                <select value={filterKategori} onChange={e => setFilterKategori(e.target.value)} className="border border-slate-200 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-semibold bg-white shadow-sm outline-none">
                   <option value="All">Semua Kategori</option>
                   <option value="Material Utama">Material Utama (AHSP)</option>
                   <option value="Alat Bantu">Alat Bantu</option>
                   <option value="Consumables">Consumables</option>
                 </select>
               </div>
-              <div className="text-xs text-slate-500 flex items-center gap-1"><Info className="w-3 h-3"/> Data terintegrasi WBS, PO, & Gudang.</div>
+              <div className="text-xs text-slate-500 flex items-center gap-1 font-medium"><Info className="w-4 h-4"/> Data terintegrasi WBS, PO, & Gudang.</div>
             </div>
-            <table className="w-full text-left text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
-              <thead>
-                <tr className="bg-slate-100 border-b border-slate-300">
-                  <th className="p-3 border border-slate-300">Nama Material</th>
-                  <th className="p-3 border border-slate-300 text-center">Kategori</th>
-                  <th className="p-3 border border-slate-300 text-center">Satuan</th>
-                  <th className="p-3 border border-slate-300 text-right">Kebutuhan</th>
-                  <th className="p-3 border border-slate-300 text-right bg-sky-50 text-sky-700">Stok Gudang</th>
-                  <th className="p-3 border border-slate-300 text-right">Dipesan</th>
-                  <th className="p-3 border border-slate-300 text-right">Diterima</th>
-                  <th className="p-3 border border-slate-300 text-right bg-rose-50 text-rose-700">Shortage</th>
-                  <th className="p-3 border border-slate-300 text-right bg-amber-50 text-amber-700">Belum Datang</th>
-                </tr>
-              </thead>
-              <tbody>
-                {materialRecap.filter(m => filterKategori === 'All' || m.kategori_akun === filterKategori).map((m, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50">
-                    <td className="p-3 border border-slate-300 font-semibold">{m.nama_item}</td>
-                    <td className="p-3 border border-slate-300 text-center text-xs">{m.kategori_akun}</td>
-                    <td className="p-3 border border-slate-300 text-center">{m.satuan}</td>
-                    <td className="p-3 border border-slate-300 text-right font-mono">{formatNum(m.total_kebutuhan)}</td>
-                    <td className="p-3 border border-slate-300 text-right font-mono font-bold text-sky-600 bg-sky-50/30">{formatNum(m.stok_gudang)}</td>
-                    <td className="p-3 border border-slate-300 text-right font-mono">{formatNum(m.total_dipesan)}</td>
-                    <td className="p-3 border border-slate-300 text-right font-mono text-emerald-600">{formatNum(m.total_diterima)}</td>
-                    <td className={`p-3 border border-slate-300 text-right font-mono font-bold ${m.belum_dipesan > 0 ? 'text-rose-600 bg-rose-50/30' : 'text-slate-400'}`}>{formatNum(m.belum_dipesan)}</td>
-                    <td className={`p-3 border border-slate-300 text-right font-mono font-bold ${m.belum_datang > 0 ? 'text-amber-600 bg-amber-50/30' : 'text-slate-400'}`}>{formatNum(m.belum_datang)}</td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr className="text-slate-600 text-xs uppercase tracking-wider">
+                    <th className="p-4 font-bold border-b border-slate-200 sticky top-0 bg-slate-50">Nama Material</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-center sticky top-0 bg-slate-50">Kategori</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-center sticky top-0 bg-slate-50">Satuan</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-right sticky top-0 bg-slate-50">Kebutuhan</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-right bg-sky-50 text-sky-700 sticky top-0 z-10">Stok Gudang</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-right sticky top-0 bg-slate-50">Dipesan</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-right sticky top-0 bg-slate-50">Diterima</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-right bg-rose-50 text-rose-700 sticky top-0 z-10">Shortage</th>
+                    <th className="p-4 font-bold border-b border-slate-200 text-right bg-amber-50 text-amber-700 sticky top-0 z-10">Belum Datang</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {materialRecap.filter(m => filterKategori === 'All' || m.kategori_akun === filterKategori).map((m, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-4 font-bold text-slate-800">{m.nama_item}</td>
+                      <td className="p-4 text-center text-xs font-medium text-slate-500">{m.kategori_akun}</td>
+                      <td className="p-4 text-center font-medium text-slate-600">{m.satuan}</td>
+                      <td className="p-4 text-right tabular-nums font-semibold text-slate-700">{formatNum(m.total_kebutuhan)}</td>
+                      <td className="p-4 text-right tabular-nums font-bold text-sky-600 bg-sky-50/30">{formatNum(m.stok_gudang)}</td>
+                      <td className="p-4 text-right tabular-nums text-slate-600">{formatNum(m.total_dipesan)}</td>
+                      <td className="p-4 text-right tabular-nums text-emerald-600 font-medium">{formatNum(m.total_diterima)}</td>
+                      <td className={`p-4 text-right tabular-nums font-bold ${m.belum_dipesan > 0 ? 'text-rose-600 bg-rose-50/30' : 'text-slate-400'}`}>{formatNum(m.belum_dipesan)}</td>
+                      <td className={`p-4 text-right tabular-nums font-bold ${m.belum_datang > 0 ? 'text-amber-600 bg-amber-50/30' : 'text-slate-400'}`}>{formatNum(m.belum_datang)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </>
         ) : (
-          <table className="w-full text-left text-sm" style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-300">
-                <th className="p-3 border border-slate-300">No. PO</th>
-                <th className="p-3 border border-slate-300">Vendor</th>
-                <th className="p-3 border border-slate-300">Tanggal</th>
-                <th className="p-3 border border-slate-300 text-right">Grand Total</th>
-                <th className="p-3 border border-slate-300 text-right">Sudah Dibayar</th>
-                <th className="p-3 border border-slate-300 text-right bg-rose-50 text-rose-700">Sisa Hutang</th>
-                <th className="p-3 border border-slate-300 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paymentRecap.map((p, idx) => {
-                const sisa = p.grand_total - (p.paid_amount || 0);
-                return (
-                  <tr key={idx} className="hover:bg-slate-50">
-                    <td className="p-3 border border-slate-300 font-mono font-semibold">{p.po_number}</td>
-                    <td className="p-3 border border-slate-300">{p.vendor?.name}</td>
-                    <td className="p-3 border border-slate-300">{new Date(p.po_date).toLocaleDateString('id-ID')}</td>
-                    <td className="p-3 border border-slate-300 text-right font-mono">{formatRp(p.grand_total)}</td>
-                    <td className="p-3 border border-slate-300 text-right font-mono text-emerald-600">{formatRp(p.paid_amount)}</td>
-                    <td className={`p-3 border border-slate-300 text-right font-mono font-bold ${sisa > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{formatRp(sisa)}</td>
-                    <td className="p-3 border border-slate-300 text-center">
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${p.payment_status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : p.payment_status === 'Partially Paid' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
-                        {p.payment_status === 'Partially Paid' ? 'Bayar Sebagian' : p.payment_status === 'Paid' ? 'Lunas' : 'Belum Bayar'}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr className="text-slate-600 text-xs uppercase tracking-wider">
+                  <th className="p-4 font-bold border-b border-slate-200 sticky top-0 bg-slate-50">No. PO</th>
+                  <th className="p-4 font-bold border-b border-slate-200 sticky top-0 bg-slate-50">Vendor</th>
+                  <th className="p-4 font-bold border-b border-slate-200 sticky top-0 bg-slate-50">Tanggal</th>
+                  <th className="p-4 font-bold border-b border-slate-200 text-right sticky top-0 bg-slate-50">Grand Total</th>
+                  <th className="p-4 font-bold border-b border-slate-200 text-right sticky top-0 bg-slate-50">Sudah Dibayar</th>
+                  <th className="p-4 font-bold border-b border-slate-200 text-right bg-rose-50 text-rose-700 sticky top-0 z-10">Sisa Hutang</th>
+                  <th className="p-4 font-bold border-b border-slate-200 text-center sticky top-0 bg-slate-50">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paymentRecap.map((p, idx) => {
+                  const sisa = p.grand_total - (p.paid_amount || 0);
+                  return (
+                    <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="p-4 font-mono font-bold text-blue-700">{p.po_number}</td>
+                      <td className="p-4 font-medium text-slate-800">{p.vendor?.name}</td>
+                      <td className="p-4 text-slate-600">{new Date(p.po_date).toLocaleDateString('id-ID')}</td>
+                      <td className="p-4 text-right tabular-nums font-semibold text-slate-700">{formatRp(p.grand_total)}</td>
+                      <td className="p-4 text-right tabular-nums font-medium text-emerald-600">{formatRp(p.paid_amount)}</td>
+                      <td className={`p-4 text-right tabular-nums font-bold ${sisa > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{formatRp(sisa)}</td>
+                      <td className="p-4 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${p.payment_status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : p.payment_status === 'Partially Paid' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                          {p.payment_status === 'Partially Paid' ? 'Bayar Sebagian' : p.payment_status === 'Paid' ? 'Lunas' : 'Belum Bayar'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -250,38 +253,20 @@ export function ReportManager({ projectId }: { projectId: string }) {
       {/* ========================================================= */}
       <div id="print-area" className="hidden print:block w-full text-black bg-white" style={{ fontFamily: "'Times New Roman', Times, serif" }}>
         
-        {/* KOP SURAT ENTERPRISE (LAYOUT TENGAH) */}
+        {/* KOP SURAT ENTERPRISE */}
         <div style={{ textAlign: 'center', marginBottom: '15px' }}>
-          
-          {/* Logo Perusahaan */}
           {resolveLogoUrl(projectData) ? (
-            <img 
-              src={resolveLogoUrl(projectData)!} 
-              alt="Logo" 
-              style={{ maxHeight: '70px', maxWidth: '180px', objectFit: 'contain', marginBottom: '8px', display: 'inline-block' }} 
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-                document.getElementById('logo-fallback')!.style.display = 'block';
-              }}
-            />
+            <img src={resolveLogoUrl(projectData)!} alt="Logo" style={{ maxHeight: '70px', maxWidth: '180px', objectFit: 'contain', marginBottom: '8px', display: 'inline-block' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; document.getElementById('logo-fallback')!.style.display = 'block'; }} />
           ) : null}
-          
-          {/* Fallback Icon */}
           <div id="logo-fallback" style={{ display: resolveLogoUrl(projectData) ? 'none' : 'block', marginBottom: '8px', color: '#333' }}>
             <Building2 style={{ width: '50px', height: '50px', margin: '0 auto' }} />
           </div>
-
-          {/* Nama Perusahaan (Font Diperkecil ke 22px) */}
           <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: '0 0 3px 0', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             {projectData?.contractor_name || projectData?.company_name || 'NAMA PERUSAHAAN KONTRAKTOR'}
           </h1>
-
-          {/* Alamat Perusahaan */}
           <p style={{ fontSize: '12px', margin: '0 0 4px 0', color: '#000' }}>
             {projectData?.contractor_address || 'Alamat Perusahaan Belum Diatur'}
           </p>
-          
-          {/* Kontak (Phone & Email) */}
           {(projectData?.company_phone || projectData?.company_email) && (
             <p style={{ fontSize: '11px', margin: '0 0 6px 0', color: '#000' }}>
               {projectData?.company_phone ? `Telp: ${projectData.company_phone}` : ''} 
@@ -289,8 +274,6 @@ export function ReportManager({ projectId }: { projectId: string }) {
               {projectData?.company_email ? `Email: ${projectData.company_email}` : ''}
             </p>
           )}
-
-          {/* NAMA PROYEK (DIPINDAH KE HEADER) */}
           <div style={{ marginTop: '4px' }}>
             <p style={{ fontSize: '14px', fontWeight: 'bold', margin: 0, textTransform: 'uppercase' }}>
               PROYEK: {projectData?.name || '-'}
@@ -298,17 +281,14 @@ export function ReportManager({ projectId }: { projectId: string }) {
           </div>
         </div>
         
-        {/* Garis Ganda Pembatas Kop Surat */}
         <div style={{ borderBottom: '3px solid #000', marginBottom: '2px' }}></div>
         <div style={{ borderBottom: '1px solid #000', marginBottom: '20px' }}></div>
 
-        {/* JUDUL LAPORAN (LEBIH BERSIH) */}
         <div style={{ textAlign: 'center', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '16px', fontWeight: 'bold', textDecoration: 'underline', margin: '0 0 5px 0', textTransform: 'uppercase' }}>Laporan Rekapitulasi Material & Pembayaran PO</h2>
           <p style={{ fontSize: '12px', margin: 0 }}>Dicetak pada: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
 
-        {/* BAGIAN A: MATERIAL */}
         <div style={{ marginBottom: '30px' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#e2e8f0', padding: '6px', border: '1px solid black', marginBottom: '8px', textTransform: 'uppercase' }}>A. Rekapitulasi Kebutuhan & Pengadaan Material</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
@@ -343,7 +323,6 @@ export function ReportManager({ projectId }: { projectId: string }) {
           </table>
         </div>
 
-        {/* BAGIAN B: PEMBAYARAN */}
         <div style={{ marginBottom: '30px', pageBreakBefore: 'always' }}>
           <h3 style={{ fontSize: '14px', fontWeight: 'bold', backgroundColor: '#e2e8f0', padding: '6px', border: '1px solid black', marginBottom: '8px', textTransform: 'uppercase' }}>B. Rekapitulasi Pembayaran Purchase Order (PO)</h3>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px' }}>
@@ -379,7 +358,6 @@ export function ReportManager({ projectId }: { projectId: string }) {
           </table>
         </div>
 
-        {/* TANDA TANGAN DINAMIS */}
         <table style={{ width: '100%', marginTop: '60px', pageBreakInside: 'avoid' }}>
           <tbody>
             <tr>
@@ -390,7 +368,6 @@ export function ReportManager({ projectId }: { projectId: string }) {
                 </div>
                 <p style={{ fontSize: '12px', color: '#333', margin: '4px 0 0 0' }}>{signatures.creatorTitle}</p>
               </td>
-              
               <td style={{ width: '33.33%', textAlign: 'center', verticalAlign: 'top' }}>
                 <p style={{ marginBottom: '70px', fontSize: '13px' }}>Diperiksa Oleh,</p>
                 <div style={{ display: 'inline-block', borderBottom: '1px solid black', paddingBottom: '2px', minWidth: '150px' }}>
@@ -398,7 +375,6 @@ export function ReportManager({ projectId }: { projectId: string }) {
                 </div>
                 <p style={{ fontSize: '12px', color: '#333', margin: '4px 0 0 0' }}>{signatures.checkerTitle}</p>
               </td>
-              
               <td style={{ width: '33.33%', textAlign: 'center', verticalAlign: 'top' }}>
                 <p style={{ marginBottom: '70px', fontSize: '13px' }}>Disetujui Oleh,</p>
                 <div style={{ display: 'inline-block', borderBottom: '1px solid black', paddingBottom: '2px', minWidth: '150px' }}>
@@ -410,71 +386,70 @@ export function ReportManager({ projectId }: { projectId: string }) {
           </tbody>
         </table>
 
-        {/* FOOTER */}
         <div style={{ marginTop: '40px', textAlign: 'center', fontSize: '10px', color: '#666', borderTop: '1px solid #ccc', paddingTop: '8px' }}>
           Dokumen ini dihasilkan secara otomatis oleh Sistem ERP InfraControl PRO. Rahasia & Tidak untuk disebarluaskan.
         </div>
       </div>
 
-      {/* MODAL PENGATURAN TANDA TANGAN */}
+      {/* MODAL PENGATURAN TANDA TANGAN (ENTERPRISE STYLE) */}
       {isSigModalOpen && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in print:hidden">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
-            <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-              <h2 className="font-bold text-slate-800 flex items-center gap-2"><UserCircle className="w-5 h-5 text-blue-600" /> Pengaturan Tanda Tangan Laporan</h2>
-              <button onClick={() => setIsSigModalOpen(false)} className="text-slate-400 hover:text-red-500"><X className="w-5 h-5" /></button>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200 print:hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b bg-slate-50 flex justify-between items-center">
+              <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2"><UserCircle className="w-5 h-5 text-blue-600" /> Pengaturan Tanda Tangan</h2>
+              <button onClick={() => setIsSigModalOpen(false)} className="text-slate-400 hover:text-rose-500 transition-colors p-1 bg-white rounded-md border border-slate-200"><X className="w-5 h-5" /></button>
             </div>
-            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-lg border border-blue-200">
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div className="bg-blue-50 text-blue-800 text-xs p-3 rounded-xl border border-blue-200 font-medium">
                 Pengaturan ini disimpan di browser Anda (LocalStorage) dan akan otomatis muncul pada cetakan PDF.
               </div>
 
-              <div className="space-y-2 border p-3 rounded-lg bg-slate-50">
-                <p className="text-xs font-bold text-slate-700 uppercase">1. Dibuat Oleh (Logistik)</p>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-3 border p-4 rounded-xl bg-slate-50/50">
+                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">1. Dibuat Oleh (Logistik)</p>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Nama Lengkap</label>
-                    <input type="text" value={signatures.creatorName} onChange={e => setSignatures({...signatures, creatorName: e.target.value})} className="w-full border rounded p-1.5 text-sm focus:ring-1 focus:ring-blue-500" />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nama Lengkap</label>
+                    <input type="text" value={signatures.creatorName} onChange={e => setSignatures({...signatures, creatorName: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Jabatan</label>
-                    <input type="text" value={signatures.creatorTitle} onChange={e => setSignatures({...signatures, creatorTitle: e.target.value})} className="w-full border rounded p-1.5 text-sm focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2 border p-3 rounded-lg bg-slate-50">
-                <p className="text-xs font-bold text-slate-700 uppercase">2. Diperiksa Oleh (QS)</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Nama Lengkap</label>
-                    <input type="text" value={signatures.checkerName} onChange={e => setSignatures({...signatures, checkerName: e.target.value})} className="w-full border rounded p-1.5 text-sm focus:ring-1 focus:ring-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Jabatan</label>
-                    <input type="text" value={signatures.checkerTitle} onChange={e => setSignatures({...signatures, checkerTitle: e.target.value})} className="w-full border rounded p-1.5 text-sm focus:ring-1 focus:ring-blue-500" />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Jabatan</label>
+                    <input type="text" value={signatures.creatorTitle} onChange={e => setSignatures({...signatures, creatorTitle: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2 border p-3 rounded-lg bg-slate-50">
-                <p className="text-xs font-bold text-slate-700 uppercase">3. Disetujui Oleh (PM)</p>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-3 border p-4 rounded-xl bg-slate-50/50">
+                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">2. Diperiksa Oleh (QS)</p>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Nama Lengkap</label>
-                    <input type="text" value={signatures.approverName} onChange={e => setSignatures({...signatures, approverName: e.target.value})} className="w-full border rounded p-1.5 text-sm focus:ring-1 focus:ring-blue-500" />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nama Lengkap</label>
+                    <input type="text" value={signatures.checkerName} onChange={e => setSignatures({...signatures, checkerName: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-slate-500 mb-1">Jabatan</label>
-                    <input type="text" value={signatures.approverTitle} onChange={e => setSignatures({...signatures, approverTitle: e.target.value})} className="w-full border rounded p-1.5 text-sm focus:ring-1 focus:ring-blue-500" />
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Jabatan</label>
+                    <input type="text" value={signatures.checkerTitle} onChange={e => setSignatures({...signatures, checkerTitle: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 border p-4 rounded-xl bg-slate-50/50">
+                <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">3. Disetujui Oleh (PM)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Nama Lengkap</label>
+                    <input type="text" value={signatures.approverName} onChange={e => setSignatures({...signatures, approverName: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Jabatan</label>
+                    <input type="text" value={signatures.approverTitle} onChange={e => setSignatures({...signatures, approverTitle: e.target.value})} className="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none" />
                   </div>
                 </div>
               </div>
 
             </div>
-            <div className="p-4 border-t bg-slate-50 flex justify-end gap-2">
-              <button onClick={() => setIsSigModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 bg-white border rounded-lg hover:bg-slate-100">Batal</button>
-              <button onClick={handleSaveSignatures} className="px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm flex items-center gap-2">
+            <div className="p-5 border-t bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setIsSigModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors">Batal</button>
+              <button onClick={handleSaveSignatures} className="px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 flex items-center gap-2 transition-all">
                 <Save className="w-4 h-4" /> Simpan Pengaturan
               </button>
             </div>

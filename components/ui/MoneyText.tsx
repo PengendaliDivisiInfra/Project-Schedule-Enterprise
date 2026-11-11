@@ -13,14 +13,13 @@ export function MoneyText({ value, className = '', showMask }: MoneyTextProps) {
   const isAllowedToSeePrice = can('VIEW_PRICE');
   
   if (!isAllowedToSeePrice || showMask) {
-    return <span className={className}>Rp ***</span>;
+    return <span className={`tabular-nums ${className}`}>Rp ***</span>;
   }
 
-  // Pastikan value adalah angka valid
   const safeValue = isNaN(Number(value)) ? 0 : Number(value);
 
   return (
-    <span className={className}>
+    <span className={`tabular-nums ${className}`}>
       {new Intl.NumberFormat('id-ID', {
         style: 'currency',
         currency: 'IDR',
