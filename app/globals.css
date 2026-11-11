@@ -34,3 +34,101 @@ aside, aside *, nav, .sidebar-container {
   .report-table { width: 100% !important; border-collapse: collapse !important; }
   .report-table th, .report-table td { border: 1px solid #000 !important; padding: 3px 4px !important; font-size: 9px !important; }
 }
+
+/* =========================================
+   3. ENTERPRISE PRINT ENGINE (ABSOLUTE RULES)
+   ========================================= */
+@media print {
+  /* Sembunyikan semua elemen UI (Sidebar, Header, Tombol) */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Tampilkan HANYA area print laporan */
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  
+  /* Posisikan laporan di pojok kiri atas kertas A4 */
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Aturan Anti Page-Break untuk baris tabel */
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Pastikan warna background tetap tercetak (jika diperlukan) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
+/* =========================================
+   4. PREMIUM PRINT ENGINE (REPORT MANAGER)
+   ========================================= */
+@media print {
+  /* Paksa cetak warna background */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Sembunyikan UI Aplikasi */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Tampilkan HANYA area laporan */
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  
+  /* Atur halaman A4 */
+  @page {
+    size: A4 portrait;
+    margin: 15mm 10mm;
+  }
+
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    background: white;
+  }
+
+  /* Mencegah tabel terpotong di tengah baris */
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Desain Tabel Enterprise */
+  .table-print {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+    font-family: Arial, sans-serif;
+  }
+  .table-print th, .table-print td {
+    border: 1px solid #334155;
+    padding: 6px 8px;
+  }
+  .table-print th {
+    background-color: #f1f5f9 !important;
+    font-weight: bold;
+    text-align: center;
+  }
+  .table-print tr:nth-child(even) td {
+    background-color: #f8fafc !important; /* Zebra striping */
+  }
+}

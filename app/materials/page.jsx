@@ -2,14 +2,15 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Package, AlertTriangle, Info, HelpCircle, Box, ClipboardList, Filter, ShoppingCart, Store } from 'lucide-react';
+import { Package, AlertTriangle, Info, HelpCircle, Box, ClipboardList, Filter, ShoppingCart, Store, FileText } from 'lucide-react';
 import { InventoryManager } from '@/components/inventory/InventoryManager';
 import { PurchaseOrderManager } from '@/components/purchase-order/PurchaseOrderManager';
-import { VendorManager } from '@/components/vendor/VendorManager'; // Import baru
+import { VendorManager } from '@/components/vendor/VendorManager';
+import { MaterialFlowGuide } from '@/components/material/MaterialFlowGuide';
+import { ReportManager } from '@/components/material/ReportManager';
 
 export default function MaterialsPage() {
   const { activeProjectId } = useProject();
-  // Tambahkan state untuk tab vendor
   const [activeTab, setActiveTab] = useState('plan'); 
   const [materials, setMaterials] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +22,6 @@ export default function MaterialsPage() {
     }
   }, [activeProjectId, activeTab]);
 
-  // ... (fungsi fetchMaterials tetap sama persis) ...
   const fetchMaterials = async () => {
     if (!activeProjectId) return;
     setLoading(true);
@@ -119,7 +119,7 @@ export default function MaterialsPage() {
     <div className="p-6 md:p-8 bg-slate-50 min-h-screen">
       <div className="w-full max-w-[1920px] mx-auto">
         
-        <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 mb-6">
+        <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
               <Package className="text-blue-600 w-6 h-6" /> Material Management
@@ -141,7 +141,10 @@ export default function MaterialsPage() {
           )}
         </div>
 
-        {/* NAVIGATION TABS (DITAMBAH VENDOR) */}
+        {/* TAMBAHKAN BANNER FLOW GUIDE DI SINI */}
+        <MaterialFlowGuide />
+
+        {/* NAVIGATION TABS */}
         <div className="flex gap-1 border-b border-slate-200 mb-6 overflow-x-auto">
           <button onClick={() => { setActiveTab('plan'); setSearchTerm(''); }} className={tabClass(activeTab === 'plan')}>
             <ClipboardList className="w-4 h-4" /> Requirement Plan
@@ -155,12 +158,14 @@ export default function MaterialsPage() {
           <button onClick={() => { setActiveTab('vendor'); setSearchTerm(''); }} className={tabClass(activeTab === 'vendor')}>
             <Store className="w-4 h-4" /> Master Vendor
           </button>
+          <button onClick={() => { setActiveTab('reports'); setSearchTerm(''); }} className={tabClass(activeTab === 'reports')}>
+            <FileText className="w-4 h-4" /> Rekap & Laporan
+          </button>
         </div>
 
         {/* CONTENT: REQUIREMENT PLAN */}
         {activeTab === 'plan' && (
           <>
-            {/* ... (Tabel Requirement Plan tetap sama persis) ... */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-max">
                 <thead>
@@ -240,6 +245,13 @@ export default function MaterialsPage() {
             <VendorManager projectId={activeProjectId} />
           </div>
         )}
+
+        {/* TAMBAHKAN RENDER KONTEN LAPORAN DI PALING BAWAH */}
+        {activeTab === 'reports' && (
+          <div className="mt-2 animate-in fade-in">
+            <ReportManager projectId={activeProjectId} />
+          </div>
+        )}        
 
       </div>
     </div>

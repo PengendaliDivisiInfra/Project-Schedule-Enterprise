@@ -21,6 +21,13 @@ export interface POItem {
   received_qty: number;
   unit_price: number;
   total_price: number;
+  
+  // Properti untuk Manual Input
+  is_manual?: boolean;
+  manual_name?: string;
+  manual_unit?: string;
+  kategori_akun?: string;
+
   master_hsd?: {
     nama_item: string;
     satuan: string;
@@ -35,9 +42,12 @@ export interface PurchaseOrder {
   po_date: string;
   status: 'Draft' | 'Ordered' | 'Partial' | 'Completed';
   
-  // Properti baru untuk Payment Status
-  payment_status: 'Unpaid' | 'Paid';
+  // PERBAIKAN: Tambahkan 'Partially Paid' di sini
+  payment_status: 'Unpaid' | 'Partially Paid' | 'Paid';
   payment_date: string | null;
+  
+  // PERBAIKAN: Tambahkan properti paid_amount
+  paid_amount: number;
 
   subtotal: number;
   ppn_percent: number;

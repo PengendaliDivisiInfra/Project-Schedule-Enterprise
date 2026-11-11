@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
 import { Activity, DollarSign, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import ComplianceWidget from '@/components/dashboard/ComplianceWidget';
 
 export default function DashboardPage() {
   const { activeProjectId } = useProject();
@@ -132,6 +133,11 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-slate-800">{cpi.toFixed(2)}</p>
             <p className="text-xs font-semibold mt-1 text-emerald-600">{cpi >= 1 ? 'Hemat / Sesuai Budget' : 'Overbudget'}</p>
           </div>
+        </div>
+
+        {/* WIDGET COMPLIANCE CHECK */}
+        <div className="mt-6">
+          <ComplianceWidget />
         </div>
 
         {/* S-Curve Chart */}

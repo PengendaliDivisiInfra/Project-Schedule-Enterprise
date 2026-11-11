@@ -52,6 +52,26 @@ export async function getPurchaseOrders(projectId: string): Promise<PurchaseOrde
   return data;
 }
 
+async function ensureHsdExists(item: POItem): Promise<string> {
+  if (!item.is_manual && item.hsd_id) return item.hsd_id;
+
+  const { data: newHsd, error } = await supabase
+    .from('master_hsd')
+    .insert({
+      nama_item: item.manual_name || 'Material Manual',
+      satuan: item.manual_unit || 'Unit',
+      harga_dasar: item.unit_price,
+      tipe: 'bahan',
+      is_ahsp: false, // <-- Input manual otomatis bukan AHSP
+      kategori_akun: item.kategori_akun || 'Material Utama' // <-- Simpan kategori
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Gagal membuat material baru: ${error.message}`);
+  return newHsd.id;
+}
+
 export async function createPurchaseOrder(poHeader: Partial<PurchaseOrder>, items: POItem[]) {
   const { data: po, error: poError } = await supabase
     .from('purchase_orders')
@@ -61,18 +81,22 @@ export async function createPurchaseOrder(poHeader: Partial<PurchaseOrder>, item
 
   if (poError) throw new Error(poError.message);
 
-  const cleanItems = items.map(item => ({
-    po_id: po.id,
-    hsd_id: item.hsd_id,
-    ordered_qty: item.ordered_qty,
-    received_qty: item.received_qty,
-    unit_price: item.unit_price,
-    total_price: item.total_price
-  }));
+  const processedItems: any[] = [];
+  for (const item of items) {
+    const validHsdId = await ensureHsdExists(item);
+    processedItems.push({
+      po_id: po.id,
+      hsd_id: validHsdId,
+      ordered_qty: item.ordered_qty,
+      received_qty: item.received_qty,
+      unit_price: item.unit_price,
+      total_price: item.total_price
+    });
+  }
 
   const { error: itemError } = await supabase
     .from('purchase_order_items')
-    .insert(cleanItems);
+    .insert(processedItems);
 
   if (itemError) throw new Error(itemError.message);
   return po;
@@ -93,18 +117,22 @@ export async function updatePurchaseOrder(poId: string, poHeader: Partial<Purcha
     
   if (deleteError) throw new Error(deleteError.message);
 
-  const cleanItems = items.map(item => ({
-    po_id: poId,
-    hsd_id: item.hsd_id,
-    ordered_qty: item.ordered_qty,
-    received_qty: 0,
-    unit_price: item.unit_price,
-    total_price: item.total_price
-  }));
+  const processedItems: any[] = [];
+  for (const item of items) {
+    const validHsdId = await ensureHsdExists(item);
+    processedItems.push({
+      po_id: poId,
+      hsd_id: validHsdId,
+      ordered_qty: item.ordered_qty,
+      received_qty: 0,
+      unit_price: item.unit_price,
+      total_price: item.total_price
+    });
+  }
 
   const { error: itemError } = await supabase
     .from('purchase_order_items')
-    .insert(cleanItems);
+    .insert(processedItems);
 
   if (itemError) throw new Error(itemError.message);
 }
@@ -204,29 +232,55 @@ export async function receiveGoods(
 // ==========================================
 // --- PEMBAYARAN PO (CASH FLOW INTEGRATION) ---
 // ==========================================
-export async function markPOAsPaid(poId: string, projectId: string, totalAmount: number, poNumber: string) {
+export async function recordPOPayment(
+  poId: string, 
+  projectId: string, 
+  paymentAmount: number, 
+  paymentMethod: string,
+  paymentDate: string,
+  poNumber: string,
+  currentPaidAmount: number,
+  grandTotal: number,
+  kategoriAkun: string = 'Material'
+) {
+  const newPaidAmount = currentPaidAmount + paymentAmount;
+  
+  let newStatus: 'Paid' | 'Partially Paid' | 'Unpaid' = 'Unpaid';
+  if (newPaidAmount >= grandTotal) {
+    newStatus = 'Paid';
+  } else if (newPaidAmount > 0) {
+    newStatus = 'Partially Paid';
+  }
+
   const { error: updateError } = await supabase
     .from('purchase_orders')
     .update({ 
-      payment_status: 'Paid',
-      payment_date: new Date().toISOString().split('T')[0]
+      payment_status: newStatus,
+      paid_amount: newPaidAmount,
+      payment_date: newStatus === 'Paid' ? paymentDate : null
     })
     .eq('id', poId);
 
   if (updateError) throw new Error(updateError.message);
 
+    const cashCategory = kategoriAkun === 'Alat Bantu' || kategoriAkun === 'Consumables' 
+    ? 'Overhead Proyek' 
+    : 'Material';
+
+
   const { error: cashError } = await supabase
     .from('cash_flows')
     .insert({
       project_id: projectId,
-      transaction_date: new Date().toISOString().split('T')[0],
+      transaction_date: paymentDate,
       type: 'OUT', 
-      category: 'Material',
-      amount: totalAmount,
-      description: `Pembayaran PO: ${poNumber}`,
+      category: cashCategory,
+      amount: paymentAmount,
+      payment_method: paymentMethod,
+      description: `Pembayaran PO: ${poNumber} (${newStatus})`,
       reference_id: poId,
       vendor_or_ref: 'Purchase Order',
-      approval_status: 'Approved' // <-- PERBAIKAN: Title Case
+      approval_status: 'Approved'
     });
 
   if (cashError) throw new Error(`Gagal mencatat arus kas: ${cashError.message}`);
@@ -235,11 +289,14 @@ export async function markPOAsPaid(poId: string, projectId: string, totalAmount:
 // ==========================================
 // --- PEMBATALAN PEMBAYARAN (VOID PAYMENT) ---
 // ==========================================
-export async function voidPOPayment(poId: string, projectId: string, totalAmount: number, poNumber: string) {
+export async function voidPOPayment(poId: string, projectId: string, totalPaidAmount: number, poNumber: string) {
+  if (totalPaidAmount <= 0) throw new Error("Tidak ada nominal pembayaran yang bisa dibatalkan.");
+
   const { error: updateError } = await supabase
     .from('purchase_orders')
     .update({ 
       payment_status: 'Unpaid',
+      paid_amount: 0,
       payment_date: null
     })
     .eq('id', poId);
@@ -253,11 +310,11 @@ export async function voidPOPayment(poId: string, projectId: string, totalAmount
       transaction_date: new Date().toISOString().split('T')[0],
       type: 'IN', 
       category: 'Material',
-      amount: totalAmount,
+      amount: totalPaidAmount,
       description: `[PEMBATALAN] Pembayaran PO: ${poNumber}`,
       reference_id: poId,
       vendor_or_ref: 'Void PO',
-      approval_status: 'Approved' // <-- PERBAIKAN: Title Case
+      approval_status: 'Approved'
     });
 
   if (cashError) throw new Error(`Gagal mencatat pembatalan arus kas: ${cashError.message}`);

@@ -1,6 +1,6 @@
 // lib/services/inventory-service.ts
 import { supabase } from '../supabase';
-import type { InventoryItem } from '@/types/inventory';
+import type { InventoryItem, InventoryTransaction } from '@/types/inventory';
 
 // 1. Ambil semua material dari master_hsd, gabungkan dengan stok proyek saat ini
 export async function getInventoryStock(projectId: string): Promise<InventoryItem[]> {
@@ -86,4 +86,87 @@ export async function recordTransaction(
     });
 
   if (trxError) throw new Error(trxError.message);
+}
+
+// ==========================================
+// --- FITUR BARU: HISTORY & KOREKSI ---
+// ==========================================
+
+// 3. Ambil History Transaksi berdasarkan inventory_id
+export async function getMaterialHistory(inventoryId: string): Promise<InventoryTransaction[]> {
+  const { data, error } = await supabase
+    .from('inventory_transactions')
+    .select('*')
+    .eq('inventory_id', inventoryId)
+    .order('transaction_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+// 4. Revisi/Koreksi Transaksi (DENGAN PROTEKSI ENTERPRISE)
+export async function updateTransaction(
+  transactionId: string,
+  newQty: number,
+  newNotes: string,
+  oldQty: number,
+  type: 'IN' | 'OUT',
+  inventoryId: string
+) {
+  // 🛡️ PROTEKSI LEVEL BACKEND (ANTI-BYPASS)
+  // Ambil data asli dari database untuk memastikan ini bukan dari PO
+  const { data: originalTrx, error: fetchError } = await supabase
+    .from('inventory_transactions')
+    .select('reference, notes')
+    .eq('id', transactionId)
+    .single();
+
+  if (fetchError) throw new Error("Gagal memvalidasi keaslian transaksi.");
+
+  const isFromPO = 
+    originalTrx?.reference?.toLowerCase().includes('penerimaan po') || 
+    originalTrx?.notes?.toLowerCase().includes('penerimaan po');
+
+  if (isFromPO) {
+    throw new Error("AKSES DITOLAK: Transaksi ini terikat dengan dokumen Purchase Order (PO). Silakan lakukan pembatalan (VOID) melalui menu Purchase Order.");
+  }
+
+  // Lanjut Update jika lolos proteksi
+  const { error: trxError } = await supabase
+    .from('inventory_transactions')
+    .update({ 
+      quantity: newQty, 
+      notes: `${newNotes} [Direvisi dari ${oldQty}]` 
+    })
+    .eq('id', transactionId);
+
+  if (trxError) throw new Error(trxError.message);
+
+  // Sesuaikan stok_on_hand utama
+  const diff = newQty - oldQty;
+  const adjustment = type === 'IN' ? diff : -diff;
+
+  if (adjustment !== 0) {
+    const { data: inv } = await supabase.from('inventory_materials').select('stok_on_hand').eq('id', inventoryId).single();
+    if (inv) {
+      const newStock = inv.stok_on_hand + adjustment;
+      await supabase.from('inventory_materials').update({ stok_on_hand: newStock }).eq('id', inventoryId);
+    }
+  }
+}
+
+export async function updateStokMinimum(inventoryId: string, hsdId: string, projectId: string, newMin: number) {
+  if (!inventoryId) {
+    const { error } = await supabase.from('inventory_materials').insert({
+      project_id: projectId,
+      hsd_id: hsdId,
+      stok_minimum: newMin,
+      stok_on_hand: 0
+    });
+    if (error) throw new Error(error.message);
+  } else {
+    const { error } = await supabase.from('inventory_materials').update({ stok_minimum: newMin }).eq('id', inventoryId);
+    if (error) throw new Error(error.message);
+  }
 }

@@ -5,7 +5,8 @@ import { useProject } from '../context/ProjectContext';
 import { 
   LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
   FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat, Wallet, Building2, PieChart
+  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat, Wallet, Building2, PieChart,
+  BookOpen // <-- Pastikan ini ada
 } from 'lucide-react';
 
 export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
@@ -19,24 +20,27 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
   let role = 'pelaksana'; 
   if (rawRole.includes('owner')) role = 'owner';
   else if (rawRole.includes('manager') || rawRole === 'pm') role = 'pm';
-  else if (rawRole.includes('admin') || rawRole.includes('dcc') || rawRole.includes('logistic')) role = 'admin';
+  else if (rawRole.includes('admin') || rawRole.includes('dcc') || rawRole.includes('logistic') || rawRole.includes('qs')) role = 'admin';
 
   const menuItems = [
     { group: 'UTAMA', items: [
       { name: 'Dashboard S-Curve', path: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
       { name: 'Gantt Workspace', path: '/gantt', icon: GanttChartSquare, roles: ['owner', 'admin', 'pm'] },
     ]},
-    { group: 'PERENCANAAN', items: [
+    { group: 'PERENCANAAN & EKSEKUSI', items: [
       { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin', 'pm'] },
       { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
       { name: 'Risk Register', path: '/risks', icon: ShieldAlert, roles: ['owner', 'admin', 'pm'] },
-      { name: 'QHSE (Mutu & K3)', path: '/qhse', icon: HardHat, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
+      
+      // DISEMBUNYIKAN: QHSE biasanya diinput oleh Tim K3 (bukan PM/SE)
+      // { name: 'QHSE (Mutu & K3)', path: '/qhse', icon: HardHat, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
     ]},
     { group: 'PELAPORAN', items: [
-      { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin', 'pm'] },
+      // DISEMBUNYIKAN: Laporan Harian & Mingguan dibuat oleh QS/Admin
+      // { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin', 'pm'] },
+      // { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin', 'pm'] },
+      
       { name: 'Master Project Report', path: '/reports/master', icon: FileText, roles: ['owner', 'admin', 'pm'] },
-      // --- MENU BARU: P&L ---
       ...(currentProjectId ? [
         { name: 'Laba Rugi (P&L)', path: `/projects/${currentProjectId}/reports/pnl`, icon: PieChart, roles: ['owner', 'admin', 'pm'] },
       ] : []),
@@ -58,6 +62,7 @@ export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
       { name: 'S-Curve Chart', path: '/s-curve', icon: TrendingUp, roles: ['owner', 'admin', 'pm'] },
     ]},
     { group: 'SISTEM', items: [
+      { name: 'SOP & Panduan', path: '/sop', icon: BookOpen, roles: ['owner', 'admin', 'pm', 'pelaksana'] }, // <-- MENU SOP DITAMBAHKAN DI SINI
       { name: 'Pengaturan Proyek', path: '/settings/project', icon: FileText, roles: ['owner', 'admin', 'pm'] },
       { name: 'Manajemen Tim', path: '/settings/team', icon: Users, roles: ['owner', 'admin', 'pm'] },
       { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner', 'admin', 'pm'] },

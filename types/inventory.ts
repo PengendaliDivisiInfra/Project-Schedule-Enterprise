@@ -8,12 +8,12 @@ export interface InventoryItem {
   stok_minimum: number;
   lokasi_gudang: string | null;
   updated_at: string;
-  // Relasi dari master_hsd
   master_hsd?: {
     nama_item: string;
     satuan: string;
     harga_dasar: number;
     tipe: string;
+    kategori_akun?: string;
   };
 }
 

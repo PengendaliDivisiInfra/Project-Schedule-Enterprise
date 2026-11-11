@@ -1,69 +1,53 @@
 📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
-Status Proyek: 🚀 Production Ready (V34.1 - Enterprise Grade)
-Terakhir Diperbarui: 09 November 2026
+Status Proyek: 🚀 Production Ready (V34.4 - Enterprise Grade)
+Terakhir Diperbarui: 11 November 2026
 Environment Setup: Next.js 14, Vercel, Railway (Puppeteer), Supabase (PostgreSQL, RLS, Storage).
 
 1. EXECUTIVE SUMMARY
-InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi SAK ETAP Bab 23 dan kepatuhan perpajakan Indonesia (PPh 4(2) & PPN). Fokus V34.1 adalah Sinkronisasi Dokumen, Pre-Audit SAK/KUP, Dynamic COA, dan High-Fidelity Print Engine (PMP & Subcon/SPK).
+InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi **PSAK 115** (Pendapatan Kontrak) dan **PSAK 207** (Laporan Arus Kas). Fokus V34.4 mencakup Strict Accrual P&L Engine, Laporan Arus Kas Direct Method, dan sistem Compliance (SOP) otomatis untuk memastikan akurasi data lapangan.
 
-2. IMPLEMENTED FEATURES (V34.1)
-A. Master COA & Termin Klien
-- COA dinamis via `useCOA()`.
-- SP2D auto-journal (Debet Kas, Kredit Pendapatan, dll).
+2. IMPLEMENTED FEATURES (V34.4)
+A. Financial & P&L Engine (PSAK 115)
+- **Strict Accrual Basis**: Pendapatan diakui menggunakan metode Cost-to-Cost (PoC). Membaca data dari Penerimaan Barang (GRN), Opname Subkon, dan Jurnal Akrual. 
+- **Anti Laba Semu**: Sistem memblokir cetak laporan jika Actual Cost masih Rp 0.
+- **CALK Rekonsiliasi**: Otomatis menghitung Aset Kontrak (Unbilled Receivable) atau Liabilitas Kontrak (Unearned Revenue).
+- **Enterprise Print Engine**: Layout A4 Formal (Times New Roman), dikunci dalam 1 halaman, TTD Dinamis.
 
-B. Subcontractor Workflow (Sinkronisasi & Anti Double Billing)
-- BPUTK sebagai *Single Source of Truth*. Status `is_billed` mencegah *double billing*.
-- BAPP/BAOP menarik data BPUTK via dropdown terkunci.
-- Soft Delete diterapkan pada Kwitansi, Kasbon, dan SPK.
+B. Cash Flow Statement (PSAK 207)
+- **Direct Method**: Pemisahan tegas antara Aktivitas Operasi, Investasi, dan Pendanaan (Droping).
+- **Cost Breakdown**: Rincian pengeluaran operasi (Material, Upah, Subkon & Alat, Operasional).
+- **Sinkronisasi**: Laporan Kas (Net) selaras dengan Tagihan Bruto (P&L).
 
-C. Payment Center (Persetujuan & Pembayaran)
-- Menggabungkan antrean Kasbon & Kwitansi.
-- **Compliance Engine (Pre-Audit)**: Memblokir pembayaran jika validasi pajak/DPP/Netto gagal.
+C. Interactive SOP & Compliance (BARU)
+- **Halaman `/sop`**: Panduan interaktif (Checklist Admin) dengan instruksi navigasi langsung ke menu yang dituju.
+- **Compliance Widget**: Muncul di Dashboard untuk mengingatkan tim terkait PO yang belum di-GRN dan Kas Harian yang belum diinput.
+- **Contextual Alert**: Peringatan otomatis di halaman Cash Flow & P&L jika ada SOP yang terlewat.
 
-D. UI/UX Enterprise (Workflow Stepper & Guide Drawer)
-- Terintegrasi di setiap halaman Subcon.
-
-E. **SPK & Master Vendor Print Engine (BARU)**
-- **Master Vendor Upgrade**: CRUD lengkap, Dropdown Kualifikasi SBU (PP 9/2022), dan Upload KTP.
-- **Form SPK**: Mendukung Mode Pajak (Exclude/Include/Non-Pajak). Tarif PPh otomatis ditarik dari Master Vendor. Validasi input (PPN/PPh disabled jika Non-Pajak).
-- **PDF Engine A4**: Layout presisi, TTD Dinamis (Nama & Jabatan), penomoran halaman otomatis (`Halaman X dari Y`), Kotak Paraf di footer, dan format BQ dengan garis putus-putus.
-
-F. PMP Print Engine (A3)
-- Mencetak 4 halaman (Time Schedule, EVM Matrix, Resources, Materials) via Railway Puppeteer.
+D. Material Management & Supply Chain
+- **Requirement Plan**: Kalkulasi otomatis kebutuhan material dari WBS & AHSP.
+- **Inventory (Stok Gudang)**: Fitur *History*, Koreksi Transaksi, dan Input Stok Minimum.
+- **Purchase Order (PO)**: Mendukung *Input Manual*, *Partial Payment*, dan *Progress Tracking* (GRN).
 
 3. ARCHITECTURE & CORE LOGIC
-- **Financial Engine (`sak-calculator.ts`)**: Kalkulasi DPP, PPN, PPh, Retensi WAJIB via `hitungSAK()`.
-- **Snapshot / Freeze Data**: Nilai `nilai_dpp`, `nilai_ppn`, `nilai_pph` disimpan permanen saat cetak (reprint membaca snapshot).
-- **PDF Microservice**: `/api/generate-pdf` (Next.js) -> Railway (Puppeteer). Mendukung `footerTemplate` untuk penomoran halaman.
-- **Supabase Storage**: Bucket `ktp_documents` (Public) digunakan untuk upload KTP Mandor di form SPK.
+- **Supabase Schema Note**: Tabel `profiles` menggunakan kolom **`full_name`**. Tabel `actual_costs` digunakan untuk Jurnal Akrual. Tabel `pnl_snapshots` & `cash_flow_snapshots` untuk Audit Trail.
+- **Print CSS Trick**: Menggunakan `display: flex; flex-direction: column;` pada kontainer utama cetak. Elemen `margin-top: auto` digunakan pada blok TTD/Footer agar selalu berada di bawah tanpa menabrak tabel.
 
 4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
-1. UI/UX: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib `ConfirmModal` atau Custom Modal.
-2. Database: DILARANG Hard Delete pada data finansial. Gunakan Soft Delete (status = 'Void').
-3. Print Engine (Puppeteer):
-   - NO TAILWIND IN PDF: Inline Style/Pure CSS murni.
-   - NO FLEXBOX/GRID IN PDF: `<table>` murni.
-   - ANTI PAGE-BREAK: Multi-page gunakan `@page` margin (bawah 45mm) dan `position: fixed` untuk footer paraf. Single page gunakan `height: 185mm`.
-   - LOGO LIMIT: `max-height: 45px; max-width: 150px; object-fit: contain;`.
-   - Wajib update RLS setiap membuat tabel/bucket baru.
+1. UI/UX: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal.
+2. Database: DILARANG Hard Delete pada data finansial & inventaris. Gunakan Soft Delete.
+3. Print Engine: NO TAILWIND IN PDF, NO FLEXBOX/GRID IN PDF, WAJIB `<table>` murni, ANTI PAGE-BREAK.
+4. Wajib update RLS setiap membuat tabel/bucket baru.
 
-5. NEXT STEPS (ROADMAP)
-- A. Cetak Form GAS Lainnya (Invoice Resmi A4, Kontrak Fisik).
-- B. Modul Cash Flow Lanjutan (Dashboard Financial Health / Profit-Loss).
+5. NEXT STEPS (ROADMAP V34.5)
+- A. Modul Rekonsiliasi Bank (Upload CSV Mutasi vs Cash Flow).
+- B. Sinkronisasi API Pajak / e-Faktur (Opsional).
+- C. Uji Coba End-to-End (E2E) Modul Operasional Lapangan.
 
 6. WORKFLOW GIT & DEPLOYMENT
-npm run build (0 error) -> git add . -> git commit -m "feat(V34): [Deskripsi]" -> git push origin main.
-
-7. WORKFLOW GIT & DEPLOYMENT
-(Standar Operasional Prosedur)
-
-npm run build (Pastikan 0 error, validasi TypeScript lolos).
-
-git add .
-
-git commit -m "feat(V34): [Deskripsi Perubahan]"
-
-git push origin main (Otomatis trigger GitHub Actions -> Vercel/Railway).
+1. `npm run build` (Pastikan 0 error, validasi TypeScript lolos).
+2. `git add .`
+3. `git commit -m "feat(V34.4): Strict PSAK 115 P&L, PSAK 207 Cash Flow & Interactive SOP"`
+4. `git push origin main` (Otomatis trigger GitHub Actions -> Vercel).
 
 Konfirmasi Serah Terima:
-Dokumen ini mendokumentasikan V34 secara komprehensif. Seluruh aturan mutlak terkait Print Engine, pemisahan UI/PDF, logika pembekuan data (Snapshot), dan skema database terbaru telah didokumentasikan dengan standar Enterprise tertinggi. Proyek siap untuk dilanjutkan ke fase pengembangan berikutnya.
+Dokumen ini mendokumentasikan V34.4 secara komprehensif. Seluruh aturan mutlak terkait Print Engine, pemisahan UI/PDF, logika Accrual P&L, Cash Flow, dan SOP telah didokumentasikan dengan standar Enterprise tertinggi. Proyek siap untuk dilanjutkan ke fase Rekonsiliasi Bank.

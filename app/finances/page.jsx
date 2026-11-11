@@ -2,15 +2,18 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck, Trash2, Activity, TrendingUp, TrendingDown, Banknote, FileText, Users } from 'lucide-react';
+import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck, Trash2, Activity, TrendingUp, TrendingDown, Banknote, FileText, Users, Info } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
 import { useRole } from '@/lib/hooks/useRole';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+import CashFlowStatementView from '@/components/finances/CashFlowStatementView';
 
 export default function CashFlowPage() {
-  const { userRole } = useProject();
+  const { userRole, activeProjectId } = useProject(); 
+  const projectId = activeProjectId; 
+
   const { can } = useRole();
   const canAddTransaction = can('CREATE_PO') || userRole === 'owner' || userRole === 'pm'; 
   const canApprove = userRole === 'pm' || userRole === 'owner'; 
@@ -69,27 +72,45 @@ export default function CashFlowPage() {
   };
 
   const fetchData = async () => {
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
+    
     setLoading(true);
     
     // 1. Ambil data Cash Flows
-    const { data: flowData } = await supabase.from('cash_flows').select('*').order('transaction_date', { ascending: false });
+    const { data: flowData } = await supabase
+      .from('cash_flows')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('transaction_date', { ascending: false });
     if (flowData) setFlows(flowData);
 
     // 2. Ambil data WBS Cost Control
-    const { data: taskData } = await supabase.from('v_cost_control_wbs').select('*').order('wbs_code');
+    const { data: taskData } = await supabase
+      .from('v_cost_control_wbs')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('wbs_code');
     if (taskData) {
       setTasks(taskData);
       setCostControlData(taskData);
     }
 
     // 3. Ambil Nilai Kontrak Proyek
-    const { data: projData } = await supabase.from('projects').select('contract_value, name').limit(1).single();
+    const { data: projData } = await supabase
+      .from('projects')
+      .select('contract_value, name')
+      .eq('id', projectId)
+      .single();
     if (projData) setProjectData(projData);
 
-    // 4. Ambil Data AR (Piutang Klien)
+    // 4. Ambil Data AR
     const { data: invData } = await supabase
       .from('client_invoices')
       .select('*')
+      .eq('project_id', projectId)
       .neq('status', 'Paid')
       .neq('status', 'Void')
       .order('invoice_date', { ascending: true });
@@ -99,24 +120,19 @@ export default function CashFlowPage() {
       const formattedAR = invData.map(inv => {
         const outstanding = Number(inv.net_payable_amount) - Number(inv.paid_amount);
         if (outstanding > 0) arTotal += outstanding;
-        return {
-          ...inv,
-          outstanding,
-          aging: getAgingBucket(inv.invoice_date)
-        };
+        return { ...inv, outstanding, aging: getAgingBucket(inv.invoice_date) };
       }).filter(item => item.outstanding > 0); 
-      
       setArData(formattedAR);
       setTotalAr(arTotal);
+    } else {
+      setArData([]); setTotalAr(0);
     }
 
-    // 5. Ambil Data AP (Hutang Subkon)
+    // 5. Ambil Data AP
     const { data: subconPayData } = await supabase
       .from('subcontractor_payments')
-      .select(`
-        *,
-        subcontractor_contracts ( subcontractors ( company_name ) )
-      `)
+      .select(`*, subcontractor_contracts ( subcontractors ( company_name ) )`)
+      .eq('project_id', projectId)
       .in('status', ['Pending', 'Approved'])
       .order('payment_date', { ascending: true });
 
@@ -130,13 +146,14 @@ export default function CashFlowPage() {
           aging: getAgingBucket(pay.payment_date)
         };
       });
-      
       setApData(formattedAP);
       setTotalAp(apTotal);
+    } else {
+      setApData([]); setTotalAp(0);
     }
 
     // 6. Ambil data Chart
-    const { data: viewData } = await supabase.from('v_dashboard_cashflow').select('*');
+    const { data: viewData } = await supabase.from('v_dashboard_cashflow').select('*').eq('project_id', projectId);
     if (viewData) {
       const monthlyData = {};
       viewData.forEach(item => {
@@ -152,12 +169,16 @@ export default function CashFlowPage() {
         }
       });
       setChartData(Object.values(monthlyData).reverse());
+    } else {
+      setChartData([]);
     }
 
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { 
+    if (projectId) fetchData(); 
+  }, [projectId]);
 
   const handleWbsChange = (e) => {
     const wbsCode = e.target.value;
@@ -191,6 +212,8 @@ export default function CashFlowPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!projectId) return showToast('danger', "ID Proyek tidak ditemukan.");
+
     const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
     if (isUploadRequired && !file) return showToast('danger', "Wajib unggah bukti untuk Tunai/Petty Cash!");
     if (isOverbudget && !formData.overbudget_reason) return showToast('danger', "Wajib isi alasan overbudget!");
@@ -210,7 +233,7 @@ export default function CashFlowPage() {
       }
 
       const finalStatus = isOverbudget ? 'Pending Overbudget' : 'Pending';
-      const payload = { ...formData, approval_status: finalStatus, amount: Number(formData.amount), attachment_url: finalAttachmentUrl };
+      const payload = { ...formData, project_id: projectId, approval_status: finalStatus, amount: Number(formData.amount), attachment_url: finalAttachmentUrl };
       
       const { error } = await supabase.from('cash_flows').insert([payload]);
       if (error) throw error;
@@ -244,6 +267,10 @@ export default function CashFlowPage() {
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
   const isOverbudget = selectedWbsBudget !== null && Number(formData.amount) > selectedWbsBudget;
 
+  // Cek apakah ada transaksi hari ini untuk SOP Alert
+  const todayStr = new Date().toISOString().split('T')[0];
+  const hasTodayTransaction = flows.some(f => f.transaction_date === todayStr && f.approval_status === 'Approved');
+
   if (loading) return <LoadingSpinner text="Memuat Data Keuangan..." />;
 
   return (
@@ -255,7 +282,7 @@ export default function CashFlowPage() {
         </div>
       )}
 
-      <div className="max-w-6xl mx-auto space-y-6">
+      <div className="w-full space-y-6">
         
         <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200 flex justify-between items-center">
           <div>
@@ -270,6 +297,17 @@ export default function CashFlowPage() {
             </button>
           )}
         </div>
+
+        {/* CONTEXTUAL SOP ALERT: CASH FLOW */}
+        {!hasTodayTransaction && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg flex items-start gap-3 shadow-sm">
+            <Info className="mt-0.5 flex-shrink-0" size={18} />
+            <div>
+              <p className="font-bold mb-1">Pengingat SOP (Kas Harian):</p>
+              <p className="text-sm">Belum ada transaksi Kas Keluar / Kasbon yang diinput untuk hari ini. Sesuai SOP, pastikan seluruh nota kontan (Petty Cash) dan pemberian Kasbon Mandor sudah direkap dan diinput sebelum pukul 16.00 WITA.</p>
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200 border-l-4 border-l-emerald-500 flex items-center justify-between">
@@ -307,6 +345,9 @@ export default function CashFlowPage() {
           </button>
           <button onClick={() => setActiveTab('aging')} className={`pb-3 font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'aging' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
             <FileText size={16} /> Aging & Liabilitas
+          </button>
+          <button onClick={() => setActiveTab('cash_flow_statement')} className={`pb-3 font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'cash_flow_statement' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+            <FileText size={16} /> Laporan Arus Kas
           </button>
         </div>
 
@@ -594,6 +635,11 @@ export default function CashFlowPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB LAPORAN ARUS KAS SAK ETAP */}
+        {activeTab === 'cash_flow_statement' && (
+          <CashFlowStatementView projectId={projectId} />
         )}
 
       </div>
