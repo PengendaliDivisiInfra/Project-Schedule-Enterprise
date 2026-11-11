@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Printer, History, CheckCircle2, Loader2, FileSpreadsheet, Settings, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Printer, History, CheckCircle2, Loader2, FileSpreadsheet, Settings, AlertTriangle, Scale, Trash2 } from 'lucide-react';
 
 export default function ProfitLossPage() {
   const params = useParams();
@@ -29,6 +29,10 @@ export default function ProfitLossPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [isSigSettingsOpen, setIsSigSettingsOpen] = useState(false);
+  
+  // State untuk Custom Modal Delete
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [signatures, setSignatures] = useState(() => {
     if (typeof window !== 'undefined' && projectId) {
@@ -62,6 +66,16 @@ export default function ProfitLossPage() {
     fetchUser();
   }, []);
 
+  const fetchHistory = async () => {
+    const { data: history } = await supabase
+      .from('pnl_snapshots')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('is_deleted', false) // FILTER SOFT DELETE
+      .order('created_at', { ascending: false });
+    if (history) setHistoryData(history);
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (!projectId) return;
@@ -69,7 +83,7 @@ export default function ProfitLossPage() {
 
       try {
         // 1. Proyek & Kontrak
-        const { data: proj } = await supabase.from('projects').select('name, contract_value, company_name, location').eq('id', projectId).single();
+        const { data: proj } = await supabase.from('projects').select('*').eq('id', projectId).single();
         setProject(proj);
 
         const { data: contr } = await supabase.from('client_contracts').select('contract_value').eq('project_id', projectId).eq('is_active', true).maybeSingle();
@@ -96,7 +110,8 @@ export default function ProfitLossPage() {
         let poMaterial = 0, poAlat = 0;
         (poItemsData || []).forEach(item => {
           const amt = Number(item.received_qty) * Number(item.unit_price);
-          if (item.purchase_orders?.kategori_akun === 'Alat') poAlat += amt; 
+          const poData = Array.isArray(item.purchase_orders) ? item.purchase_orders[0] : item.purchase_orders;
+          if (poData?.kategori_akun === 'Alat') poAlat += amt; 
           else poMaterial += amt;
         });
 
@@ -139,8 +154,9 @@ export default function ProfitLossPage() {
         const { data: invData } = await supabase.from('inventory_materials').select('stok_on_hand, hsd_id, master_hsd(harga_dasar)').eq('project_id', projectId);
         let stockValue = 0;
         (invData || []).forEach(inv => {
-          const price = inv.master_hsd?.harga_dasar || 0;
-          stockValue += (Number(inv.stock_on_hand || 0) * Number(price));
+          const hsdData = Array.isArray(inv.master_hsd) ? inv.master_hsd[0] : inv.master_hsd;
+          const price = hsdData?.harga_dasar || 0;
+          stockValue += (Number(inv.stok_on_hand || 0) * Number(price));
         });
 
         // --- RUMUS PSAK 115: QUALIFIED ACTUAL COST ---
@@ -188,9 +204,7 @@ export default function ProfitLossPage() {
           isDataValid
         });
 
-        const { data: history } = await supabase.from('pnl_snapshots').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
-        if (history) setHistoryData(history);
-
+        fetchHistory();
       } catch (err) {
         console.error(err);
       } finally {
@@ -200,6 +214,28 @@ export default function ProfitLossPage() {
 
     fetchData();
   }, [projectId]);
+
+  const handleDeleteHistory = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      // ABSOLUTE RULE #2: Soft Delete
+      const { error } = await supabase
+        .from('pnl_snapshots')
+        .update({ is_deleted: true })
+        .eq('id', deleteTarget.id);
+
+      if (error) throw error;
+      
+      showToast('Snapshot berhasil dihapus.', 'success');
+      setDeleteTarget(null);
+      fetchHistory();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handlePrintAndSave = async () => {
     if (!metrics.isDataValid) {
@@ -223,8 +259,7 @@ export default function ProfitLossPage() {
 
       if (error) throw error;
       showToast('Snapshot laporan berhasil disimpan.', 'success');
-      const { data: history } = await supabase.from('pnl_snapshots').select('*').eq('project_id', projectId).order('created_at', { ascending: false });
-      if (history) setHistoryData(history);
+      fetchHistory();
       setTimeout(() => { window.print(); }, 500);
     } catch (err) {
       showToast('Gagal menyimpan: ' + err.message, 'error');
@@ -235,6 +270,7 @@ export default function ProfitLossPage() {
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
   const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+  const logoUrl = project?.logo_url || '';
 
   if (loading) return <div className="p-10 text-center font-bold text-slate-500">Memuat Laporan...</div>;
   if (!project) return <div className="p-10 text-center text-red-500">Proyek tidak ditemukan.</div>;
@@ -244,7 +280,7 @@ export default function ProfitLossPage() {
       <style jsx global>{`
         @media print {
           @page { margin: 0; size: A4 portrait; }
-          body * { visibility: hidden; background: white !important; }
+          body * { visibility: hidden; background: white !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .print-container, .print-container * { visibility: visible; }
           .print-container { position: absolute; left: 0; top: 0; width: 100% !important; max-width: 100% !important; padding: 20mm !important; margin: 0 !important; box-shadow: none !important; border: none !important; background: white !important; }
           .a4-paper { box-shadow: none !important; border: none !important; width: 100% !important; max-width: 100% !important; min-height: auto !important; padding: 0 !important; margin: 0 !important; }
@@ -253,6 +289,7 @@ export default function ProfitLossPage() {
           .table-formal th { border-bottom: 2px solid #000 !important; font-weight: bold !important; text-align: left; }
           .table-formal .text-right { text-align: right !important; }
           .grand-total { border-bottom: 3px double #000 !important; font-weight: bold !important; font-size: 12pt !important; }
+          .logo-img { max-height: 85px; max-width: 200px; object-fit: contain; }
         }
       `}</style>
 
@@ -274,6 +311,13 @@ export default function ProfitLossPage() {
           </div>
           
           <div className="flex gap-3">
+            <button 
+              onClick={() => router.push(`/projects/${projectId}/reports/pnl/balance-sheet`)} 
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-all"
+            >
+              <Scale size={16} /> Lihat Neraca Proyek
+            </button>
+
             <button onClick={() => setIsSigSettingsOpen(!isSigSettingsOpen)} className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-all"><Settings size={16} /> Atur TTD</button>
             <button onClick={handlePrintAndSave} disabled={isSaving || !metrics.isDataValid} className={`px-6 py-2.5 rounded-lg flex items-center gap-2 text-sm font-bold shadow-lg transition-all ${!metrics.isDataValid ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}>
               {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} {isSaving ? 'Menyimpan...' : 'Cetak & Simpan'}
@@ -336,12 +380,26 @@ export default function ProfitLossPage() {
         <div className={`print-container w-full flex justify-center ${!metrics.isDataValid ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
           <div className="a4-paper bg-white shadow-2xl border border-slate-300 w-full max-w-[210mm] min-h-[297mm] p-[20mm] flex flex-col relative overflow-hidden">
             
+            {/* KOP SURAT DENGAN LOGO */}
             <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '15px' }}>
               <tbody>
                 <tr style={{ borderBottom: '3px double #000' }}>
                   <td style={{ width: '60%', verticalAlign: 'bottom', paddingBottom: '10px' }}>
-                    <h1 style={{ fontSize: '18pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase', fontFamily: 'Times New Roman, serif' }}>{project.company_name || 'PT. BANGUN KONSTRUKSI PERSADA'}</h1>
-                    <p style={{ fontSize: '10pt', margin: '5px 0 0 0', color: '#475569' }}>Sistem ERP Konstruksi Terpadu</p>
+                    <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+                      <tbody>
+                        <tr>
+                          {logoUrl && (
+                            <td style={{ width: '100px', verticalAlign: 'bottom', paddingRight: '15px', paddingBottom: '5px' }}>
+                              <img src={logoUrl} alt="Logo" style={{ maxHeight: '85px', maxWidth: '200px', objectFit: 'contain' }} />
+                            </td>
+                          )}
+                          <td style={{ verticalAlign: 'bottom' }}>
+                            <h1 style={{ fontSize: '18pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase', fontFamily: 'Times New Roman, serif' }}>{project.company_name || 'PT. BANGUN KONSTRUKSI PERSADA'}</h1>
+                            <p style={{ fontSize: '10pt', margin: '5px 0 0 0', color: '#475569' }}>Sistem ERP Konstruksi Terpadu</p>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </td>
                   <td style={{ width: '40%', verticalAlign: 'bottom', textAlign: 'right', paddingBottom: '10px' }}>
                     <h2 style={{ fontSize: '16pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase', fontFamily: 'Times New Roman, serif' }}>Laporan Laba Rugi</h2>
@@ -453,11 +511,12 @@ export default function ProfitLossPage() {
                   <th className="p-4 text-right">Opex</th>
                   <th className="p-4 text-right">Laba Bersih</th>
                   <th className="p-4 text-center">Margin</th>
+                  <th className="p-4 text-center">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {historyData.length === 0 ? (
-                  <tr><td colSpan={7} className="p-10 text-center text-slate-400 italic"><FileSpreadsheet size={32} className="mx-auto mb-2 opacity-50" />Belum ada riwayat laporan yang disimpan.</td></tr>
+                  <tr><td colSpan={8} className="p-10 text-center text-slate-400 italic"><FileSpreadsheet size={32} className="mx-auto mb-2 opacity-50" />Belum ada riwayat laporan yang disimpan.</td></tr>
                 ) : (
                   historyData.map((hist, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-colors">
@@ -468,6 +527,11 @@ export default function ProfitLossPage() {
                       <td className="p-4 text-right font-mono text-slate-600">{formatRp(hist.total_opex)}</td>
                       <td className={`p-4 text-right font-bold font-mono ${hist.net_profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatRp(hist.net_profit)}</td>
                       <td className="p-4 text-center"><span className={`px-3 py-1 rounded-full text-xs font-bold ${hist.net_profit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{Number(hist.margin).toFixed(2)}%</span></td>
+                      <td className="p-4 text-center">
+                        <button onClick={() => setDeleteTarget(hist)} className="p-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors" title="Hapus">
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -475,6 +539,32 @@ export default function ProfitLossPage() {
             </table>
           </div>
         </div>
+
+        {/* === CUSTOM MODAL UNTUK HAPUS === */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Snapshot Laporan?</h3>
+                <p className="text-slate-500 text-sm">
+                  Anda akan menghapus riwayat laporan yang disimpan pada <strong>{new Date(deleteTarget.created_at).toLocaleString('id-ID')}</strong>.
+                  Tindakan ini tidak dapat dibatalkan (Soft Delete).
+                </p>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-3">
+                <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-200 transition-colors">
+                  Batal
+                </button>
+                <button onClick={handleDeleteHistory} disabled={isDeleting} className="px-4 py-2 rounded-lg font-bold text-white bg-red-600 hover:bg-red-700 flex items-center gap-2 transition-colors">
+                  {isDeleting ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />} Hapus
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </>

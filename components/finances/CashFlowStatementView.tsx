@@ -170,7 +170,7 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
       }]);
 
       const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).single();
-      const companyName = project?.contractor_name || project?.company_name || project?.name || 'NAMA PERUSAHAAN';
+      const companyName = project?.contractor_name || project?.company_name || 'NAMA PERUSAHAAN';
       const companyAddress = project?.contractor_address || project?.address || 'Alamat Perusahaan Belum Diatur';
       const contractNumber = project?.contract_number || project?.project_code || '-';
       
@@ -229,6 +229,8 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
         `;
       };
 
+      const logoUrl = project?.logo_url || '';
+
       const html = `
         <!DOCTYPE html>
         <html>
@@ -236,19 +238,17 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
             <meta charset="utf-8">
             <style>
               @page { size: A4 portrait; margin: 12mm 20mm; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
               body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #0f172a; margin: 0; padding: 0; }
               
-              /* FIX: Flexbox & Compact Print */
               .print-container { position: relative; min-height: 265mm; display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
               
               .header-table { width: 100%; border-collapse: collapse; margin-bottom: 2px; table-layout: fixed; }
               .header-table > tbody > tr > td { vertical-align: bottom; padding: 0; }
               
-              .header-left-table { border-collapse: collapse; width: 100%; table-layout: fixed; }
-              .header-left-table td { vertical-align: bottom; padding: 0; }
-              .logo-img { max-height: 40px; max-width: 85px; object-fit: contain; }
+              .logo-img { max-height: 85px; max-width: 200px; object-fit: contain; }
               
-              .company-name { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; font-size: 13pt; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a; line-height: 1.1; word-break: break-word; }
+              .company-name { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; font-size: 13pt; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; color: #0f172a; line-height: 1.1; }
               .company-address { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; font-size: 7.5pt; margin: 2px 0 0 0; color: #475569; line-height: 1.2; }
               
               .doc-title-wrapper { text-align: right; }
@@ -267,7 +267,6 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
               .report-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
               .report-table th { background-color: #f8fafc; border-top: 2px solid #0f172a; border-bottom: 2px solid #0f172a; padding: 5px 10px; font-size: 8.5pt; text-transform: uppercase; text-align: left; font-weight: 800; color: #0f172a; letter-spacing: 0.5px; }
               
-              /* FIX: Padding baris tabel dikurangi drastis */
               .report-table td { padding: 3px 10px; vertical-align: middle; border-bottom: 1px solid #e2e8f0; }
               
               .text-right { text-align: right; font-family: 'Courier New', Courier, monospace; font-size: 9.5pt; font-weight: 700; }
@@ -280,7 +279,6 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
               
               .final-row td { font-weight: 800; border-top: 3px double #0f172a; border-bottom: 3px double #0f172a; background-color: #f8fafc; font-size: 10.5pt; padding: 8px 10px; color: #0f172a; }
               
-              /* FIX: Bottom Wrapper dipadatkan dan di-protect dari page break */
               .bottom-wrapper { margin-top: auto; width: 100%; page-break-inside: avoid; padding-top: 10px; }
               
               .sig-wrapper { margin-bottom: 10px; margin-top: 15px; page-break-inside: avoid; }
@@ -289,10 +287,10 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
               .sig-status { font-size: 8.5pt; color: #64748b; margin: 0; }
               .sig-role { font-size: 9.5pt; font-weight: 700; color: #0f172a; margin: 2px 0 0 0; }
               
-              /* FIX: Ruang TTD diperkecil sedikit (tetap aman untuk TTD basah) */
               .sig-space { height: 40px; }
               
-              .sig-name { font-weight: 700; font-size: 9.5pt; margin: 0; text-decoration: underline; text-underline-offset: 3px; color: #0f172a; }
+              /* FIX: Garis Nama Tanda Tangan */
+              .sig-name { font-weight: 700; font-size: 9.5pt; margin: 0; border-bottom: 1px solid #000; display: inline-block; min-width: 160px; padding-bottom: 2px; min-height: 18px; color: #0f172a; }
               .sig-meta { font-size: 7.5pt; color: #64748b; margin: 2px 0 0 0; }
               
               .footer-meta { border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 7.5pt; color: #64748b; }
@@ -302,15 +300,18 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
           </head>
           <body>
             <div class="print-container">
+              <!-- FIX: KOP SURAT DENGAN NESTED TABLE (Sama seperti Neraca & P&L) -->
               <table class="header-table">
                 <tr>
                   <td style="width: 65%;">
-                    <table class="header-left-table">
+                    <table style="border-collapse: collapse; width: 100%;">
                       <tr>
-                        <td style="width: 100px;">
-                          <img src="${project?.logo_url || ''}" class="logo-img" />
+                        ${logoUrl ? `
+                        <td style="width: 100px; vertical-align: bottom; padding-right: 15px; padding-bottom: 5px;">
+                          <img src="${logoUrl}" class="logo-img" />
                         </td>
-                        <td>
+                        ` : ''}
+                        <td style="vertical-align: bottom;">
                           <h2 class="company-name">${companyName}</h2>
                           <p class="company-address">${companyAddress}</p>
                         </td>
@@ -370,7 +371,6 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
                 </tbody>
               </table>
 
-              <!-- BOTTOM WRAPPER -->
               <div class="bottom-wrapper">
                 <div style="font-size: 7.5pt; color: #64748b; font-style: italic; page-break-inside: avoid; padding-bottom: 10px;">
                   * Catatan: Penerimaan Termin dicatat sebesar nilai kas bersih (Net) yang diterima di rekening setelah pemotongan PPh Final Konstruksi dan/atau Retensi (tidak termasuk PPN Wapu). Dana Droping Kantor Pusat diklasifikasikan sebagai Aktivitas Pendanaan (Inter-office Account).
