@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Droplets, Clock, FileText, FileSignature, Users, Truck } from 'lucide-react';
+import { Droplets, Clock, FileText, FileSignature, Users, Truck, ShoppingCart } from 'lucide-react';
 
 export default function EquipmentLayout({ children, params }) {
   const pathname = usePathname();
@@ -11,7 +11,8 @@ export default function EquipmentLayout({ children, params }) {
   const tabs = [
     { name: 'Kontrak Alat', href: `/projects/${projectId}/equipment/contracts`, icon: FileSignature },
     { name: 'Daftar Vendor', href: `/projects/${projectId}/equipment/vendors`, icon: Users },
-    { name: 'Unit Alat', href: `/projects/${projectId}/equipment/units`, icon: Truck }, // TAB BARU
+    { name: 'Unit Alat', href: `/projects/${projectId}/equipment/units`, icon: Truck },
+    { name: 'Pengadaan BBM', href: `/projects/${projectId}/equipment/fuel-purchase`, icon: ShoppingCart },
     { name: 'Pengisian BBM', href: `/projects/${projectId}/equipment/fuel`, icon: Droplets },
     { name: 'Timesheet Alat', href: `/projects/${projectId}/equipment/timesheet`, icon: Clock },
     { name: 'Rekonsiliasi (BAR)', href: `/projects/${projectId}/equipment/bar`, icon: FileText },

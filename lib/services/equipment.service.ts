@@ -45,6 +45,11 @@ export interface BarCalculationResult {
   total_fuel_deduction: number; total_fuel_liters: number; avg_daily_fuel: number; grand_total: number; items: BarCalculationItem[];
 }
 
+export interface FuelPOPayload {
+  project_id: string; tank_id: string; vendor_id: string; po_number: string;
+  order_date: string; expected_date: string; total_volume: number; price_per_liter: number; total_amount: number;
+}
+
 // ==========================================
 // 2. MESIN KALKULASI SEWA ALAT
 // ==========================================
@@ -93,7 +98,6 @@ export function getDynamicRate(equipment: any, workLoad: string) {
   return cat.rate_idle;
 }
 
-// 🟢 PERBAIKAN: Sisa BBM dibiarkan minus (tanpa Math.max(0, ...))
 export async function getFuelHistory(projectId: string) {
   const { data: fuelData, error: err1 } = await supabase.from('fuel_transactions')
     .select(`*, fuel_tanks (tank_name), equipment_units (unit_code, category_id, initial_fuel, equipment_categories(name, capacity_tank_liter, rate_low, rate_medium, rate_high, rate_idle))`)
@@ -479,4 +483,195 @@ export async function softDeleteEquipmentUnit(id: string) {
 export async function updateUnitFuelRates(id: string, rates: { custom_rate_low?: number, custom_rate_medium?: number, custom_rate_high?: number }) {
   const { data, error } = await supabase.from('equipment_units').update(rates).eq('id', id).select().single();
   if (error) throw new Error(error.message); return data;
+}
+
+// ==========================================
+// 7. FUEL PROCUREMENT & AUTO-JOURNALING
+// ==========================================
+export async function getFuelPOs(projectId: string) {
+  const { data, error } = await supabase
+    .from('fuel_purchase_orders')
+    .select(`*, vendors(name), fuel_tanks(tank_name)`)
+    .eq('project_id', projectId)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false });
+    
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function createFuelPO(payload: FuelPOPayload, userId: string) {
+  const { data, error } = await supabase.from('fuel_purchase_orders').insert({
+    ...payload,
+    status: 'Open',
+    created_by: userId
+  }).select().single();
+  
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function receiveFuelPO(poId: string, actualVolume: number, receivedBy: string) {
+  const { data: po } = await supabase.from('fuel_purchase_orders').select('*').eq('id', poId).single();
+  if (!po) throw new Error("PO BBM tidak ditemukan");
+
+  const totalCost = actualVolume * po.price_per_liter;
+
+  const { error: trxErr } = await supabase.from('fuel_transactions').insert({
+    project_id: po.project_id, tank_id: po.tank_id, po_id: po.id, transaction_type: 'IN',
+    quantity_liter: actualVolume, price_per_liter: po.price_per_liter,
+    transaction_date: new Date().toISOString().split('T')[0], created_by: receivedBy,
+    notes: `Penerimaan BBM PO: ${po.po_number}`
+  });
+  if (trxErr) throw new Error(trxErr.message);
+
+  const { data: tank } = await supabase.from('fuel_tanks').select('current_stock_liter').eq('id', po.tank_id).single();
+  if (tank) {
+    await supabase.from('fuel_tanks').update({ current_stock_liter: tank.current_stock_liter + actualVolume }).eq('id', po.tank_id);
+  }
+
+  const { data: allTrx } = await supabase.from('fuel_transactions').select('quantity_liter').eq('po_id', poId);
+  const totalReceived = (allTrx || []).reduce((sum, t) => sum + Number(t.quantity_liter), 0);
+  if (totalReceived >= po.total_volume) {
+    await supabase.from('fuel_purchase_orders').update({ status: 'Completed' }).eq('id', poId);
+  }
+
+  await supabase.from('actual_costs').insert({
+    project_id: po.project_id, resource_type: 'Equipment', cost_amount: totalCost,
+    recorded_at: new Date().toISOString(), source_id: po.id, reference_type: 'Fuel_Procurement'
+  });
+
+  await supabase.from('cash_flows').insert({
+    project_id: po.project_id, type: 'OUT', category: 'Operasional', amount: totalCost,
+    transaction_date: new Date().toISOString().split('T')[0], approval_status: 'Approved',
+    reference_id: po.vendor_id, source_id: po.id, reference_type: 'Fuel_PO', created_by: receivedBy
+  });
+
+  return { success: true, message: 'Penerimaan BBM berhasil dan tercatat di Keuangan.' };
+}
+
+// ==========================================
+// 8. BAR APPROVAL & AUTO-JOURNALING
+// ==========================================
+
+export async function getBarHistory(projectId: string) {
+  const { data, error } = await supabase
+    .from('equipment_bars')
+    .select(`
+      *,
+      equipment_contracts (contract_number, vendor_name),
+      equipment_bar_items (*)
+    `)
+    .eq('project_id', projectId)
+    .eq('is_deleted', false)
+    .order('created_at', { ascending: false });
+    
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function approveBarToDB(barId: string, userId: string) {
+  // 1. Ambil data BAR
+  const { data: bar, error: barErr } = await supabase.from('equipment_bars').select('*').eq('id', barId).single();
+  if (barErr || !bar) throw new Error("BAR tidak ditemukan.");
+  if (bar.status !== 'Draft') throw new Error("Hanya BAR berstatus Draft yang bisa di-Approve.");
+
+  // 2. Cek mencegah double posting
+  const { data: existingCost } = await supabase.from('actual_costs').select('id').eq('source_id', barId).eq('reference_type', 'BAR_Accrual').maybeSingle();
+  if (existingCost) throw new Error("BAR ini sudah pernah dijurnal (Double Posting).");
+
+  // 3. Update status BAR
+  const { error: updErr } = await supabase.from('equipment_bars').update({ status: 'Approved' }).eq('id', barId);
+  if (updErr) throw new Error(updErr.message);
+
+  // 4. Insert ke Actual Costs (Laba Rugi / Akrual)
+  const { error: costErr } = await supabase.from('actual_costs').insert({
+    project_id: bar.project_id,
+    resource_type: 'Equipment',
+    cost_amount: bar.grand_total,
+    recorded_at: new Date().toISOString(),
+    source_id: barId,
+    reference_type: 'BAR_Accrual'
+  });
+  
+  if (costErr) throw new Error("Gagal mencatat ke Laba Rugi: " + costErr.message);
+
+  return { success: true, message: 'BAR berhasil di-Approve dan dicatat ke Laba Rugi.' };
+}
+
+export async function payBarToDB(barId: string, userId: string) {
+  // 1. Ambil data BAR
+  const { data: bar, error: barErr } = await supabase.from('equipment_bars').select('*').eq('id', barId).single();
+  if (barErr || !bar) throw new Error("BAR tidak ditemukan.");
+  if (bar.status !== 'Approved') throw new Error("BAR harus berstatus Approved sebelum dibayar.");
+
+  // 2. Update status BAR
+  const { error: updErr } = await supabase.from('equipment_bars').update({ status: 'Paid', payment_date: new Date().toISOString().split('T')[0], paid_amount: bar.grand_total }).eq('id', barId);
+  if (updErr) throw new Error(updErr.message);
+
+  // 3. Insert ke Cash Flows (Kas Keluar)
+  const { error: cfErr } = await supabase.from('cash_flows').insert({
+    project_id: bar.project_id,
+    type: 'OUT',
+    category: 'Alat', // Atau 'Operasional' tergantung preferensi
+    amount: bar.grand_total,
+    transaction_date: new Date().toISOString().split('T')[0],
+    approval_status: 'Approved',
+    reference_id: bar.contract_id, // Merujuk ke PO
+    source_id: barId,
+    reference_type: 'BAR_Payment',
+    created_by: userId
+  });
+
+  if (cfErr) throw new Error("Gagal mencatat ke Arus Kas: " + cfErr.message);
+
+  return { success: true, message: 'Pembayaran BAR berhasil dicatat ke Arus Kas.' };
+}
+
+export async function voidBarToDB(barId: string, userId: string) {
+  const { data: bar, error: barErr } = await supabase.from('equipment_bars').select('*').eq('id', barId).single();
+  if (barErr || !bar) throw new Error("BAR tidak ditemukan.");
+  if (bar.status === 'Void') throw new Error("BAR sudah dibatalkan.");
+
+  // 1. Update status BAR ke Void
+  const { error: updErr } = await supabase.from('equipment_bars').update({ status: 'Void', is_deleted: true }).eq('id', barId);
+  if (updErr) throw new Error(updErr.message);
+
+  // 2. Reversing Entry: Hapus/Netralkan Actual Costs jika sebelumnya sudah di-approve
+  if (bar.status === 'Approved' || bar.status === 'Paid') {
+    const { data: costData } = await supabase.from('actual_costs').select('id').eq('source_id', barId).eq('reference_type', 'BAR_Accrual').maybeSingle();
+    if (costData) {
+      // ABSOLUTE RULE #2: Tidak boleh hard delete, gunakan soft delete atau jurnal balik (minus)
+      // Karena actual_costs tidak punya is_deleted, kita buat jurnal balik (Reversal)
+      await supabase.from('actual_costs').insert({
+        project_id: bar.project_id,
+        resource_type: 'Equipment',
+        cost_amount: -bar.grand_total, // Nilai minus untuk membatalkan
+        recorded_at: new Date().toISOString(),
+        source_id: barId,
+        reference_type: 'BAR_Reversal'
+      });
+    }
+  }
+
+  // 3. Reversing Entry: Hapus/Netralkan Cash Flow jika sebelumnya sudah Paid
+  if (bar.status === 'Paid') {
+    const { data: cfData } = await supabase.from('cash_flows').select('id').eq('source_id', barId).eq('reference_type', 'BAR_Payment').maybeSingle();
+    if (cfData) {
+      await supabase.from('cash_flows').insert({
+        project_id: bar.project_id,
+        type: 'IN', // Uang masuk kembali (pembatalan)
+        category: 'Alat',
+        amount: bar.grand_total,
+        transaction_date: new Date().toISOString().split('T')[0],
+        approval_status: 'Approved',
+        reference_id: bar.contract_id,
+        source_id: barId,
+        reference_type: 'BAR_Payment_Reversal',
+        created_by: userId
+      });
+    }
+  }
+
+  return { success: true, message: 'BAR dibatalkan dan jurnal keuangan telah disesuaikan.' };
 }

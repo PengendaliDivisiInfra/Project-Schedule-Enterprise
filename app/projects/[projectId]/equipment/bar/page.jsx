@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { FileText, Printer, Loader2, CheckCircle2, AlertTriangle, Droplets, TrendingUp } from 'lucide-react';
-import { generateBarData, saveBarToDB } from '@/lib/services/equipment.service';
+import { FileText, Printer, Loader2, CheckCircle2, AlertTriangle, Droplets, TrendingUp, Calculator, Search, CheckCircle, XCircle, Wallet, Ban } from 'lucide-react';
+import { generateBarData, saveBarToDB, getBarHistory, approveBarToDB, payBarToDB, voidBarToDB } from '@/lib/services/equipment.service';
 
 export default function BarPage({ params }) {
   const projectId = params.projectId;
@@ -13,29 +13,36 @@ export default function BarPage({ params }) {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   
+  const [barHistory, setBarHistory] = useState([]);
   const [form, setForm] = useState({ contract_id: '', start_date: '', end_date: '' });
   const [previewData, setPreviewData] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // State Modal Action
+  const [actionTarget, setActionTarget] = useState(null);
+  const [actionType, setActionType] = useState(null); // 'Approve' | 'Pay' | 'Void'
+
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 4000); };
 
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        setUserData(user);
+  const fetchInitialData = async () => {
+    setLoadingData(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserData(user);
 
-        const { data: contractsData } = await supabase.from('equipment_contracts').select('id, contract_number, vendor_name, rental_basis, contract_quota').eq('project_id', projectId).eq('is_active', true);
-        const { data: projData } = await supabase.from('projects').select('*').eq('id', projectId).single();
-        
-        setContracts(contractsData || []);
-        setProjectData(projData);
-      } catch (err) {
-        console.error("Gagal memuat data master:", err);
-      } finally { setLoadingData(false); }
-    };
-    fetchInitialData();
-  }, [projectId]);
+      const { data: contractsData } = await supabase.from('equipment_contracts').select('id, contract_number, vendor_name, rental_basis, contract_quota, end_date').eq('project_id', projectId).eq('is_active', true);
+      const { data: projData } = await supabase.from('projects').select('*').eq('id', projectId).single();
+      const histData = await getBarHistory(projectId);
+      
+      setContracts(contractsData || []);
+      setProjectData(projData);
+      setBarHistory(histData || []);
+    } catch (err) {
+      console.error("Gagal memuat data master:", err);
+    } finally { setLoadingData(false); }
+  };
+
+  useEffect(() => { fetchInitialData(); }, [projectId]);
 
   const handlePreview = async () => {
     if (!form.contract_id || !form.start_date || !form.end_date) return showToast("Lengkapi Kontrak dan Periode Tanggal.", "error");
@@ -66,16 +73,37 @@ export default function BarPage({ params }) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a'); 
       a.href = url; 
-      
-      // 🟢 NAMA FILE PDF YANG PROFESIONAL
       const safeStartDate = form.start_date.replace(/-/g, '');
       const safeEndDate = form.end_date.replace(/-/g, '');
       a.download = `BAR_Alat_${previewData.contract.contract_number}_${safeStartDate}_${safeEndDate}.pdf`;
-      
       a.click();
       window.URL.revokeObjectURL(url);
-      showToast('BAR disimpan & PDF diunduh.', 'success'); setPreviewData(null);
+      showToast('BAR disimpan & PDF diunduh.', 'success'); 
+      setPreviewData(null);
+      fetchInitialData(); // Refresh riwayat
     } catch (err) { showToast(err.message, 'error'); } finally { setLoading(false); }
+  };
+
+  const handleActionSubmit = async () => {
+    if (!actionTarget) return;
+    setLoading(true);
+    try {
+      if (actionType === 'Approve') {
+        await approveBarToDB(actionTarget.id, userData.id);
+      } else if (actionType === 'Pay') {
+        await payBarToDB(actionTarget.id, userData.id);
+      } else if (actionType === 'Void') {
+        await voidBarToDB(actionTarget.id, userData.id);
+      }
+      showToast(`BAR berhasil di-${actionType === 'Pay' ? 'bayar' : actionType === 'Approve' ? 'Approve' : 'Void'}.`, 'success');
+      setActionTarget(null);
+      setActionType(null);
+      fetchInitialData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const generateBarHTML = (data, proj, user) => {
@@ -229,7 +257,27 @@ export default function BarPage({ params }) {
 
   const formatCurrency = (val) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
   const formatNumber = (val) => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(val);
+  const formatDate = (dateStr) => dateStr ? new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+
   const percentageUsed = previewData ? Math.min(100, (previewData.total_quota_used / previewData.contract.contract_quota) * 100) : 0;
+
+  // Logika Crosscheck PO
+  let crosscheckWarning = null;
+  if (previewData && previewData.contract) {
+    const contract = contracts.find(c => c.id === previewData.contract.id);
+    if (contract) {
+      const periodEnd = new Date(previewData.period_end);
+      const contractEnd = new Date(contract.end_date);
+      if (periodEnd > contractEnd) {
+        crosscheckWarning = "Periode BAR melebihi tanggal berakhirnya PO. Pastikan ada Addendum Perpanjangan Waktu.";
+      }
+      // Pengecekan Overbudget: Hanya Base Charge yang dibandingkan dengan Nilai Kontrak (Overtime dikecualikan)
+      const totalBaseCharge = previewData.total_regular_amount;
+      if (totalBaseCharge > contract.contract_quota * contract.rate_per_hour) {
+        crosscheckWarning = "Nilai Base Charge melebihi Nilai Kontrak (PO). Diperlukan Addendum Volume.";
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -248,6 +296,17 @@ export default function BarPage({ params }) {
           <button onClick={handlePreview} disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-lg transition-all flex items-center gap-2 h-[42px]">{loading ? <Loader2 className="animate-spin" size={18} /> : 'Preview'}</button>
         </div>
       </div>
+
+      {/* CROSSCHECK WARNING */}
+      {crosscheckWarning && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg flex items-start gap-3 animate-in fade-in">
+          <AlertTriangle size={20} className="shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold">Peringatan Crosscheck PO</p>
+            <p className="text-xs mt-1">{crosscheckWarning}</p>
+          </div>
+        </div>
+      )}
 
       {previewData && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in">
@@ -300,7 +359,7 @@ export default function BarPage({ params }) {
                   <th className="p-3">Unit</th>
                   <th className="p-3 text-right">Jam Kerja</th>
                   <th className="p-3 text-center">Reguler</th>
-                  <th className="p-3 text-center">Lembur</th>
+                  <th className="p-3 text-center">Lembar</th>
                   <th className="p-3 text-right text-cyan-700">Liter BBM</th>
                   <th className="p-3 text-right">Rp Reguler</th>
                   <th className="p-3 text-right">Rp Lembur</th>
@@ -325,6 +384,92 @@ export default function BarPage({ params }) {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* TABEL RIWAYAT BAR */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+        <div className="p-5 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+          <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2"><FileText size={20} className="text-indigo-600" /> Riwayat & Status BAR</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-white text-slate-500 font-semibold border-b">
+              <tr>
+                <th className="p-4">No. Kontrak</th>
+                <th className="p-4">Periode</th>
+                <th className="p-4 text-right">Grand Total</th>
+                <th className="p-4 text-center">Status</th>
+                <th className="p-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {barHistory.length === 0 ? (
+                <tr><td colSpan={5} className="p-10 text-center text-slate-400 italic">Belum ada riwayat BAR.</td></tr>
+              ) : (
+                barHistory.map((bar) => (
+                  <tr key={bar.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="p-4 font-bold text-indigo-700">{bar.equipment_contracts?.contract_number}</td>
+                    <td className="p-4 text-slate-600">{formatDate(bar.period_start)} s/d {formatDate(bar.period_end)}</td>
+                    <td className="p-4 text-right font-mono font-bold">{formatCurrency(bar.grand_total)}</td>
+                    <td className="p-4 text-center">
+                      <span className={`px-2 py-1 rounded text-xs font-bold ${
+                        bar.status === 'Draft' ? 'bg-slate-100 text-slate-600' :
+                        bar.status === 'Approved' ? 'bg-blue-100 text-blue-700' :
+                        bar.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                      }`}>{bar.status}</span>
+                    </td>
+                    <td className="p-4 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {bar.status === 'Draft' && (
+                          <button onClick={() => { setActionTarget(bar); setActionType('Approve'); }} className="text-blue-600 p-1.5 bg-blue-50 rounded-lg hover:bg-blue-100" title="Approve BAR"><CheckCircle size={16} /></button>
+                        )}
+                        {bar.status === 'Approved' && (
+                          <button onClick={() => { setActionTarget(bar); setActionType('Pay'); }} className="text-emerald-600 p-1.5 bg-emerald-50 rounded-lg hover:bg-emerald-100" title="Tandai Lunas"><Wallet size={16} /></button>
+                        )}
+                        {bar.status !== 'Void' && bar.status !== 'Paid' && (
+                          <button onClick={() => { setActionTarget(bar); setActionType('Void'); }} className="text-red-600 p-1.5 bg-red-50 rounded-lg hover:bg-red-100" title="Batalkan (Void)"><XCircle size={16} /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* CUSTOM ACTION MODAL (Approval / Payment / Void) */}
+      {actionTarget && actionType && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+            <div className={`px-6 py-4 border-b text-white ${
+              actionType === 'Approve' ? 'bg-blue-600' : actionType === 'Pay' ? 'bg-emerald-600' : 'bg-red-600'
+            }`}>
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                {actionType === 'Approve' ? <CheckCircle size={20} /> : actionType === 'Pay' ? <Wallet size={20} /> : <Ban size={20} />}
+                Konfirmasi {actionType === 'Pay' ? 'Pembayaran' : actionType === 'Approve' ? 'Persetujuan' : 'Pembatalan'} BAR
+              </h3>
+            </div>
+            <div className="p-6 text-center">
+              <p className="text-slate-600 mb-4">
+                Apakah Anda yakin ingin memproses <b>{actionType}</b> untuk BAR dengan nilai <b>{formatCurrency(actionTarget.grand_total)}</b>?
+              </p>
+              {actionType === 'Approve' && <p className="text-xs text-blue-600 mb-4 bg-blue-50 p-2 rounded">Tindakan ini akan mencatat beban sewa alat ke Laporan Laba Rugi (Akrual).</p>}
+              {actionType === 'Pay' && <p className="text-xs text-emerald-600 mb-4 bg-emerald-50 p-2 rounded">Tindakan ini akan mencatat Kas Keluar ke Arus Kas (Cash Flow).</p>}
+              {actionType === 'Void' && <p className="text-xs text-red-600 mb-4 bg-red-50 p-2 rounded">Tindakan ini akan membatalkan BAR dan membuat Jurnal Balik (Reversing) di Keuangan.</p>}
+              
+              <div className="flex justify-center gap-3 mt-6">
+                <button onClick={() => { setActionTarget(null); setActionType(null); }} className="flex-1 px-4 py-2 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Batal</button>
+                <button onClick={handleActionSubmit} disabled={loading} className={`flex-1 px-4 py-2 font-bold text-white rounded-xl flex justify-center items-center gap-2 transition-colors ${
+                  actionType === 'Approve' ? 'bg-blue-600 hover:bg-blue-700' : actionType === 'Pay' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'
+                }`}>
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : `Ya, Lanjutkan`}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

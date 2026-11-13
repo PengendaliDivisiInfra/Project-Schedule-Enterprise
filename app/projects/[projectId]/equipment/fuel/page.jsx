@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Fuel, AlertTriangle, CheckCircle2, Loader2, Gauge, Droplets, Info, Settings, X, Edit, Trash2, FileText, Filter, AlertCircle, Calculator, Search } from 'lucide-react';
-import { processFuelTransaction, getDynamicRate, getEquipmentUnits, updateUnitFuelRates, getFuelHistory, updateFuelTransaction, voidFuelTransaction, getEquipmentCategories } from '@/lib/services/equipment.service';
+import { Fuel, AlertTriangle, CheckCircle2, Loader2, Gauge, Droplets, Info, Settings, X, Edit, Trash2, FileText, Filter, AlertCircle, Calculator, Search, ShoppingCart } from 'lucide-react';
+import { processFuelTransaction, getDynamicRate, getEquipmentUnits, updateUnitFuelRates, getFuelHistory, updateFuelTransaction, voidFuelTransaction, getEquipmentCategories, receiveFuelPO, getFuelPOs } from '@/lib/services/equipment.service';
 
 export default function FuelManagementPage({ params }) {
   const projectId = params.projectId;
@@ -35,6 +35,11 @@ export default function FuelManagementPage({ params }) {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [auditData, setAuditData] = useState(null);
 
+  // State untuk Penerimaan PO BBM
+  const [openPOs, setOpenPOs] = useState([]);
+  const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
+  const [receiveData, setReceiveData] = useState({ po_id: '', actual_volume: '' });
+
   const [formData, setFormData] = useState({
     tank_id: '', equipment_id: '', quantity_liter: '', hm_recorded: '', work_load_type: 'Medium', transaction_date: new Date().toISOString().split('T')[0]
   });
@@ -51,11 +56,13 @@ export default function FuelManagementPage({ params }) {
       const eqData = await getEquipmentUnits(projectId);
       const histData = await getFuelHistory(projectId);
       const catData = await getEquipmentCategories();
+      const poData = await getFuelPOs(projectId);
       
       setTanks(tankData || []);
       setEquipments(eqData || []);
       setHistory(histData);
       setCategories(catData || []);
+      setOpenPOs((poData || []).filter(p => p.status === 'Open'));
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -107,6 +114,26 @@ export default function FuelManagementPage({ params }) {
       
       setFormData({ ...formData, quantity_liter: '', hm_recorded: '' });
       fetchData(); 
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReceiveFuel = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Sesi login berakhir.");
+      
+      await receiveFuelPO(receiveData.po_id, Number(receiveData.actual_volume), user.id);
+      
+      showToast('Penerimaan BBM sukses & Kas Keluar tercatat.', 'success');
+      setIsReceiveModalOpen(false);
+      setReceiveData({ po_id: '', actual_volume: '' });
+      fetchData();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -178,7 +205,6 @@ export default function FuelManagementPage({ params }) {
   const handleOpenAudit = async (trx) => {
     setLoading(true);
     try {
-      // 1. Ambil data timesheet di tanggal & unit yang sama untuk menghitung pemakaian
       const { data: tsData } = await supabase.from('equipment_timesheets')
         .select('working_hours, standby_hours, work_load_type')
         .eq('equipment_id', trx.equipment_id)
@@ -204,8 +230,6 @@ export default function FuelManagementPage({ params }) {
       const balance = Number(trx.fuel_balance) || 0;
       const refill = Number(trx.quantity_liter) || 0;
       
-      // Rumus: Sisa Akhir = Sisa Awal + Refuel - Usage
-      // Maka: Sisa Awal = Sisa Akhir - Refuel + Usage
       const initialBalance = balance - refill + usage;
 
       setAuditData({
@@ -251,10 +275,32 @@ export default function FuelManagementPage({ params }) {
         </div>
       )}
 
+      {/* BANNER PERINGATAN STOK RENDAH */}
+      {tanks.map(t => {
+        if (t.current_stock_liter <= (t.reorder_point_liter || 1000)) {
+          return (
+            <div key={t.id} className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3 mb-4 animate-in fade-in">
+              <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+              <div>
+                <h4 className="font-bold text-red-800 text-sm">Peringatan Stok Rendah: {t.tank_name}</h4>
+                <p className="text-xs text-red-700 mt-1">Sisa stok saat ini {t.current_stock_liter} L. Segera buat PO BBM baru di tab Pengadaan BBM untuk mencegah operasional terhenti.</p>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* KOLOM KIRI: FORM INPUT */}
         <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2 mb-6"><Fuel className="text-indigo-600" /> Form Pengisian BBM</h1>
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Fuel className="text-indigo-600" /> Form Pengisian BBM</h1>
+            <button onClick={() => setIsReceiveModalOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md">
+              <ShoppingCart size={16} /> Terima BBM (PO)
+            </button>
+          </div>
+          
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -299,7 +345,7 @@ export default function FuelManagementPage({ params }) {
             </div>
 
             <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex justify-center items-center gap-2 transition-all mt-4">
-              {loading ? <Loader2 className="animate-spin" /> : 'Simpan Pengisian BBM'}
+              {loading ? <Loader2 className="animate-spin" /> : 'Simpan Pengisian BBM ke Alat'}
             </button>
           </form>
         </div>
@@ -329,7 +375,7 @@ export default function FuelManagementPage({ params }) {
 
       {/* BANNER PERINGATAN DEFISIT BBM */}
       {!loadingData && hasNegativeFuel && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3 animate-in fade-in">
+        <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3 animate-in fade-in mt-6">
           <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
           <div>
             <h4 className="font-bold text-red-800 text-sm">Peringatan Audit: Defisit BBM Terdeteksi</h4>
@@ -402,7 +448,7 @@ export default function FuelManagementPage({ params }) {
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {/* 🟢 TOMBOL CEK ANOMALI (Opsi B) */}
+                        {/* TOMBOL CEK ANOMALI (Opsi B) */}
                         {trx.fuel_balance < 0 && (
                           <button onClick={() => handleOpenAudit(trx)} className="text-amber-600 p-1.5 bg-amber-50 rounded-lg hover:bg-amber-100 animate-pulse" title="Cek Anomali"><Search size={16} /></button>
                         )}
@@ -418,7 +464,41 @@ export default function FuelManagementPage({ params }) {
         </div>
       </div>
 
-      {/* 🟢 CUSTOM MODAL AUDIT ANOMALI BBM (Opsi B) */}
+      {/* MODAL PENERIMAAN BBM (PO) */}
+      {isReceiveModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 flex flex-col border border-slate-200">
+            <div className="flex justify-between items-center px-6 py-4 border-b bg-emerald-600 text-white">
+              <h3 className="font-bold text-lg flex items-center gap-2"><ShoppingCart size={18} /> Penerimaan BBM dari Supplier</h3>
+              <button onClick={() => setIsReceiveModalOpen(false)} className="text-emerald-200 hover:text-white bg-emerald-700 p-1.5 rounded-lg"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleReceiveFuel} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Pilih PO BBM (Status Open)</label>
+                <select required value={receiveData.po_id} onChange={e => setReceiveData({...receiveData, po_id: e.target.value})} className="w-full border rounded-lg p-2.5 bg-slate-50">
+                  <option value="">-- Pilih PO --</option>
+                  {openPOs.map(po => (
+                    <option key={po.id} value={po.id}>{po.po_number} - {po.vendors?.name} ({po.total_volume} L)</option>
+                  ))}
+                </select>
+                {openPOs.length === 0 && <p className="text-[10px] text-red-500 mt-1">Tidak ada PO Open. Buat PO baru di menu Pengadaan BBM.</p>}
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Volume Diterima (Liter)</label>
+                <input type="number" required value={receiveData.actual_volume} onChange={e => setReceiveData({...receiveData, actual_volume: e.target.value})} className="w-full border rounded-lg p-2.5 font-mono text-lg" placeholder="0" />
+              </div>
+              <div className="pt-4 flex justify-end gap-2 border-t mt-4">
+                <button type="button" onClick={() => setIsReceiveModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 bg-slate-100 rounded-lg">Batal</button>
+                <button type="submit" disabled={loading || openPOs.length === 0} className="px-6 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg flex items-center gap-2">
+                  {loading ? <Loader2 className="animate-spin" size={16} /> : 'Proses Penerimaan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM MODAL AUDIT ANOMALI BBM (Opsi B) */}
       {isAuditModalOpen && auditData && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col border border-slate-200">
@@ -440,7 +520,6 @@ export default function FuelManagementPage({ params }) {
                 </div>
               </div>
 
-              {/* MATEMATIKA REKONSILIASI */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-sm text-left">
                   <tbody className="divide-y divide-slate-100">
@@ -464,7 +543,6 @@ export default function FuelManagementPage({ params }) {
                 </table>
               </div>
 
-              {/* KEMUNGKINAN PENYEBAB */}
               <div>
                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1"><AlertCircle size={14} className="text-red-500"/> Analisis Kemungkinan Penyebab</h4>
                 <ul className="text-sm text-slate-700 space-y-2 list-disc pl-5">
