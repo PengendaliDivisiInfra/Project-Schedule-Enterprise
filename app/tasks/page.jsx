@@ -329,10 +329,11 @@ export default function TasksPage() {
         </div>
       )}
 
-      <div className="max-w-[1920px] mx-auto animate-in fade-in duration-300">
+      {/* FIX: Padding container disamakan dengan tabel di bawahnya */}
+      <div className="max-w-[1920px] mx-auto px-0 space-y-6 animate-in fade-in duration-300">
         
         {/* HEADER PREMIUM */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">
               <ListTree className="text-indigo-600 w-7 h-7" /> Manajemen Tugas (CPM & EVM)
@@ -352,7 +353,7 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* TABEL PREMIUM DENGAN STICKY COLUMNS */}
+        {/* TABEL PREMIUM */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="overflow-x-auto max-h-[75vh] custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-max">

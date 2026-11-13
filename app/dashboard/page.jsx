@@ -79,14 +79,12 @@ export default function DashboardPage() {
     return `Rp ${(val / 1000000).toFixed(0)} Jt`;
   };
 
-  // Custom Tooltip untuk tampilan yang lebih cantik
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 rounded-xl shadow-xl border border-slate-100 text-xs">
           <p className="font-bold text-slate-800 mb-2">{label}</p>
           {payload.map((entry, index) => {
-            // Jangan tampilkan EV/AC jika nilainya null
             if (entry.value === null || entry.value === undefined) return null;
             return (
               <div key={index} className="flex justify-between items-center gap-4 mb-1">
@@ -111,7 +109,9 @@ export default function DashboardPage() {
 
   const isOverbudget = bac > contractValue && contractValue > 0;
 
-  const yAxisMax = Math.ceil(Math.max(bac, contractValue) * 1.1 / 1000000000) * 1000000000;
+  // FIX Y-AXIS: Membulatkan ke atas ke kelipatan 5 Miliar terdekat
+  const maxVal = Math.max(bac, contractValue);
+  const yAxisMax = Math.ceil(maxVal / 5000000000) * 5000000000 || 5000000000;
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8">
@@ -199,8 +199,10 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="month" tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} />
                   
+                  {/* FIX: Domain Y-Axis Dikunci ke yAxisMax */}
                   <YAxis 
                     domain={[0, yAxisMax]} 
+                    allowDataOverflow={true}
                     tickFormatter={formatYAxis} 
                     tick={{fontSize: 12, fill: '#64748b'}} 
                     width={90} 

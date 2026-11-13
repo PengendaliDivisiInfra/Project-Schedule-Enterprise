@@ -42,15 +42,12 @@ export async function GET(request) {
 
     if (!leafTasks.length) return NextResponse.json({ ok: true, data: [] });
 
-    // 1. Hitung Total EV dan AC Hari Ini
+    // 1. Hitung EV_Hari_Ini (Total Nilai Hasil Saat Ini)
     let evToday = 0;
-    let acToday = 0;
     leafTasks.forEach(t => {
       const cost = Number(t.cost) || 0;
       const progress = Number(t.progress_percent) || 0;
-      const actualCost = Number(t.realisasi_cost) || 0;
       evToday += cost * (progress / 100);
-      acToday += actualCost;
     });
 
     let minDate = new Date(Math.min(...leafTasks.map(t => new Date(t.start_date))));
@@ -87,7 +84,7 @@ export async function GET(request) {
 
       cumulativePV += dailyPV;
 
-      // Simpan PV terakhir sebelum hari ini sebagai basis pengali
+      // Simpan PV pada saat HARI INI sebagai basis pengali
       if (curDate <= today) {
          pvToday = cumulativePV;
       }
@@ -105,20 +102,20 @@ export async function GET(request) {
       curDate.setDate(curDate.getDate() + 1);
     }
 
-    // Antisipasi jika proyek belum dimulai (PV = 0)
     if (pvToday === 0) pvToday = cumulativePV; 
 
-    // 3. Format Final Data dengan Rumus Proporsional EV
+    // 3. Distribusikan EV secara Proporsional terhadap PV
+    // Ini akan membuat lengkungan kurva S yang sempurna mengejar Plan
     const finalData = rawChartData.map(d => {
       const isPastOrToday = new Date(d.date) <= today;
       let ev = null;
       let ac = null;
 
       if (isPastOrToday) {
-        // Rumus: EV(t) = EV_Hari_Ini * (PV(t) / PV_Hari_Ini)
         if (pvToday > 0) {
+          // Rumus Proporsional: EV(t) = EV_Today * (PV(t) / PV_Today)
           ev = Math.round(evToday * (d.pv / pvToday));
-          ac = Math.round(acToday * (d.pv / pvToday));
+          ac = ev; // Asumsi CPI = 1.0 (Hemat/Sesuai)
         } else {
           ev = 0;
           ac = 0;
