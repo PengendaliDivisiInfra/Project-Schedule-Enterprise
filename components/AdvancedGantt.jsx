@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 import { useRef, useEffect, useState, useMemo } from 'react';
-import { Folder, FileText, Pin, Settings, Calendar } from 'lucide-react';
+import { Folder, FileText, Pin, Settings, Calendar, SlidersHorizontal } from 'lucide-react';
 import ResourceHistogram from './ResourceHistogram';
 import { calculateResourceHistogram } from '../lib/histogramCalculator';
 
@@ -315,18 +315,18 @@ export default function AdvancedGantt({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
+    <div className="flex flex-col h-[calc(100vh-140px)] overflow-hidden font-sans">
       
-      {/* TOOLBAR ATAS */}
-      <div className="flex justify-between items-center px-4 py-2 bg-white border-b border-slate-200 shrink-0">
+      {/* TOOLBAR PREMIUM */}
+      <div className="flex justify-between items-center px-4 py-3 bg-white border-b border-slate-200 shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-sm font-bold text-slate-800">Project Overview</span>
-          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs">Tasks: {totalTasks}</span>
-          <span className="bg-red-100 text-red-600 px-2 py-1 rounded text-xs">Critical: {criticalTasks}</span>
+          <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md text-[11px] font-semibold border border-slate-200">Tugas: {totalTasks}</span>
+          <span className="bg-rose-50 text-rose-600 border border-rose-100 px-2 py-1 rounded-md text-[11px] font-semibold">Kritis: {criticalTasks}</span>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3 py-1.5">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm">
             <Calendar className="w-4 h-4 text-slate-500" />
             <span className="text-[11px] font-bold text-slate-600">Data Date:</span>
             <input 
@@ -338,32 +338,31 @@ export default function AdvancedGantt({
           </div>
 
           <div className="relative">
-            <select value={zoomLevel} onChange={(e) => setZoomLevel(e.target.value)} className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded shadow-sm py-1.5 pl-3 pr-8 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+            <select value={zoomLevel} onChange={(e) => setZoomLevel(e.target.value)} className="appearance-none bg-white border border-slate-300 hover:border-slate-400 rounded-lg shadow-sm py-1.5 pl-3 pr-8 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
               <option value="day">Skala: Hari</option>
               <option value="week">Skala: Minggu</option>
               <option value="month">Skala: Bulan</option>
             </select>
           </div>
           
-          <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[11px] px-3 py-1.5 rounded font-bold border transition-colors ${showCriticalOnly ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
+          <button onClick={() => setShowCriticalOnly(!showCriticalOnly)} className={`text-[11px] px-3 py-1.5 rounded-lg font-bold border transition-colors shadow-sm ${showCriticalOnly ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>
             {showCriticalOnly ? 'Hanya Critical Path' : 'Tampilkan Semua'}
           </button>
         </div>
       </div>
 
       <div className="flex border-b border-slate-300 bg-slate-50 shrink-0 relative z-10">
-        {/* LEBAR PANEL KIRI DISESUAIKAN MENJADI 938px (Cost Dihapus) */}
         <div className="w-[938px] border-r border-slate-300 flex flex-col shrink-0">
           <div className="flex justify-between items-center px-2 py-2 border-b border-slate-200 bg-slate-100">
             <div className="flex text-[10px] font-bold text-slate-500 uppercase tracking-wider items-center w-full">
               <span className="w-6 text-center" title="Mode">M</span>
               <span className="w-6 text-center" title="Done">✓</span>
               <span className="w-10 text-center" title="ID">WBS</span>
-              <span className="w-44 pl-2 border-l border-slate-300">Task Name</span>
+              <span className="w-44 pl-2 border-l border-slate-300">Nama Tugas</span>
               <span className="w-32 text-center border-l border-slate-300">Volume</span>
               <span className="w-10 text-center border-l border-slate-300">Dur</span>
-              <span className="w-[85px] text-center border-l border-slate-300">Start</span>
-              <span className="w-[85px] text-center border-l border-slate-300">Finish</span>
+              <span className="w-[85px] text-center border-l border-slate-300">Mulai</span>
+              <span className="w-[85px] text-center border-l border-slate-300">Selesai</span>
               <span className="w-12 text-center border-l border-slate-300">Pred</span>
               <span className="w-10 text-center border-l border-slate-300">%</span>
               <span className="w-12 text-center border-l border-slate-300">Target</span>
@@ -466,11 +465,11 @@ export default function AdvancedGantt({
                   <span className="w-12 text-center text-slate-600 font-semibold border-l border-slate-100">{isSummary ? '-' : Number(t.sisa_vol || 0).toFixed(2)}</span>
                   <span className="w-12 text-center text-indigo-600 font-bold border-l border-slate-100">{isSummary ? '-' : Number(t.butuh_t_hr || 0).toFixed(3)}</span>
                   
-                  <span className={`w-14 text-center font-mono font-bold border-l border-slate-100 ${Number(t.varian_pct) < 0 ? 'text-red-600' : Number(t.varian_pct) > 0 ? 'text-green-600' : 'text-slate-500'}`}>
+                  <span className={`w-14 text-center font-mono font-bold border-l border-slate-100 ${Number(t.varian_pct) < 0 ? 'text-rose-600' : Number(t.varian_pct) > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
                     {isSummary ? '-' : `${Number(t.varian_pct || 0) > 0 ? '+' : ''}${Number(t.varian_pct || 0).toFixed(1)}%`}
                   </span>
                   
-                  <span className={`w-12 text-center font-mono font-bold border-l border-slate-100 ${Number(t.slack) < 0 ? 'text-red-600' : 'text-slate-600'}`}>
+                  <span className={`w-12 text-center font-mono font-bold border-l border-slate-100 ${Number(t.slack) < 0 ? 'text-rose-600' : 'text-slate-600'}`}>
                     {isSummary ? '-' : t.slack}
                   </span>
                 </div>
@@ -480,7 +479,7 @@ export default function AdvancedGantt({
         </div>
 
         {/* PANEL KANAN (Timeline) */}
-        <div ref={rightPanelRef} className="flex-1 overflow-auto relative bg-white select-none" onScroll={handleScroll}>
+        <div ref={rightPanelRef} className="flex-1 overflow-auto relative bg-white select-none custom-scrollbar" onScroll={handleScroll}>
           <div className="relative" style={{ width: totalWidth, height: displayTasks.length * ROW_HEIGHT }}>
             
             <div className="absolute inset-0 flex flex-col pointer-events-none z-0">
@@ -496,14 +495,14 @@ export default function AdvancedGantt({
             <div className="absolute inset-0 flex pointer-events-none z-0">
               {calendarDays.map((cd, i) => {
                 const isHoliday = exceptions.some(e => e.exception_date === cd.dateStr);
-                let bgClass = isHoliday ? 'bg-red-50/50' : (zoomLevel === 'day' && cd.isWeekend) ? 'bg-slate-50' : '';
+                let bgClass = isHoliday ? 'bg-rose-50/50' : (zoomLevel === 'day' && cd.isWeekend) ? 'bg-slate-50' : '';
                 let borderClass = (zoomLevel === 'week' && cd.date.getDay() === 1) ? 'border-r border-slate-300' : (zoomLevel === 'month' && cd.date.getDate() === 1) ? 'border-r border-slate-400' : 'border-r border-slate-100';
                 return <div key={i} className={`${borderClass} h-full ${bgClass}`} style={{ width: pixelsPerDay }}></div>;
               })}
             </div>
 
-            <div className="absolute top-0 bottom-0 border-l border-green-500 border-dashed z-10 pointer-events-none" style={{ left: getX(dataDate) }} title="Data Date"></div>
-            <div className="absolute top-0 bottom-0 border-l border-red-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
+            <div className="absolute top-0 bottom-0 border-l border-emerald-500 border-dashed z-10 pointer-events-none" style={{ left: getX(dataDate) }} title="Data Date"></div>
+            <div className="absolute top-0 bottom-0 border-l border-rose-500 z-10 pointer-events-none" style={{ left: getX(new Date().toISOString().split('T')[0]) }} title="Current Date"></div>
             
             <svg className="absolute inset-0 pointer-events-none z-10" width={totalWidth} height={displayTasks.length * ROW_HEIGHT}>
               <defs>
@@ -551,8 +550,8 @@ export default function AdvancedGantt({
                     className={`absolute group pointer-events-auto ${isHovered ? 'z-30 ring-2 ring-indigo-400' : ''}`} 
                     style={{ left, width, top }}
                   >
-                    <div className={`h-[16px] rounded-[2px] relative shadow-sm border ${isCritical ? 'bg-red-500 border-red-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
-                      <div style={{ width: `${progress}%` }} className="bg-black/30 h-full text-[8px] text-white flex items-center justify-end pr-1 font-semibold overflow-hidden rounded-l-[1px]">
+                    <div className={`h-[16px] rounded-[3px] relative shadow-sm border ${isCritical ? 'bg-rose-500 border-rose-600' : 'bg-blue-500 border-blue-600'} ${isHovered ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}>
+                      <div style={{ width: `${progress}%` }} className="bg-black/20 h-full text-[8px] text-white flex items-center justify-end pr-1 font-bold overflow-hidden rounded-l-[2px]">
                         {progress > 20 && `${progress}%`}
                       </div>
                     </div>

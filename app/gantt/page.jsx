@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { updateProjectScheduleSecure, countWorkingDays } from '../../lib/scheduler';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, BarChart3 } from 'lucide-react';
 
 export default function GanttPage() {
   const [tasks, setTasks] = useState([]);
@@ -17,7 +17,6 @@ export default function GanttPage() {
   const [schedulerError, setSchedulerError] = useState(null);
   const isUpdatingRef = useRef(false);
 
-  // --- PATCH SINKRONISASI: EVM MENGGUNAKAN COUNT WORKING DAYS ---
   const calculateEVM = (data, cwd, cex) => {
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -66,7 +65,6 @@ export default function GanttPage() {
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     
-    // Ambil data kalender kerja
     const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
     let currentWorkingDays = [1,2,3,4,5];
     let currentExceptions = [];
@@ -88,7 +86,6 @@ export default function GanttPage() {
       let formattedTasks = uniqueTasks.map(t => {
         let calculatedDuration = Number(t.duration) || 1;
         if (t.summary !== 'Yes' && t.start_date && t.end_date) {
-          // Patch Sinkronisasi: Durasi dihitung berdasarkan working days
           calculatedDuration = countWorkingDays(t.start_date, t.end_date, currentWorkingDays, currentExceptions);
         }
         return { 
@@ -103,7 +100,6 @@ export default function GanttPage() {
       const result = updateProjectScheduleSecure(formattedTasks, currentWorkingDays, currentExceptions);
       let finalTasks = result.success ? result.tasks : formattedTasks;
       
-      // Patch Sinkronisasi: Kirim working days ke EVM
       finalTasks = calculateEVM(finalTasks, currentWorkingDays, currentExceptions);
       
       const sorted = finalTasks.sort((a,b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
@@ -129,17 +125,14 @@ export default function GanttPage() {
     if (!silent) setLoading(false);
   };
 
-  // --- REALTIME LISTENER (TASKS & PROJECT SETTINGS) ---
   useEffect(() => {
     fetchData();
     const channel = supabase.channel('realtime-gantt-sync')
-      // Dengarkan perubahan pada tabel Task (WBS)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, () => {
         if (isUpdatingRef.current) return;
         if (window.ganttTimer) clearTimeout(window.ganttTimer);
         window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
       })
-      // Dengarkan perubahan pada tabel Projects (Kalender Kerja / Holiday)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
         if (window.ganttTimer) clearTimeout(window.ganttTimer);
         window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
@@ -205,27 +198,38 @@ export default function GanttPage() {
   if (loading) return <LoadingSpinner text="Memuat Gantt Workspace..." />;
 
   return (
-    <div className="p-6 w-full space-y-6">
-      <div className="w-full">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-slate-800">Interactive Gantt Workspace</h1>
-        </div>
-        <ClientGanttWrapper 
-          tasks={tasks} relations={relations} taskAssignments={taskAssignments} resources={resources}
-          workingDays={workingDays} exceptions={exceptions} statusDate={new Date().toISOString().split('T')[0]}
-          onInlineUpdate={handleInlineUpdate} onRefresh={fetchData}
-        />
-      </div>
-      {schedulerError && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 text-center max-w-md shadow-2xl">
-            <AlertTriangle className="h-8 w-8 text-red-600 mx-auto mb-4" />
-            <h3 className="text-lg font-bold mb-2">Peringatan Sistem</h3>
-            <p className="text-sm text-slate-600 mb-6">{schedulerError}</p>
-            <button onClick={() => setSchedulerError(null)} className="w-full px-4 py-2 bg-slate-800 text-white rounded-lg">Mengerti</button>
+    <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8">
+      <div className="max-w-[1920px] mx-auto space-y-6 animate-in fade-in duration-300">
+        
+        {/* HEADER PREMIUM */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">
+              <BarChart3 className="text-indigo-600 w-7 h-7" /> Interactive Gantt Workspace
+            </h1>
+            <p className="text-sm text-slate-500 mt-1">Jadwal proyek interaktif dengan mesin CPM & EVM terintegrasi.</p>
           </div>
         </div>
-      )}
+
+        <div className="w-full bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <ClientGanttWrapper 
+            tasks={tasks} relations={relations} taskAssignments={taskAssignments} resources={resources}
+            workingDays={workingDays} exceptions={exceptions} statusDate={new Date().toISOString().split('T')[0]}
+            onInlineUpdate={handleInlineUpdate} onRefresh={fetchData}
+          />
+        </div>
+
+        {schedulerError && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl p-6 text-center max-w-md shadow-2xl border border-slate-200/60">
+              <AlertTriangle className="h-10 w-10 text-rose-600 mx-auto mb-4 animate-bounce" />
+              <h3 className="text-xl font-bold text-slate-800 mb-2">Peringatan Sistem</h3>
+              <p className="text-sm text-slate-600 mb-6">{schedulerError}</p>
+              <button onClick={() => setSchedulerError(null)} className="w-full px-4 py-2.5 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 transition-colors">Mengerti</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
