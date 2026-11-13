@@ -13,10 +13,10 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <ProjectProvider>
-        <ClientLayout>
-          {children}
-        </ClientLayout>
-              </ProjectProvider>
+          <ClientLayout>
+            {children}
+          </ClientLayout>
+        </ProjectProvider>
       </body>
     </html>
   );

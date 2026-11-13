@@ -1,129 +1,169 @@
 'use client';
+
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useProject } from '../context/ProjectContext';
 import { 
-  LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
-  FileText, CalendarDays, Box, Package, Users, Database, 
-  Settings, ShieldCheck, ShieldAlert, ChevronLeft, ChevronRight, HardHat, Wallet, Building2, PieChart,
-  BookOpen // <-- Pastikan ini ada
+  LayoutDashboard, Calendar, ListTodo, FileText, Activity, AlertTriangle, 
+  Database, FileSpreadsheet, Users, Package, Fuel, Coins, FileCheck, 
+  TrendingUp, Settings, ShieldCheck 
 } from 'lucide-react';
 
-export default function Sidebar({ isCollapsed, toggleSidebar, currentUser }) {
+export default function Sidebar({ activeProjectId, isCollapsed }) {
   const pathname = usePathname();
+  const isActive = (path) => pathname === path;
+  const isPathIncludes = (path) => pathname.includes(path);
+  const projectId = activeProjectId || '886c80c3-4151-4c37-82e7-58a2460af645';
+
+  const baseMenu = `flex items-center rounded-xl transition-all duration-300 group ${
+    isCollapsed ? 'justify-center px-0 py-3 w-12 h-12 mx-auto' : 'gap-3 px-3 py-2.5 w-full text-sm'
+  }`;
   
-  const projectContext = useProject(); 
-  const currentProjectId = projectContext?.activeProjectId;
-
-  // Robust Role Detection
-  const rawRole = (currentUser?.role || projectContext?.userRole || 'pelaksana').toLowerCase().trim();
-  let role = 'pelaksana'; 
-  if (rawRole.includes('owner')) role = 'owner';
-  else if (rawRole.includes('manager') || rawRole === 'pm') role = 'pm';
-  else if (rawRole.includes('admin') || rawRole.includes('dcc') || rawRole.includes('logistic') || rawRole.includes('qs')) role = 'admin';
-
-  const menuItems = [
-    { group: 'UTAMA', items: [
-      { name: 'Dashboard S-Curve', path: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
-      { name: 'Gantt Workspace', path: '/gantt', icon: GanttChartSquare, roles: ['owner', 'admin', 'pm'] },
-    ]},
-    { group: 'PERENCANAAN & EKSEKUSI', items: [
-      { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
-      { name: 'Risk Register', path: '/risks', icon: ShieldAlert, roles: ['owner', 'admin', 'pm'] },
-      
-      // DISEMBUNYIKAN: QHSE biasanya diinput oleh Tim K3 (bukan PM/SE)
-      // { name: 'QHSE (Mutu & K3)', path: '/qhse', icon: HardHat, roles: ['owner', 'admin', 'pm', 'pelaksana'] },
-    ]},
-    { group: 'PELAPORAN', items: [
-      // DISEMBUNYIKAN: Laporan Harian & Mingguan dibuat oleh QS/Admin
-      // { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin', 'pm'] },
-      // { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin', 'pm'] },
-      
-      { name: 'Master Project Report', path: '/reports/master', icon: FileText, roles: ['owner', 'admin', 'pm'] },
-      ...(currentProjectId ? [
-        { name: 'Laba Rugi (P&L)', path: `/projects/${currentProjectId}/reports/pnl`, icon: PieChart, roles: ['owner', 'admin', 'pm'] },
-      ] : []),
-    ]},
-    { group: 'MANAJEMEN BIAYA', items: [
-      { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Resources', path: '/resources', icon: Users, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Material Requirement', path: '/materials', icon: Package, roles: ['owner', 'admin', 'pm'] },
-      { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Package, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Assignments', path: '/assignments', icon: Database, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Cash Flow', path: '/finances', icon: Wallet, roles: ['owner', 'admin', 'pm'] },
-      
-      ...(currentProjectId ? [
-        { name: 'Termin / Cash In', path: `/projects/${currentProjectId}/termin`, icon: FileText, roles: ['owner', 'admin', 'pm'] },
-        { name: 'Subcontractor', path: `/projects/${currentProjectId}/subcontractors`, icon: Building2, roles: ['owner', 'admin', 'pm'] },
-      ] : []),
-
-      { name: 'Approval Workflow', path: '/approvals', icon: ShieldCheck, roles: ['owner', 'admin', 'pm'] },
-      { name: 'S-Curve Chart', path: '/s-curve', icon: TrendingUp, roles: ['owner', 'admin', 'pm'] },
-    ]},
-    { group: 'SISTEM', items: [
-      { name: 'SOP & Panduan', path: '/sop', icon: BookOpen, roles: ['owner', 'admin', 'pm', 'pelaksana'] }, // <-- MENU SOP DITAMBAHKAN DI SINI
-      { name: 'Pengaturan Proyek', path: '/settings/project', icon: FileText, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Manajemen Tim', path: '/settings/team', icon: Users, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, roles: ['owner', 'admin', 'pm'] },
-      { name: 'Audit Logs', path: '/logs', icon: ShieldCheck, roles: ['owner', 'admin', 'pm'] },
-    ]}
-  ];
+  const inactiveMenu = "text-slate-400 hover:bg-slate-800/50 hover:text-white";
+  const activeMenu = "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)] border border-indigo-500/50";
 
   return (
-    <aside className={`bg-[#0F172A] text-slate-300 flex flex-col h-screen shrink-0 transition-all duration-300 z-40 relative print:hidden ${isCollapsed ? 'w-[72px]' : 'w-[260px]'}`}>
-      <div className="h-[64px] flex items-center px-4 border-b border-slate-800 shrink-0">
-        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-white shrink-0 overflow-hidden p-0.5">
-          <img src="/logo-infrastruktur.jpeg" alt="InfraControl Logo" className="w-full h-full object-cover rounded-lg" />
-        </div>
-        {!isCollapsed && (
-          <div className="ml-3 flex items-center animate-fade-in">
-            <span className="font-bold text-white text-lg tracking-wide">InfraControl</span>
-            <span className="text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded ml-2 font-bold">PRO</span>
+    <aside 
+      className={`bg-[#090c15] text-slate-300 flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800/60 z-50 print:hidden transition-all duration-300 ease-in-out ${
+        isCollapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      
+      {/* HEADER LOGO */}
+      <div className={`h-24 flex items-center border-b border-slate-800/60 shrink-0 bg-[#090c15] transition-all duration-300 ${isCollapsed ? 'justify-center px-0' : 'px-6'}`}>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div className="absolute inset-0 bg-blue-500 blur-md opacity-20 rounded-full"></div>
+            <img src="/logo-divisi-infrastruktur.png" alt="Logo" className="relative w-10 h-10 object-contain drop-shadow-xl" />
           </div>
-        )}
-      </div>
-
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-6 no-scrollbar">
-        {menuItems.map((group, idx) => {
-          const visibleItems = group.items.filter(item => item.roles.includes(role));
-          if (visibleItems.length === 0) return null;
-
-          return (
-            <div key={idx}>
-              {!isCollapsed && <p className="px-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{group.group}</p>}
-              <div className="space-y-1">
-                {visibleItems.map((item) => {
-                  const isActive = pathname === item.path || pathname.startsWith(item.path + '/');
-                  const Icon = item.icon;
-
-                  return (
-                    <Link 
-                      key={item.path} 
-                      href={item.path}
-                      title={isCollapsed ? item.name : ''}
-                      className={`flex items-center px-3 py-2.5 rounded-md transition-all group relative
-                        ${isActive ? 'bg-blue-600/10 text-blue-400 font-semibold' : 'hover:bg-slate-800 hover:text-white'}
-                      `}
-                    >
-                      {isActive && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 rounded-r-md"></div>}
-                      <Icon size={18} className={`shrink-0 ${isActive ? 'text-blue-500' : 'text-slate-400 group-hover:text-white'}`} />
-                      {!isCollapsed && <span className="ml-3 text-sm truncate">{item.name}</span>}
-                    </Link>
-                  );
-                })}
-              </div>
+          {!isCollapsed && (
+            <div className="flex flex-col justify-center animate-in fade-in slide-in-from-left-2 duration-300">
+              <span className="text-[10px] font-bold text-blue-400 tracking-[0.25em] uppercase leading-tight mb-0.5">Divisi</span>
+              <span className="text-lg font-black bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 tracking-wide leading-tight">Infrastruktur</span>
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
 
-      <div className="p-3 border-t border-slate-800 shrink-0">
-        <button onClick={toggleSidebar} className="w-full flex items-center justify-center p-2 bg-slate-800 hover:bg-slate-700 rounded-md transition-colors text-slate-400 hover:text-white">
-          {isCollapsed ? <ChevronRight size={18} /> : <div className="flex items-center gap-2"><ChevronLeft size={18} /><span className="text-xs font-bold">Collapse Sidebar</span></div>}
-        </button>
-      </div>
+      {/* NAVIGATION */}
+      <nav className={`flex-1 py-6 space-y-8 overflow-y-auto custom-scrollbar overflow-x-hidden transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-4'}`}>
+        
+        {/* SECTION 1: UTAMA */}
+        <div>
+          {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Utama</p>}
+          <div className="space-y-1.5">
+            <Link href="/dashboard" title="Dasbor S-Curve" className={`${baseMenu} ${isActive('/dashboard') ? activeMenu : inactiveMenu}`}>
+              <LayoutDashboard size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Dasbor S-Curve</span>}
+            </Link>
+            <Link href="/gantt" title="Ruang Kerja Gantt" className={`${baseMenu} ${isActive('/gantt') ? activeMenu : inactiveMenu}`}>
+              <Calendar size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Ruang Kerja Gantt</span>}
+            </Link>
+            <Link href="/tasks" title="Tugas (WBS)" className={`${baseMenu} ${isActive('/tasks') ? activeMenu : inactiveMenu}`}>
+              <ListTodo size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Tugas (WBS)</span>}
+            </Link>
+            <Link href="/progress" title="Progres Harian" className={`${baseMenu} ${isActive('/progress') ? activeMenu : inactiveMenu}`}>
+              <Activity size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Progres Harian</span>}
+            </Link>
+            <Link href="/risks" title="Daftar Risiko" className={`${baseMenu} ${isActive('/risks') ? activeMenu : inactiveMenu}`}>
+              <AlertTriangle size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Daftar Risiko</span>}
+            </Link>
+          </div>
+        </div>
+
+        {/* SECTION 2: PELAPORAN */}
+        <div>
+          {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Pelaporan</p>}
+          <div className="space-y-1.5">
+            <Link href={`/projects/${projectId}/reports/master`} title="Laporan Induk" className={`${baseMenu} ${isPathIncludes('/reports/master') ? activeMenu : inactiveMenu}`}>
+              <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Laporan Induk</span>}
+            </Link>
+            <Link href={`/projects/${projectId}/reports/pnl`} title="Laba Rugi (P&L)" className={`${baseMenu} ${isPathIncludes('/reports/pnl') ? activeMenu : inactiveMenu}`}>
+              <FileSpreadsheet size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Laba Rugi (P&L)</span>}
+            </Link>
+          </div>
+        </div>
+
+        {/* SECTION 3: MANAJEMEN BIAYA */}
+        <div>
+          {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Manajemen Biaya</p>}
+          <div className="space-y-1.5">
+            <Link href="/ahsp" title="AHSP PUPR" className={`${baseMenu} ${isActive('/ahsp') ? activeMenu : inactiveMenu}`}>
+              <Database size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>AHSP PUPR</span>}
+            </Link>
+            <Link href="/resources" title="Sumber Daya" className={`${baseMenu} ${isActive('/resources') ? activeMenu : inactiveMenu}`}>
+              <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Sumber Daya</span>}
+            </Link>
+            <Link href="/materials" title="Kebutuhan Material" className={`${baseMenu} ${isActive('/materials') ? activeMenu : inactiveMenu}`}>
+              <Package size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Kebutuhan Material</span>}
+            </Link>
+            <Link href={`/projects/${projectId}/equipment/fuel`} title="Alat & BBM" className={`${baseMenu} ${isPathIncludes('/equipment') ? activeMenu : inactiveMenu}`}>
+              <Fuel size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Alat & BBM</span>}
+            </Link>
+            <Link href="/hsd" title="HSD (Harga Satuan)" className={`${baseMenu} ${isActive('/hsd') ? activeMenu : inactiveMenu}`}>
+              <FileSpreadsheet size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>HSD (Harga Satuan)</span>}
+            </Link>
+            <Link href="/assignments" title="Penugasan" className={`${baseMenu} ${isActive('/assignments') ? activeMenu : inactiveMenu}`}>
+              <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Penugasan</span>}
+            </Link>
+            <Link href="/finances" title="Arus Kas" className={`${baseMenu} ${isActive('/finances') ? activeMenu : inactiveMenu}`}>
+              <Coins size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Arus Kas</span>}
+            </Link>
+            <Link href={`/projects/${projectId}/termin`} title="Termin / Kas Masuk" className={`${baseMenu} ${isPathIncludes('/termin') ? activeMenu : inactiveMenu}`}>
+              <FileCheck size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Termin / Kas Masuk</span>}
+            </Link>
+            <Link href={`/projects/${projectId}/subcontractors`} title="Subkontraktor" className={`${baseMenu} ${isPathIncludes('/subcontractors') ? activeMenu : inactiveMenu}`}>
+              <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Subkontraktor</span>}
+            </Link>
+            <Link href="/approvals" title="Alur Persetujuan" className={`${baseMenu} ${isActive('/approvals') ? activeMenu : inactiveMenu}`}>
+              <ShieldCheck size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Alur Persetujuan</span>}
+            </Link>
+            <Link href="/s-curve" title="Grafik S-Curve" className={`${baseMenu} ${isActive('/s-curve') ? activeMenu : inactiveMenu}`}>
+              <TrendingUp size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Grafik S-Curve</span>}
+            </Link>
+          </div>
+        </div>
+
+        {/* SECTION 4: SISTEM */}
+        <div>
+          {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Sistem</p>}
+          <div className="space-y-1.5">
+            <Link href="/sop" title="SOP & Panduan" className={`${baseMenu} ${isActive('/sop') ? activeMenu : inactiveMenu}`}>
+              <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>SOP & Panduan</span>}
+            </Link>
+            <Link href="/settings/project" title="Pengaturan" className={`${baseMenu} ${isActive('/settings/project') ? activeMenu : inactiveMenu}`}>
+              <Settings size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Pengaturan</span>}
+            </Link>
+            <Link href="/settings/team" title="Manajemen Tim" className={`${baseMenu} ${isActive('/settings/team') ? activeMenu : inactiveMenu}`}>
+              <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Manajemen Tim</span>}
+            </Link>
+            <Link href="/logs" title="Log Audit" className={`${baseMenu} ${isActive('/logs') ? activeMenu : inactiveMenu}`}>
+              <ShieldCheck size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Log Audit</span>}
+            </Link>
+          </div>
+        </div>
+
+      </nav>
     </aside>
   );
 }
