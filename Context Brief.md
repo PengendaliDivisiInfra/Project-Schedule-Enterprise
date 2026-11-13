@@ -43,6 +43,11 @@ Fokus V35-E: **Audit Multi-Tenancy (Isolasi Data 100%)** dan **Setup Proyek Baru
 - **Financial & P&L Engine**: SELESAI.
 - **UI Gold Standard**: SELESAI (Custom Modals, Toasts, Sticky Columns).
 
-## 6. NEXT STEPS (ROADMAP V35-F)
+## 6. NEXT STEPS (ROADMAP V35-F ke atas)
 - **A. Modul Rekonsiliasi Bank**: Upload CSV Mutasi Bank (BCA/Mandiri) vs Cash Flow (Auto-Matching).
-- **B. Sinkronisasi API Pajak / e-Faktur (Opsional)**.
+- **B. Modul Document Control & RFI**: Upload Shop Drawing/Addendum dengan Versioning, link ke WBS, dan fitur Request for Information.
+- **C. Upgrade Modul QHSE (Punch List & Inspection)**: Digital checklist inspeksi (ITP), Defect Tracking (Punch List), dan Safety Report (K3).
+- **D. Modul Manajemen Gudang (Warehouse)**: Stock In/Out material, Auto-Cost ke WBS, dan Stock Opname.
+- **E. PWA & Mobile-First View**: Optimasi UI untuk Site Engineer di lapangan (HP/Tablet) dengan fitur Offline Mode.
+- **F. Executive Multi-Project Dashboard**: Dasbor khusus Owner untuk melihat agregasi SPI, CPI, dan Margin seluruh proyek.
+- **G. Sinkronisasi API Pajak / e-Faktur (Opsional)**.

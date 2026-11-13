@@ -34,13 +34,23 @@ InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi *
 3. **Print Engine**: NO TAILWIND IN PDF, NO FLEXBOX/GRID, WAJIB `<table>` murni, ANTI PAGE-BREAK.
 4. **RLS**: Wajib update Row Level Security setiap membuat tabel/bucket baru.
 
-## 5. NEXT STEPS (ROADMAP SPRINT V35-F)
+## 5. NEXT STEPS (ROADMAP SPRINT V35-F KE ATAS)
 - **A. Modul Rekonsiliasi Bank (CSV Upload)**: 
   Fitur unggah mutasi rekening bank (BCA/Mandiri/BRI) untuk dicocokkan dengan Arus Kas (Auto-Matching).
-- **B. Sinkronisasi API Pajak / e-Faktur (Opsional)**.
+- **B. Modul Document Control & RFI**: 
+  Integrasi Supabase Storage untuk manajemen dokumen (Shop Drawing, Addendum) dengan *Versioning*, *Link to WBS*, dan fitur *Request for Information* (RFI).
+- **C. Upgrade Modul QHSE (Punch List & Inspection)**: 
+  Digital checklist inspeksi (ITP), *Defect Tracking* (Punch List) dengan foto, dan *Safety Report* (K3).
+- **D. Modul Manajemen Gudang (Warehouse Management)**: 
+  Pencatatan *Stock In* (Penerimaan) dan *Stock Out* (Pemakaian) material. Otomatis masuk ke *actual_costs* (Auto-Cost) dan fitur *Stock Opname*.
+- **E. PWA & Mobile-First View**: 
+  Optimasi UI untuk *Site Engineer* di lapangan (HP/Tablet) dengan fitur *Offline Mode* (IndexedDB) untuk input progres harian.
+- **F. Executive Multi-Project Dashboard**: 
+  Dasbor khusus Owner untuk melihat agregasi SPI, CPI, dan Margin dari **seluruh proyek** sekaligus.
+- **G. Sinkronisasi API Pajak / e-Faktur (Opsional)**.
 
 ## 6. WORKFLOW GIT & DEPLOYMENT
 1. `npm run build` (Pastikan 0 error, validasi TypeScript lolos).
 2. `git add .`
-3. `git commit -m "feat(V35-E): Multi-Tenancy RLS, Setup Project Wizard, & Zero-Alert UI Fix"`
+3. `git commit -m "docs(V35-E): Update Roadmap V35-F dengan 5 Rekomendasi Modul Baru"`
 4. `git push origin main` (Otomatis trigger GitHub Actions -> Vercel).
