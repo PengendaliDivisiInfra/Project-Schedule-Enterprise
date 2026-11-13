@@ -1,63 +1,49 @@
-📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
-Status Proyek: 🚀 Production Ready (V35-A - Enterprise Gold Standard)
-Terakhir Diperbarui: 13 November 2026
-Environment Setup: Next.js 14, Vercel, Railway (Puppeteer), Supabase (PostgreSQL, RLS, Storage).
+# 📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
 
-1. EXECUTIVE SUMMARY
-InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi **PSAK 115** (Pendapatan Kontrak), **PSAK 207** (Laporan Arus Kas), dan **Project Balance Sheet**. Fokus V35-A mencakup transformasi Dasbor Eksekutif (EVM S-Curve Proporsional, Alert Overbudget), penyempurnaan modul Neraca Proyek (3 Kolom), Enterprise Print Engine (Logo & TTD Dinamis), Audit Trail (Soft Delete), serta **Lokalisasi 100% Bahasa Indonesia** pada antarmuka pengguna.
+**Status Proyek:** 🚀 Production Ready (V35-C - Enterprise Gold Standard)
+**Terakhir Diperbarui:** 15 November 2026
+**Environment Setup:** Next.js 14, Vercel, Railway (Puppeteer), Supabase (PostgreSQL, RLS, Storage).
 
-2. IMPLEMENTED FEATURES (V35-A)
-A. Enterprise Dashboard (Gold Standard)
-- **EVM Metrics Akurat**: SPI, CPI, dan Progres Berbobot dihitung menggunakan Cost-Weighted Progress.
-- **S-Curve Proporsional**: Garis EV dan AC di-plot mengikuti lekukan PV (Plan) secara proporsional dan terpotong tepat di tanggal hari ini (Cut-Off Date).
-- **Safety Guard**: Peringatan merah otomatis jika Total Anggaran (RAB) melebihi Nilai Kontrak.
+## 1. EXECUTIVE SUMMARY
+InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi **PSAK 115**, **PSAK 207**, dan **Project Balance Sheet**. Fokus V35-C mencakup penyelesaian tuntas **Modul Alat & BBM Tahap 2** (Kontrak, Virtual Tank, BAR), integrasi *Historical S-Curve*, serta perbaikan logika EVM (Proporsional vs PV).
 
-B. Project Balance Sheet (Neraca Proyek)
-- **Auto-Balance Logic**: Menarik data dari P&L dan Cash Flow, memisahkan Aset Kontrak vs Liabilitas Kontrak, serta mengakomodasi selisih PPh Final (SP2D).
-- **3 Kolom Perbandingan**: Menampilkan Saldo Awal, Mutasi, dan Saldo Akhir secara sejajar.
-- **Zero Suppression**: Menampilkan seluruh akun PSAK (meski Rp 0) untuk keperluan audit.
-- **Balance Guard**: Validasi otomatis (Variance = 0) sebelum tombol cetak diaktifkan.
+## 2. IMPLEMENTED FEATURES (V35-C)
 
-C. Audit Trail & Print Engine
-- **Soft Delete**: Custom Modal untuk "menghapus" snapshot dari UI, tanpa menghilangkan data asli di database (`is_deleted = true`).
-- **Seragam di 3 Laporan**: P&L, Cash Flow, dan Neraca menggunakan Kop Surat (Logo & Teks) identik (Nested Table).
-- **Dynamic Signature**: 3 Kolom tanda tangan dengan nama, jabatan, dan garis bawah tegas.
+### A. Equipment & Fuel Management (Phase 2)
+- **Kontrak Sewa (PO)**: Konfigurasi Tarif, Kuota (Jam/Hari), Batas Normal, Aturan Lembur (Potong Kuota/Terpisah).
+- **Virtual Fuel Tank**: Pelacakan sisa BBM alat secara *real-time* (Running Balance) berdasarkan HM dan Standar Rasio. Angka minus dibiarkan sebagai indikator audit.
+- **Approval Workflow**: Timesheet berstatus `Draft` hingga di-`Approve` oleh pengawas. Hanya data `Approved` yang masuk ke kalkulasi BAR.
+- **Anomali Defisit BBM**: Sistem mendeteksi jika Sisa BBM bernilai minus, menampilkan *Warning Banner* (Opsi C), dan menyediakan *Custom Modal Audit* (Opsi B) berisi rekonsiliasi matematis.
+- **BAR (Berita Acara Rekonsiliasi)**: Menghitung otomatis Tagihan Reguler, Overtime, dan Potongan BBM. PDF dicetak 1 halaman penuh dengan Kop Surat Dinamis dan Tanda Tangan Tripartit.
 
-D. Equipment & Fuel Management (Tahap 1)
-- **Anti-Fraud Fuel Ratio**: Validasi konsumsi BBM (L/Jam) berdasarkan Work Load (Low/Medium/High).
-- **Smart Info Box**: Tampilan standar operasional (Kapasitas Tangki & L/Jam) secara real-time.
+### B. Enterprise UI Gold Standard
+- **Sticky Columns**: Kolom WBS & Nama Tugas pada halaman Tasks tetap terlihat saat scroll horizontal.
+- **Dashboard Premium**: EVM KPI, S-Curve proporsional, Y-Axis dinamis.
+- **Modal Redesign**: Seluruh form input menggunakan *Custom Modal* elegan (Zero `alert()`).
 
-3. ARCHITECTURE & CORE LOGIC
-- **Supabase Schema Note**: 
-  - `profiles` menggunakan kolom `full_name`.
-  - `actual_costs` untuk Jurnal Akrual.
-  - `pnl_snapshots`, `cash_flow_snapshots`, & `balance_sheet_snapshots` untuk Audit Trail.
-  - `equipment_units`, `fuel_tanks`, `fuel_transactions`, `equipment_contracts`, `equipment_timesheets` untuk Modul Alat & BBM.
-- **Print CSS Trick**: Menggunakan `display: flex; flex-direction: column;` pada kontainer utama cetak. Elemen `margin-top: auto` pada blok TTD/Footer.
+## 3. ARCHITECTURE & CORE LOGIC
+- **Database Triggers (Supabase)**:
+  - `log_daily_progress()`: Mencatat historis `progress_percent` dari `wbs_tasks` setiap ada UPDATE.
+  - Fungsi RPC / Edge Functions untuk kalkulasi agregasi berat.
+- **Schema Note**: 
+  - Tabel Inti: `projects`, `wbs_tasks`, `daily_progress`, `actual_costs`, `cash_flows`.
+  - Tabel Alat: `equipment_units` (dengan `initial_fuel`, `current_fuel`), `fuel_tanks`, `fuel_transactions`, `equipment_contracts`, `equipment_timesheets`, `equipment_bars`.
 
-4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
-1. UI/UX: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal.
-2. Database: DILARANG Hard Delete pada data finansial & inventaris. Gunakan Soft Delete.
-3. Print Engine: NO TAILWIND IN PDF, NO FLEXBOX/GRID IN PDF, WAJIB `<table>` murni, ANTI PAGE-BREAK.
-4. Wajib update RLS setiap membuat tabel/bucket baru.
+## 4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
+1. **UI/UX**: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal.
+2. **Database**: DILARANG Hard Delete pada data finansial & inventaris. Gunakan Soft Delete (`is_deleted` / `voided_at`).
+3. **Print Engine**: NO TAILWIND IN PDF, NO FLEXBOX/GRID, WAJIB `<table>` murni, ANTI PAGE-BREAK.
+4. **RLS**: Wajib update Row Level Security setiap membuat tabel/bucket baru.
 
-5. NEXT STEPS (ROADMAP SPRINT V35-B)
-*(Catatan: Roadmap sebelumnya seperti Rekonsiliasi Bank, E2E Test, dan API Pajak di-skip/ditunda. Fokus beralih ke peningkatan UI/UX dan Integrasi Data Historis).*
-
-- **A. Penerapan "Gold Standard" UI ke Modul Lain**: 
-  Menerapkan tema *Midnight Blue*, font *tabular*, dan tipografi premium yang sudah sukses di Dashboard ke halaman **Tasks (WBS)** dan **Gantt Workspace**.
-- **B. Integrasi `daily_progress` (Historical S-Curve)**: 
-  Membuat fitur input harian (Timekeeper) agar pergerakan kurva S-Curve ke depan bisa terekam secara historis per hari, tidak hanya dihitung ulang dari `progress_percent` saat ini.
-- **C. Modul Rekonsiliasi Bank (CSV Upload)**: 
+## 5. NEXT STEPS (ROADMAP SPRINT V35-D)
+- **A. Modul Rekonsiliasi Bank (CSV Upload)**: 
   Fitur unggah mutasi rekening bank (BCA/Mandiri/BRI) untuk dicocokkan dengan Arus Kas (Auto-Matching).
-- **D. Sempurnakan Modul Alat & BBM (Tahap 2)**: 
-  Melanjutkan pembuatan modul Kontrak Sewa, Timesheet Harian (HM Awal/Akhir), dan Logika Minimum Charge/Breakdown.
+- **B. Fitur "Setup Proyek Baru" (Wizard)**: 
+  Membuat panduan interaktif untuk memandu Admin melakukan inisialisasi proyek baru (Kalender, WBS, Baseline).
+- **C. Sinkronisasi API Pajak / e-Faktur (Opsional)**.
 
-6. WORKFLOW GIT & DEPLOYMENT
+## 6. WORKFLOW GIT & DEPLOYMENT
 1. `npm run build` (Pastikan 0 error, validasi TypeScript lolos).
 2. `git add .`
-3. `git commit -m "feat(V35-A): Enterprise Dashboard Gold Standard & Full ID Localization"`
+3. `git commit -m "feat(V35-C): Equipment Phase 2, Virtual Tank, BAR PDF Engine"`
 4. `git push origin main` (Otomatis trigger GitHub Actions -> Vercel).
-
-Konfirmasi Serah Terima:
-Dokumen ini mendokumentasikan V35-A secara komprehensif. Seluruh aturan mutlak terkait Print Engine, Neraca Proyek, EVM Dashboard, dan Audit Trail telah didokumentasikan dengan standar Enterprise tertinggi. Proyek siap untuk dilanjutkan ke Sprint V35-B.
