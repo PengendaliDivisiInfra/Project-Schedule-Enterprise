@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabase';
-import { checkPermission, PERMISSIONS } from '../config/permissions';
+import { supabase } from '../supabase'; // Sesuaikan path jika berbeda
+import { checkPermission, PERMISSIONS } from '../config/permissions'; // Sesuaikan path
 
 export function useRole(projectId?: string) {
   const [role, setRole] = useState<string | null>(null);
@@ -9,32 +9,42 @@ export function useRole(projectId?: string) {
   useEffect(() => {
     const fetchRole = async (userId: string) => {
       try {
-        // FIX TYPESCRIPT: Beri tipe data eksplisit string | null
         let finalRole: string | null = null;
 
-        // 1. Cek Owner Global
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', userId).single();
+        // 1. Cek Owner Global (Profile)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .single();
+          
         if (profile?.role && profile.role.toLowerCase() === 'owner') {
           finalRole = 'Owner';
         } 
         
-        // 2. Cek Role Proyek
+        // 2. Cek Role Proyek (Project Members)
         if (!finalRole && projectId) {
           const { data: member } = await supabase
             .from('project_members')
             .select('role')
             .eq('project_id', projectId)
             .eq('user_id', userId)
-            .single();
+            .maybeSingle(); // Gunakan maybeSingle agar tidak error jika bukan member
           
-          if (member?.role) finalRole = member.role;
+          if (member?.role) {
+            finalRole = member.role;
+          }
         }
 
-        if (!finalRole) finalRole = 'Site Admin';
+        // 3. JIKA TIDAK PUNYA AKSES, JADIKAN 'Guest' (BUKAN SITE ADMIN)
+        if (!finalRole) {
+          finalRole = 'Guest'; 
+        }
+        
         setRole(finalRole);
       } catch (err) {
         console.error("Error mengambil role:", err);
-        setRole('Site Admin');
+        setRole('Guest');
       } finally {
         setLoading(false);
       }
@@ -55,6 +65,7 @@ export function useRole(projectId?: string) {
 
   // Fungsi pemanggil permission
   const can = (permissionKey: keyof typeof PERMISSIONS) => {
+    if (role === 'Guest') return false; // Blokir akses total jika Guest
     return checkPermission(role, permissionKey);
   };
 

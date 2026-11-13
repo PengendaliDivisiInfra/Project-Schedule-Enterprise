@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase'; // Sesuaikan path
 
 // Fungsi Debounce untuk mencegah spam query database
 const debounce = (func, wait) => {
@@ -39,9 +39,16 @@ export const useProjectStore = create((set, get) => ({
 
     if (error) {
       console.error('Gagal sinkronisasi:', error);
+      // TRIGGER CUSTOM TOAST/MODAL GLOBAL ANDA
+      window.dispatchEvent(new CustomEvent('app-toast', { 
+        detail: { message: 'Gagal menyimpan data ke server.', type: 'error' } 
+      }));
     } else if (data && data.length === 0) {
       // Jika data kosong, berarti updated_at tidak cocok (diubah user lain)
-      alert('Konflik Data: Jadwal ini baru saja diubah oleh pengguna lain. Silakan refresh halaman untuk melihat data terbaru.');
+      // DILARANG ALERT(), GUNAKAN CUSTOM EVENT
+      window.dispatchEvent(new CustomEvent('app-toast', { 
+        detail: { message: 'Konflik Data: Jadwal ini baru saja diubah oleh pengguna lain. Silakan refresh halaman.', type: 'warning' } 
+      }));
     }
   }, 800)
 }));

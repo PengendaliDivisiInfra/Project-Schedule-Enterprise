@@ -1,55 +1,48 @@
-# 📋 ENTERPRISE SYSTEM CONTEXT & ARCHITECTURE BRIEF: InfraControl PRO (V35-C)
+# 📋 ENTERPRISE SYSTEM CONTEXT & ARCHITECTURE BRIEF: InfraControl PRO (V35-E)
 
 **To:** Senior Full-Stack Tech Lead / AI Assistant
-**Subject:** Project Onboarding & Context Handoff - InfraControl PRO (V35-C)
+**Subject:** Project Onboarding & Context Handoff - InfraControl PRO (V35-E)
 **Tech Stack:** Next.js 14 (App Router), Supabase (PostgreSQL, RLS, Storage, Auth), Railway (Dedicated PDF Microservice), Tailwind CSS, TypeScript.
 
 ## 1. PROJECT OVERVIEW
 InfraControl PRO adalah Sistem ERP Konstruksi Terpadu (Enterprise-Grade) dengan standar akuntansi **PSAK 115 (Pendapatan Kontrak)**, **PSAK 207 (Laporan Arus Kas)**, dan **Neraca Proyek (Project Balance Sheet)**. 
-Fokus V35-C: **Penyempurnaan Modul Alat & BBM (Tahap 2)**, integrasi *Virtual Fuel Tank*, logika *Minimum Charge/Overtime*, dan *Berita Acara Rekonsiliasi (BAR)* dengan Engine PDF Premium.
+Fokus V35-E: **Audit Multi-Tenancy (Isolasi Data 100%)** dan **Setup Proyek Baru (Wizard)**. Sistem kini menjamin keamanan data antar proyek, sekaligus menyederhanakan proses inisialisasi proyek baru oleh Admin.
 
 ## 2. DIRECTORY STRUCTURE (VERIFIED & EXPANDED)
+- `app/projects/page.jsx` : UI Daftar Proyek (Manajemen Proyek).
+- `app/projects/new/page.jsx` : **Wizard Setup Proyek Baru (V35-E)**.
+- `app/settings/team/page.jsx` : Manajemen Tim Proyek (Custom Modal, Zero `confirm()`).
 - `app/tasks/page.jsx` : UI Tabel WBS Premium (Sticky Columns, Tipografi Tabular).
 - `app/gantt/page.jsx` & `components/AdvancedGantt.jsx` : UI Gantt Workspace Premium.
 - `app/progress/page.jsx` : Laporan Historis Harian.
 - `app/api/analytics/scurve/route.js` : Proporsional EV mapping & Cut-off Date.
 - `app/dashboard/page.jsx` : Dasbor Eksekutif (EVM KPI, S-Curve).
-- `app/projects/[projectId]/equipment/contracts/page.jsx` : Manajemen PO Sewa, Tarif, Kuota, dan Aturan OT.
-- `app/projects/[projectId]/equipment/units/page.jsx` : Master Unit & Pelacakan HM/BBM Virtual.
-- `app/projects/[projectId]/equipment/fuel/page.jsx` : Input BBM, Deteksi Anomali, & Tooltip Defisit.
-- `app/projects/[projectId]/equipment/timesheet/page.jsx` : Input Jam Kerja, Split Reguler/OT, & Approval.
-- `app/projects/[projectId]/equipment/bar/page.jsx` : Generate Rekonsiliasi (BAR) & Export PDF.
-- `lib/services/equipment.service.ts` : Service Layer terpusat (Kalkulasi Virtual Tank, BAR, dll).
-- `lib/services/balance-sheet.service.ts` : Service Layer perhitungan Neraca.
-- `lib/scheduler.js` : Mesin CPM & kalkulasi hari kerja.
+- `app/projects/[projectId]/equipment/...` : Modul Alat & BBM (Phase 2).
+- `components/ToastListener.jsx` : **Global Toast Notification (Pengganti `alert()`)**.
+- `hooks/useRole.ts` : Logika Otorisasi (Fallback ke `Guest`).
+- `store/useProjectStore.js` : Zustand Store (Sync & Custom Event).
+- `middleware.js` : Route Protection (Auth level).
 
-## 3. SYSTEM ARCHITECTURE & CORE LOGIC (V35-C)
-- **Virtual Fuel Tank**: Sisa BBM dihitung otomatis (Running Balance) berdasarkan `initial_fuel` + Refuel - Pemakaian (Timesheet). Angka minus dibiarkan sebagai *Red Flag* audit.
-- **Approval Workflow**: Data Timesheet berstatus `Draft` tidak memotong kuota. Hanya status `Approved` yang masuk ke kalkulasi BAR dan saldo kontrak.
-- **BAR (Berita Acara Rekonsiliasi)**: Menggabungkan tagihan Alat, Overtime, dan potongan BBM (Auto-Deduction) ke dalam PDF 1 halaman dengan tanda tangan Tripartit.
-- **EVM Mapping**: Garis EV & AC di-plot secara proporsional dan dipotong tepat di tanggal hari ini.
-- **Project Balance Sheet**: 3 Kolom (Awal, Mutasi, Akhir), Balance Guard, Zero Suppression.
-- **Strict Accrual P&L (PSAK 115)**: Cost-to-Cost murni, CALK Rekonsiliasi.
-- **Cash Flow (PSAK 207)**: Direct Method dengan pemisahan Operasi, Investasi, dan Pendanaan.
+## 3. SYSTEM ARCHITECTURE & CORE LOGIC (V35-E)
+- **Multi-Tenancy & RLS**: Semua tabel (`projects`, `wbs_tasks`, `cash_flows`, `equipment_*`, dll) telah dilindungi RLS menggunakan fungsi `is_project_member()` dan `has_project_role()`. User hanya bisa mengakses data proyek di mana ia terdaftar.
+- **Role Fallback Security**: `useRole.ts` telah diperbaiki. User yang tidak memiliki role eksplisit akan otomatis menjadi `Guest` (Diblokir total), bukan lagi `Site Admin`.
+- **Setup Proyek Wizard**: Wizard 3 langkah (`/projects/new`) untuk inisialisasi proyek. Otomatis mendaftarkan pembuat proyek sebagai `Project Manager` di tabel `project_members`.
+- **Virtual Fuel Tank & BAR**: Tetap berjalan (Sisa BBM minus sebagai indikator, PDF Tripartit, Auto-Journaling).
+- **Global Toast**: Seluruh notifikasi UI menggunakan Custom Event (`app-toast`) yang ditangkap oleh `ToastListener`.
 
 ## 4. 🛑 ABSOLUTE COMPLIANCE RULES (DO NOT BREAK)
-1. **UI/UX**: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal (React State).
+1. **UI/UX**: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal / Toast.
 2. **Keuangan & Data**: DILARANG Hard Delete pada data finansial dan inventaris. Wajib Soft Delete (VOID / `voided_at` / `is_deleted`).
-3. **Print Engine (PDF) - PALING KRUSIAL**:
-   - NO TAILWIND IN PDF: Wajib Inline Style / Pure CSS.
-   - NO FLEXBOX/GRID IN PDF: Wajib `<table>` murni (termasuk untuk layout Kop Surat & Logo).
-   - ANTI PAGE-BREAK: Gunakan `margin-top: auto;` pada kontainer bawah (TTD/Footer).
-   - LOGO LIMIT: `max-height: 85px; max-width: 200px; object-fit: contain;`.
-   - Wajib update RLS setiap membuat tabel/bucket baru.
+3. **Print Engine (PDF)**: NO TAILWIND, NO FLEXBOX/GRID, WAJIB `<table>` murni, ANTI PAGE-BREAK.
+4. **Database**: Wajib update RLS setiap membuat tabel/bucket baru.
 
-## 5. CURRENT STATE (V35-C - PRODUCTION READY)
-- **Material Management SELESAI**.
-- **Financial & P&L Engine SELESAI**.
-- **SOP System SELESAI**.
-- **Project Scheduling SELESAI**.
-- **Equipment & Fuel Management (Phase 2) SELESAI**: Termasuk Kontrak, Virtual Tank, BAR, PDF Engine, & Audit Anomali.
+## 5. CURRENT STATE (V35-E - PRODUCTION READY)
+- **Security & Multi-Tenancy**: SELESAI (RLS, Guest Fallback, Route Protection).
+- **Setup Proyek Baru (Wizard)**: SELESAI.
+- **Equipment & Fuel Management**: SELESAI.
+- **Financial & P&L Engine**: SELESAI.
+- **UI Gold Standard**: SELESAI (Custom Modals, Toasts, Sticky Columns).
 
-## 6. NEXT STEPS (ROADMAP V35-D)
-- A. **Modul Rekonsiliasi Bank**: Upload CSV Mutasi Bank vs Cash Flow (Auto-Matching).
-- B. **Fitur "Setup Proyek Baru" (Wizard)**: Membuat panduan interaktif inisialisasi proyek baru.
-- C. **Sinkronisasi API Pajak / e-Faktur (Opsional)**.
+## 6. NEXT STEPS (ROADMAP V35-F)
+- **A. Modul Rekonsiliasi Bank**: Upload CSV Mutasi Bank (BCA/Mandiri) vs Cash Flow (Auto-Matching).
+- **B. Sinkronisasi API Pajak / e-Faktur (Opsional)**.

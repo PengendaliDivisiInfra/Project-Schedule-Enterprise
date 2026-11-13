@@ -1,26 +1,26 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
-import { useProject } from '../../../context/ProjectContext';
-import { UserPlus, Trash2, ShieldCheck, Mail, Loader2 } from 'lucide-react';
+import { supabase } from '../../../lib/supabase'; // Sesuaikan path
+import { useProject } from '../../../context/ProjectContext'; // Sesuaikan path
+import { UserPlus, Trash2, ShieldCheck, Mail, Loader2, AlertTriangle } from 'lucide-react';
 
 export default function TeamPage() {
   const { activeProjectId } = useProject();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inviteEmail, setInviteEmail] = useState('');
-  
-  // DEFAULT ROLE: Ubah dari 'dd' menjadi 'DCC/Logistic'
   const [inviteRole, setInviteRole] = useState('DCC/Logistic');
-  
   const [isInviting, setIsInviting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  
+  // STATE UNTUK CUSTOM MODAL HAPUS
+  const [memberToDelete, setMemberToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchMembers = async () => {
     if (!activeProjectId) return;
     setLoading(true);
-    // Mengambil data keanggotaan beserta profil user (email & nama)
     const { data, error } = await supabase
       .from('project_members')
       .select(`
@@ -40,7 +40,6 @@ export default function TeamPage() {
     setIsInviting(true);
     setErrorMsg(''); setSuccessMsg('');
 
-    // 1. Cari user berdasarkan email di tabel profiles
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
       .select('id')
@@ -53,11 +52,10 @@ export default function TeamPage() {
       return;
     }
 
-    // 2. Masukkan ke project_members
     const { error: insertError } = await supabase.from('project_members').insert([{
       project_id: activeProjectId,
       user_id: profileData.id,
-      role: inviteRole // Menyimpan string utuh: 'DCC/Logistic', 'Project Manager', dll.
+      role: inviteRole 
     }]);
 
     if (insertError) {
@@ -70,13 +68,16 @@ export default function TeamPage() {
     setIsInviting(false);
   };
 
-  const handleRemove = async (memberId) => {
-    if (!confirm('Yakin ingin mengeluarkan anggota ini dari proyek?')) return;
-    await supabase.from('project_members').delete().eq('id', memberId);
+  // FUNGSI HAPUS (DIPANGGIL DARI MODAL)
+  const executeRemove = async () => {
+    if (!memberToDelete) return;
+    setIsDeleting(true);
+    await supabase.from('project_members').delete().eq('id', memberToDelete.id);
+    setMemberToDelete(null);
+    setIsDeleting(false);
     fetchMembers();
   };
 
-  // Helper untuk format tampilan badge role
   const formatRoleBadge = (role) => {
     const r = role.toLowerCase();
     if (r === 'pm' || r === 'project manager') return 'Project Manager';
@@ -117,7 +118,6 @@ export default function TeamPage() {
               onChange={e => setInviteRole(e.target.value)} 
               className="border rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
             >
-              {/* UPDATE: Value dan Text disesuaikan dengan standar permissions.ts */}
               <option value="DCC/Logistic">DCC / Logistic</option>
               <option value="Quality Control (QC)">Quality Control (QC)</option>
               <option value="HSE (K3)">HSE (K3)</option>
@@ -155,7 +155,9 @@ export default function TeamPage() {
                   <td className="p-4 text-center">
                     {/* Cegah PM menghapus dirinya sendiri, atau Owner menghapus PM utama */}
                     {m.role.toLowerCase() !== 'project manager' && m.role.toLowerCase() !== 'pm' && (
-                      <button onClick={() => handleRemove(m.id)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Keluarkan"><Trash2 size={16}/></button>
+                      <button onClick={() => setMemberToDelete(m)} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors" title="Keluarkan">
+                        <Trash2 size={16}/>
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -166,6 +168,46 @@ export default function TeamPage() {
         </div>
 
       </div>
+
+      {/* ======================================================== */}
+      {/* CUSTOM MODAL HAPUS ANGGOTA (PENGGANTI CONFIRM)           */}
+      {/* ======================================================== */}
+      {memberToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center gap-4 mb-4 text-red-600">
+              <div className="bg-red-100 p-3 rounded-full">
+                <AlertTriangle size={24} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Keluarkan Anggota?</h3>
+            </div>
+            
+            <p className="text-sm text-slate-600 mb-6">
+              Apakah Anda yakin ingin mengeluarkan <strong>{memberToDelete.profiles?.full_name || memberToDelete.profiles?.email}</strong> dari proyek ini? 
+              Anggota ini tidak akan bisa mengakses data proyek lagi.
+            </p>
+            
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setMemberToDelete(null)} 
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={executeRemove} 
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg shadow-md transition-colors flex items-center gap-2"
+              >
+                {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+                Ya, Keluarkan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

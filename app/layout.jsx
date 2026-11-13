@@ -2,6 +2,7 @@ import './globals.css';
 import 'nprogress/nprogress.css';
 import ClientLayout from '../components/ClientLayout';
 import { ProjectProvider } from '../context/ProjectContext';
+import ToastListener from '../components/ToastListener';
 
 export const metadata = {
   title: 'InfraControl PRO',
@@ -17,6 +18,7 @@ export default function RootLayout({ children }) {
             {children}
           </ClientLayout>
         </ProjectProvider>
+        <ToastListener />
       </body>
     </html>
   );

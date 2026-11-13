@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
+  Building2,
   LayoutDashboard, Calendar, ListTodo, FileText, Activity, AlertTriangle, 
   Database, FileSpreadsheet, Users, Package, Fuel, Coins, FileCheck, 
   TrendingUp, Settings, ShieldCheck 
@@ -47,7 +48,7 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
       {/* NAVIGATION */}
       <nav className={`flex-1 py-6 space-y-8 overflow-y-auto custom-scrollbar overflow-x-hidden transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-4'}`}>
         
-        {/* SECTION 1: UTAMA */}
+        {/* SECTION 1: UTAMA (Menu Manajemen Proyek DIHAPUS dari sini) */}
         <div>
           {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Utama</p>}
           <div className="space-y-1.5">
@@ -144,10 +145,13 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
         <div>
           {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Sistem</p>}
           <div className="space-y-1.5">
-            <Link href="/sop" title="SOP & Panduan" className={`${baseMenu} ${isActive('/sop') ? activeMenu : inactiveMenu}`}>
-              <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
-              {!isCollapsed && <span>SOP & Panduan</span>}
+            
+            {/* TAMBAHAN BARU: MANAJEMEN PROYEK DIPINDAHKAN KE SINI */}
+            <Link href="/projects" title="Manajemen Proyek" className={`${baseMenu} ${isActive('/projects') || isPathIncludes('/projects/new') ? activeMenu : inactiveMenu}`}>
+              <Building2 size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Manajemen Proyek</span>}
             </Link>
+
             <Link href="/settings/project" title="Pengaturan" className={`${baseMenu} ${isActive('/settings/project') ? activeMenu : inactiveMenu}`}>
               <Settings size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Pengaturan</span>}
@@ -155,6 +159,10 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
             <Link href="/settings/team" title="Manajemen Tim" className={`${baseMenu} ${isActive('/settings/team') ? activeMenu : inactiveMenu}`}>
               <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Manajemen Tim</span>}
+            </Link>
+            <Link href="/sop" title="SOP & Panduan" className={`${baseMenu} ${isActive('/sop') ? activeMenu : inactiveMenu}`}>
+              <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>SOP & Panduan</span>}
             </Link>
             <Link href="/logs" title="Log Audit" className={`${baseMenu} ${isActive('/logs') ? activeMenu : inactiveMenu}`}>
               <ShieldCheck size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
