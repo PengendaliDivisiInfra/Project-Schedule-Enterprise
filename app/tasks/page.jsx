@@ -10,7 +10,7 @@ import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { 
   ListTree, Plus, Edit, Trash2, X, Settings, Pin, CheckCircle, XCircle, 
-  TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder, AlertTriangle
+  TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder, AlertTriangle, Diamond, Loader2
 } from 'lucide-react';
 
 const SATUAN_OPTIONS = [
@@ -41,6 +41,9 @@ export default function TasksPage() {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  // STATE BARU: Untuk Loading Inline Edit
+  const [editingTaskId, setEditingTaskId] = useState(null);
 
   const showToast = (message, type = 'success') => {
     setToast({ show: true, message, type });
@@ -167,18 +170,30 @@ export default function TasksPage() {
     if (!task) return;
     const totalVol = Number(task.volume) || 0;
     if (totalVol === 0) return;
+    
     let newVol = Number(inputVolume);
     if (isNaN(newVol) || newVol < 0) newVol = 0;
     if (newVol > totalVol) newVol = totalVol;
     const newPct = (newVol / totalVol) * 100;
     const previousTasks = [...tasks];
+
+    setEditingTaskId(taskId);
+
     setTasks(prev => {
         const updated = prev.map(t => t.id === taskId ? { ...t, progress_percent: newPct } : t);
         return calculateEVM(updated, workingDays, exceptions);
     });
-    showToast(`Progres diupdate: ${newPct.toFixed(1)}%`, 'success');
+
     const { error } = await supabase.from('wbs_tasks').update({ progress_percent: newPct }).eq('id', taskId);
-    if (error) { setTasks(previousTasks); showToast('Gagal update: ' + error.message, 'error'); }
+    
+    setEditingTaskId(null);
+
+    if (error) { 
+      setTasks(previousTasks); 
+      showToast('Gagal update: ' + error.message, 'error'); 
+    } else {
+      showToast(`Progres diupdate: ${newPct.toFixed(1)}%`, 'success');
+    }
   };
 
   const formatDateDisplay = (dateStr) => {
@@ -329,7 +344,6 @@ export default function TasksPage() {
         </div>
       )}
 
-      {/* FIX: Padding container disamakan dengan tabel di bawahnya */}
       <div className="max-w-[1920px] mx-auto px-0 space-y-6 animate-in fade-in duration-300">
         
         {/* HEADER PREMIUM */}
@@ -353,50 +367,53 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* TABEL PREMIUM */}
+        {/* TABEL PREMIUM - FIXED HEADERS */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="overflow-x-auto max-h-[75vh] custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-max">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider border-b border-slate-300">
-                  <th className="p-3 font-bold text-center w-12 sticky top-0 left-0 bg-slate-50 z-30">Mode</th>
-                  <th className="p-3 font-bold w-16 sticky top-0 left-12 bg-slate-50 z-30 border-r border-slate-200">WBS</th>
-                  <th className="p-3 font-bold min-w-[250px] sticky top-0 left-28 bg-slate-50 z-30 border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Nama Tugas</th>
+                <tr className="bg-slate-100 text-slate-500 text-[10px] uppercase tracking-wider border-b border-slate-300">
+                  <th className="p-3 font-bold text-center w-12 sticky top-0 left-0 bg-slate-100 z-30 border-r border-slate-200">Mode</th>
+                  <th className="p-3 font-bold w-16 sticky top-0 left-12 bg-slate-100 z-30 border-r border-slate-200">WBS</th>
+                  <th className="p-3 font-bold min-w-[300px] sticky top-0 left-28 bg-slate-100 z-30 border-r-2 border-slate-300 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.1)]">Nama Tugas</th>
                   
-                  <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Satuan</th>
-                  <th className="p-3 font-bold text-center bg-slate-100 sticky top-0 z-20">Vol Total</th>
+                  <th className="p-3 font-bold text-center sticky top-0 bg-slate-100 z-20 border-r border-slate-200">Satuan</th>
+                  <th className="p-3 font-bold text-center bg-slate-100 sticky top-0 z-20 border-r border-slate-200">Vol Total</th>
                   
                   {showCPM && (
                     <>
                       <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Dur</th>
                       <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Mulai</th>
-                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Selesai</th>
-                      <th className="p-3 font-bold text-center bg-blue-50 text-blue-700 sticky top-0 z-20">ES</th>
-                      <th className="p-3 font-bold text-center bg-blue-50 text-blue-700 sticky top-0 z-20">EF</th>
-                      <th className="p-3 font-bold text-center bg-amber-50 text-amber-700 sticky top-0 z-20">LS</th>
-                      <th className="p-3 font-bold text-center bg-amber-50 text-amber-700 sticky top-0 z-20">LF</th>
-                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Slack</th>
-                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Crit</th>
+                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20 border-r-2 border-slate-200">Selesai</th>
+                      
+                      <th className="p-3 font-bold text-center bg-blue-100 text-blue-800 sticky top-0 z-20 border-l border-blue-200">ES</th>
+                      <th className="p-3 font-bold text-center bg-blue-100 text-blue-800 sticky top-0 z-20 border-r border-blue-200">EF</th>
+                      
+                      <th className="p-3 font-bold text-center bg-amber-100 text-amber-800 sticky top-0 z-20 border-l border-amber-200">LS</th>
+                      <th className="p-3 font-bold text-center bg-amber-100 text-amber-800 sticky top-0 z-20 border-r border-amber-200">LF</th>
+                      
+                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20 border-l border-slate-200">Slack</th>
+                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20 border-r-2 border-slate-300">Crit</th>
                     </>
                   )}
                   {!showCPM && (
                     <>
-                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Dur</th>
-                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Mulai</th>
-                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Selesai</th>
+                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-100 z-20">Dur</th>
+                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-100 z-20">Mulai</th>
+                      <th className="p-3 font-bold text-center sticky top-0 bg-slate-100 z-20 border-r-2 border-slate-300">Selesai</th>
                     </>
                   )}
 
-                  <th className="p-3 font-bold text-center bg-yellow-50 text-yellow-800 border-l-2 border-yellow-200 sticky top-0 z-20">Vol. Realisasi</th>
+                  <th className="p-3 font-bold text-center bg-yellow-100 text-yellow-800 border-l-2 border-yellow-200 sticky top-0 z-20">Vol. Realisasi</th>
                   <th className="p-3 font-bold text-center bg-orange-50 text-orange-700 sticky top-0 z-20">Sisa Vol</th>
                   <th className="p-3 font-bold text-center bg-indigo-50 text-indigo-700 sticky top-0 z-20">Target (%)</th>
                   <th className="p-3 font-bold text-center bg-blue-50 text-blue-800 border-r-2 border-blue-200 sticky top-0 z-20">Aktual (%)</th>
-                  <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Varian</th>
+                  <th className="p-3 font-bold text-center sticky top-0 bg-slate-100 z-20">Varian</th>
                   <th className="p-3 font-bold text-center bg-emerald-50 text-emerald-700 sticky top-0 z-20">T/Hari</th>
-                  <th className="p-3 font-bold text-center sticky top-0 bg-slate-50 z-20">Aksi</th>
+                  <th className="p-3 font-bold text-center sticky top-0 bg-slate-100 z-20 border-l border-slate-200">Aksi</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
+              <tbody className="divide-y divide-slate-200 text-xs">
                 {loading ? (
                    <tr>
                      <td colSpan={showCPM ? 21 : 15} className="p-0">
@@ -415,13 +432,27 @@ export default function TasksPage() {
                   </tr>
                 ) : tasks.map((t) => {
                   const isSummary = t.summary === 'Yes' || t.summary !== 'No';
+                  const isMilestone = t.is_milestone || t.duration === 0;
                   const varian = t.varian_pct || 0;
+                  
+                  const rowBgClass = isSummary ? 'bg-slate-100/70 hover:bg-slate-200/70 transition-colors' : 
+                                     isMilestone ? 'bg-purple-50/30 hover:bg-purple-50/60 transition-colors' :
+                                     t.is_critical ? 'bg-red-50/30 hover:bg-red-50/60 transition-colors' : 
+                                     'bg-white hover:bg-indigo-50/40 transition-colors';
+
+                  const stickyBgClass = isSummary ? 'bg-slate-100 group-hover:bg-slate-200' : 
+                                        isMilestone ? 'bg-purple-50 group-hover:bg-purple-100' :
+                                        t.is_critical ? 'bg-red-50 group-hover:bg-red-100' : 
+                                        'bg-white group-hover:bg-indigo-50';
+
                   return (
-                    <tr key={t.id} className={`group hover:bg-indigo-50/30 transition-colors ${t.is_critical && !isSummary ? 'bg-red-50/20' : ''}`}>
+                    <tr key={t.id} className={`group ${rowBgClass}`}>
                       
-                      <td className={`p-3 text-center sticky left-0 z-10 transition-colors ${t.is_critical && !isSummary ? 'bg-red-50 group-hover:bg-indigo-50' : 'bg-white group-hover:bg-indigo-50'}`}>
+                      <td className={`p-3 text-center sticky left-0 z-10 transition-colors border-r border-slate-200 ${stickyBgClass}`}>
                         {isSummary ? (
                           <Folder className="w-4 h-4 text-slate-400 mx-auto" />
+                        ) : isMilestone ? (
+                          <Diamond className="w-4 h-4 text-purple-600 mx-auto" />
                         ) : t.task_mode === 'Manually Scheduled' ? (
                           <Pin className="w-3.5 h-3.5 text-amber-600 mx-auto" />
                         ) : (
@@ -429,26 +460,35 @@ export default function TasksPage() {
                         )}
                       </td>
                       
-                      <td className={`p-3 font-mono font-bold sticky left-12 z-10 border-r border-slate-100 transition-colors ${t.is_critical && !isSummary ? 'bg-red-50 text-red-700 group-hover:bg-indigo-50' : 'bg-white text-slate-500 group-hover:bg-indigo-50'}`}>{t.wbs_code}</td>
-                      <td className={`p-3 sticky left-28 z-10 border-r border-slate-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors ${isSummary ? 'font-bold text-slate-900 bg-slate-50 group-hover:bg-indigo-100' : 'font-medium text-slate-700 bg-white group-hover:bg-indigo-50'}`}>
-                        <span style={{ paddingLeft: `${(t.indent_level || 0) * 12}px` }} className="truncate block max-w-[300px]">{t.name}</span>
+                      <td className={`p-3 font-mono font-bold sticky left-12 z-10 border-r border-slate-200 transition-colors ${stickyBgClass} ${t.is_critical && !isSummary ? 'text-red-700' : 'text-slate-500'}`}>{t.wbs_code}</td>
+                      
+                      <td className={`p-3 sticky left-28 z-10 border-r-2 border-slate-300 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.1)] transition-colors ${stickyBgClass}`}>
+                        <span 
+                          style={{ paddingLeft: `${(t.indent_level || 0) * 16}px` }} 
+                          className={`truncate block max-w-[400px] ${isSummary ? 'font-black text-slate-900' : isMilestone ? 'font-bold text-purple-800' : 'font-medium text-slate-700'}`}
+                        >
+                          {t.name}
+                        </span>
                       </td>
                       
-                      <td className="p-3 text-center font-mono text-slate-500">{isSummary ? '-' : (t.satuan_hsd || '-')}</td>
-                      <td className="p-3 text-center font-mono tabular-nums bg-slate-50/50 font-semibold">{isSummary ? '-' : `${t.volume}`}</td>
+                      <td className="p-3 text-center font-mono text-slate-500 border-r border-slate-200">{isSummary ? '-' : (t.satuan_hsd || '-')}</td>
+                      <td className="p-3 text-center font-mono tabular-nums font-semibold border-r border-slate-200">{isSummary ? '-' : `${t.volume}`}</td>
                       
                       {showCPM && (
                         <>
                           <td className="p-3 text-center font-mono tabular-nums">{t.duration} d</td>
                           <td className="p-3 text-center font-mono">{formatDateDisplay(t.start_date)}</td>
-                          <td className="p-3 text-center font-mono">{formatDateDisplay(t.end_date)}</td>
-                          <td className="p-3 text-center font-mono text-blue-600 bg-blue-50/20">{formatDateDisplay(t.early_start)}</td>
-                          <td className="p-3 text-center font-mono text-blue-600 bg-blue-50/20">{formatDateDisplay(t.early_finish)}</td>
-                          <td className="p-3 text-center font-mono text-amber-600 bg-amber-50/20">{formatDateDisplay(t.late_start)}</td>
-                          <td className="p-3 text-center font-mono text-amber-600 bg-amber-50/20">{formatDateDisplay(t.late_finish)}</td>
-                          <td className={`p-3 text-center font-mono tabular-nums font-bold ${t.slack < 0 ? 'text-red-600' : t.slack === 0 ? 'text-orange-600' : 'text-slate-600'}`}>{isSummary ? '-' : t.slack}</td>
-                          <td className="p-3 text-center">
-                            {isSummary ? '-' : t.is_critical ? <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded-md font-bold text-[9px] border border-red-200">YES</span> : <span className="text-slate-400 text-[9px] font-medium">No</span>}
+                          <td className="p-3 text-center font-mono border-r-2 border-slate-200">{formatDateDisplay(t.end_date)}</td>
+                          
+                          <td className="p-3 text-center font-mono text-blue-700 bg-blue-50/40 border-l border-blue-100">{formatDateDisplay(t.early_start)}</td>
+                          <td className="p-3 text-center font-mono text-blue-700 bg-blue-50/40 border-r border-blue-200">{formatDateDisplay(t.early_finish)}</td>
+                          
+                          <td className="p-3 text-center font-mono text-amber-700 bg-amber-50/40 border-l border-amber-100">{formatDateDisplay(t.late_start)}</td>
+                          <td className="p-3 text-center font-mono text-amber-700 bg-amber-50/40 border-r border-amber-200">{formatDateDisplay(t.late_finish)}</td>
+                          
+                          <td className={`p-3 text-center font-mono tabular-nums font-bold border-l border-slate-200 ${t.slack < 0 ? 'text-red-600' : t.slack === 0 ? 'text-orange-600' : 'text-slate-600'}`}>{isSummary ? '-' : t.slack}</td>
+                          <td className="p-3 text-center border-r-2 border-slate-300">
+                            {isSummary ? '-' : t.is_critical ? <span className="px-2 py-1 bg-red-100 text-red-700 rounded-md font-bold text-[9px] border border-red-200 shadow-sm">YES</span> : <span className="text-slate-400 text-[9px] font-medium">No</span>}
                           </td>
                         </>
                       )}
@@ -456,20 +496,27 @@ export default function TasksPage() {
                         <>
                           <td className="p-3 text-center font-mono tabular-nums">{t.duration} d</td>
                           <td className="p-3 text-center font-mono">{formatDateDisplay(t.start_date)}</td>
-                          <td className="p-3 text-center font-mono">{formatDateDisplay(t.end_date)}</td>
+                          <td className="p-3 text-center font-mono border-r-2 border-slate-300">{formatDateDisplay(t.end_date)}</td>
                         </>
                       )}
 
-                      <td className="p-1 text-center bg-yellow-50/30 border-l-2 border-yellow-100">
+                      <td className="p-2 text-center bg-yellow-50/40 border-l-2 border-yellow-200 relative">
                         {isSummary || t.volume === 0 ? '-' : (
-                          <input 
-                            type="number" 
-                            defaultValue={t.actual_vol.toFixed(2)}
-                            onBlur={(e) => handleVolumeUpdate(t.id, e.target.value)}
-                            disabled={!canEdit}
-                            className={`w-20 px-2 py-1.5 text-center font-mono tabular-nums font-bold border rounded-lg transition-all outline-none ${!canEdit ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white border-slate-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 shadow-sm'}`}
-                            step="0.01"
-                          />
+                          <div className="relative">
+                            <input 
+                              type="number" 
+                              defaultValue={t.actual_vol.toFixed(2)}
+                              onBlur={(e) => handleVolumeUpdate(t.id, e.target.value)}
+                              disabled={!canEdit || editingTaskId === t.id}
+                              className={`w-24 px-2 py-1.5 text-center font-mono tabular-nums font-bold border rounded-lg transition-all outline-none ${!canEdit ? 'bg-slate-100 text-slate-500 cursor-not-allowed border-slate-200' : 'bg-white border-slate-300 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 shadow-sm'}`}
+                              step="0.01"
+                            />
+                            {editingTaskId === t.id && (
+                              <div className="absolute inset-y-0 right-0 flex items-center pr-2">
+                                <Loader2 className="w-3.5 h-3.5 text-yellow-600 animate-spin" />
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
 
@@ -478,17 +525,19 @@ export default function TasksPage() {
                       </td>
 
                       <td className="p-3 text-center font-mono tabular-nums font-bold text-indigo-600 bg-indigo-50/20">{isSummary ? '-' : `${(t.smart_target || 0).toFixed(1)}%`}</td>
-                      <td className="p-3 text-center font-mono tabular-nums font-bold text-blue-600 bg-blue-50/20 border-r-2 border-blue-100">
+                      
+                      <td className="p-3 text-center font-mono tabular-nums font-bold text-blue-600 bg-blue-50/20 border-r-2 border-blue-200">
                           {isSummary ? '-' : (
                           <div className="flex flex-col items-center gap-1.5 w-full">
                               <span>{Number(t.progress_percent || 0).toFixed(1)}%</span>
                               <div className="w-full bg-slate-200 rounded-full h-1.5 relative overflow-hidden">
                                   <div className={`h-1.5 rounded-full ${varian < 0 ? 'bg-amber-400' : 'bg-blue-500'}`} style={{ width: `${t.progress_percent || 0}%` }}></div>
-                                  <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10" style={{ left: `${t.smart_target || 0}%` }}></div>
+                                  <div className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10" style={{ left: `${t.smart_target || 0}%` }} title={`Target: ${t.smart_target}%`}></div>
                               </div>
                           </div>
                           )}
                       </td>
+                      
                       <td className={`p-3 text-center font-mono tabular-nums font-bold ${varian < 0 ? 'text-red-600' : varian > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
                           {isSummary ? '-' : (
                           <div className="flex items-center justify-center gap-1">
@@ -501,11 +550,11 @@ export default function TasksPage() {
                           {isSummary || t.volume === 0 ? '-' : (t.butuh_t_hr || 0).toFixed(3)}
                       </td>
 
-                      <td className="p-3 text-center">
+                      <td className="p-3 text-center border-l border-slate-200">
                         {canEdit ? (
-                          <div className="flex items-center justify-center gap-1.5">
-                            <button onClick={() => openModal(t)} className="text-blue-600 p-1.5 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors" title="Edit Task"><Edit className="w-3.5 h-3.5" /></button>
-                            <button onClick={() => setDeleteTarget(t.id)} className="text-red-600 p-1.5 bg-red-50 rounded-lg hover:bg-red-100 transition-colors" title="Hapus Task"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => openModal(t)} className="text-blue-600 p-1.5 bg-blue-50 rounded-lg hover:bg-blue-200 transition-colors" title="Edit Task"><Edit className="w-3.5 h-3.5" /></button>
+                            <button onClick={() => setDeleteTarget(t.id)} className="text-red-600 p-1.5 bg-red-50 rounded-lg hover:bg-red-200 transition-colors" title="Hapus Task"><Trash2 className="w-3.5 h-3.5" /></button>
                           </div>
                         ) : (
                           <span className="text-[10px] text-slate-400 italic font-semibold bg-slate-100 px-2 py-1 rounded-md">Read-Only</span>
