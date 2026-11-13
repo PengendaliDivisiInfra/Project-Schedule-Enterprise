@@ -79,6 +79,28 @@ export default function DashboardPage() {
     return `Rp ${(val / 1000000).toFixed(0)} Jt`;
   };
 
+  // Custom Tooltip untuk tampilan yang lebih cantik
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-3 rounded-xl shadow-xl border border-slate-100 text-xs">
+          <p className="font-bold text-slate-800 mb-2">{label}</p>
+          {payload.map((entry, index) => {
+            // Jangan tampilkan EV/AC jika nilainya null
+            if (entry.value === null || entry.value === undefined) return null;
+            return (
+              <div key={index} className="flex justify-between items-center gap-4 mb-1">
+                <span style={{ color: entry.color }} className="font-semibold">{entry.name}</span>
+                <span className="font-mono text-slate-700">{formatRp(entry.value)}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    return null;
+  };
+
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-indigo-600" size={40} /></div>;
   }
@@ -89,7 +111,6 @@ export default function DashboardPage() {
 
   const isOverbudget = bac > contractValue && contractValue > 0;
 
-  // Menghitung nilai maksimal Y-Axis agar grafik memiliki ruang napas (headroom 10%)
   const yAxisMax = Math.ceil(Math.max(bac, contractValue) * 1.1 / 1000000000) * 1000000000;
 
   return (
@@ -188,7 +209,7 @@ export default function DashboardPage() {
                     interval="preserveStartEnd"
                   />
                   
-                  <Tooltip formatter={(value) => value === null ? '-' : formatRp(value)} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  <Tooltip content={<CustomTooltip />} />
                   <Legend wrapperStyle={{ paddingTop: '20px' }} />
                   <Area type="monotone" dataKey="planned_cost_cumulative" name="Rencana (Plan)" stroke="#6366f1" strokeWidth={3} fillOpacity={1} fill="url(#colorPlan)" />
                   <Line type="monotone" dataKey="actual_cost_cumulative" name="Realisasi Biaya (AC)" stroke="#ef4444" strokeWidth={3} dot={{r: 4}} connectNulls={false} />

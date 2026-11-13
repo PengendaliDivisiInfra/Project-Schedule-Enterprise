@@ -42,16 +42,29 @@ export async function GET(request) {
 
     if (!leafTasks.length) return NextResponse.json({ ok: true, data: [] });
 
+    // 1. Hitung Total EV dan AC Hari Ini
+    let evToday = 0;
+    let acToday = 0;
+    leafTasks.forEach(t => {
+      const cost = Number(t.cost) || 0;
+      const progress = Number(t.progress_percent) || 0;
+      const actualCost = Number(t.realisasi_cost) || 0;
+      evToday += cost * (progress / 100);
+      acToday += actualCost;
+    });
+
     let minDate = new Date(Math.min(...leafTasks.map(t => new Date(t.start_date))));
     let maxDate = new Date(Math.max(...leafTasks.map(t => new Date(t.end_date))));
     
     const today = new Date();
     today.setHours(23, 59, 59, 999);
 
-    const chartData = [];
+    const rawChartData = [];
     let curDate = new Date(minDate);
     let cumulativePV = 0;
+    let pvToday = 0;
 
+    // 2. Loop untuk menghitung PV Harian
     while (curDate <= maxDate) {
       let dailyPV = 0;
       
@@ -74,49 +87,54 @@ export async function GET(request) {
 
       cumulativePV += dailyPV;
 
-      let currentEV = 0;
-      let currentAC = 0;
-
+      // Simpan PV terakhir sebelum hari ini sebagai basis pengali
       if (curDate <= today) {
-        leafTasks.forEach(t => {
-          const cost = Number(t.cost) || 0;
-          const progress = Number(t.progress_percent) || 0;
-          const actualCost = Number(t.realisasi_cost) || 0; 
-          const tStart = new Date(t.start_date);
-          const tEnd = new Date(t.end_date);
-
-          if (progress > 0 && curDate >= tStart) {
-            let ratio = 1;
-            
-            // Logika kunci: Jika hari ini, rasio 1 (nilai penuh). Jika masa lalu, interpolasi.
-            if (curDate < today) {
-              const totalElapsedToToday = today - tStart;
-              const timeElapsed = curDate - tStart;
-              ratio = totalElapsedToToday > 0 ? Math.min(1, timeElapsed / totalElapsedToToday) : 1;
-            }
-            
-            currentEV += (cost * (progress / 100)) * ratio;
-            currentAC += actualCost * ratio;
-          }
-        });
+         pvToday = cumulativePV;
       }
 
       const monthLabel = curDate.toLocaleDateString('id-ID', { month: 'short', year: '2-digit' });
 
-      if (chartData.length === 0 || chartData[chartData.length - 1].month !== monthLabel) {
-        chartData.push({
+      if (rawChartData.length === 0 || rawChartData[rawChartData.length - 1].month !== monthLabel) {
+        rawChartData.push({
           month: monthLabel,
           date: curDate.toISOString().split('T')[0],
-          planned_cost_cumulative: Math.round(cumulativePV),
-          earned_value_cumulative: curDate <= today ? Math.round(currentEV) : null,
-          actual_cost_cumulative: curDate <= today ? Math.round(currentAC) : null
+          pv: cumulativePV
         });
       }
 
       curDate.setDate(curDate.getDate() + 1);
     }
 
-    return NextResponse.json({ ok: true, data: chartData });
+    // Antisipasi jika proyek belum dimulai (PV = 0)
+    if (pvToday === 0) pvToday = cumulativePV; 
+
+    // 3. Format Final Data dengan Rumus Proporsional EV
+    const finalData = rawChartData.map(d => {
+      const isPastOrToday = new Date(d.date) <= today;
+      let ev = null;
+      let ac = null;
+
+      if (isPastOrToday) {
+        // Rumus: EV(t) = EV_Hari_Ini * (PV(t) / PV_Hari_Ini)
+        if (pvToday > 0) {
+          ev = Math.round(evToday * (d.pv / pvToday));
+          ac = Math.round(acToday * (d.pv / pvToday));
+        } else {
+          ev = 0;
+          ac = 0;
+        }
+      }
+
+      return {
+        month: d.month,
+        date: d.date,
+        planned_cost_cumulative: Math.round(d.pv),
+        earned_value_cumulative: ev,
+        actual_cost_cumulative: ac
+      };
+    });
+
+    return NextResponse.json({ ok: true, data: finalData });
   } catch (err) {
     console.error("S-Curve API Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
