@@ -2,13 +2,17 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useProject } from '../../context/ProjectContext';
-import { Package, AlertTriangle, Info, HelpCircle, Box, ClipboardList, Filter, ShoppingCart, Store, FileText, Search } from 'lucide-react';
+import { 
+  Package, AlertTriangle, Info, HelpCircle, Box, ClipboardList, 
+  ShoppingCart, Store, FileText, Search, BookOpen, ShieldCheck, 
+  CheckCircle2, UserCheck, Calendar, Truck, Wallet, FileSignature, Boxes, ExternalLink
+} from 'lucide-react';
 import { InventoryManager } from '@/components/inventory/InventoryManager';
 import { PurchaseOrderManager } from '@/components/purchase-order/PurchaseOrderManager';
 import { VendorManager } from '@/components/vendor/VendorManager';
 import { MaterialFlowGuide } from '@/components/material/MaterialFlowGuide';
 import { ReportManager } from '@/components/material/ReportManager';
-import { SkeletonLoader } from '@/components/ui/SkeletonLoader'; // Asumsi file skeleton ada
+import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 
 export default function MaterialsPage() {
   const { activeProjectId } = useProject();
@@ -26,7 +30,6 @@ export default function MaterialsPage() {
   const fetchMaterials = async () => {
     if (!activeProjectId) return;
     setLoading(true);
-
     try {
       const { data: tasks } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId);
       
@@ -134,7 +137,7 @@ export default function MaterialsPage() {
           )}
         </div>
 
-        <MaterialFlowGuide />
+        {activeTab !== 'sop' && <MaterialFlowGuide />}
 
         {/* NAVIGATION TABS */}
         <div className="flex gap-2 border-b border-slate-200 mb-6 overflow-x-auto pb-px">
@@ -152,6 +155,10 @@ export default function MaterialsPage() {
           </button>
           <button onClick={() => { setActiveTab('reports'); setSearchTerm(''); }} className={tabClass(activeTab === 'reports')}>
             <FileText className="w-4 h-4" /> Rekap & Laporan
+          </button>
+          {/* TAMBAHAN TAB SOP */}
+          <button onClick={() => { setActiveTab('sop'); setSearchTerm(''); }} className={tabClass(activeTab === 'sop')}>
+            <BookOpen className="w-4 h-4" /> SOP & Panduan
           </button>
         </div>
 
@@ -238,6 +245,123 @@ export default function MaterialsPage() {
         {activeTab === 'po' && <div className="mt-2 animate-in fade-in"><PurchaseOrderManager projectId={activeProjectId} /></div>}
         {activeTab === 'vendor' && <div className="mt-2 animate-in fade-in"><VendorManager projectId={activeProjectId} /></div>}
         {activeTab === 'reports' && <div className="mt-2 animate-in fade-in"><ReportManager projectId={activeProjectId} /></div>}
+        
+        {/* CONTENT: SOP & PANDUAN */}
+        {activeTab === 'sop' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-5xl">
+            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 min-h-[500px]">
+              
+              <div className="space-y-8">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 border-b pb-2 mb-4"><ShieldCheck className="text-indigo-600"/> 1. Prinsip Utama Material</h2>
+                  <div className="bg-amber-50 border-l-4 border-amber-500 p-4 text-amber-900 rounded-r-lg">
+                    <p className="font-bold mb-2">Dua Aturan Emas (Golden Rules):</p>
+                    <ul className="list-disc ml-5 space-y-2">
+                      <li><strong>Biaya Proyek (Laba Rugi) ≠ Pembayaran Kas:</strong> Barang yang datang ke proyek (GRN) sudah dihitung sebagai Biaya meskipun belum dibayar ke Supplier. Sebaliknya, uang muka (DP) PO belum dihitung sebagai biaya sebelum barang datang.</li>
+                      <li><strong>Pemisahan Biaya (Direct vs Indirect):</strong> Material Utama (Semen, Besi) masuk ke HPP Proyek (WBS). Material Consumable (Paku, Minyak) masuk ke Overhead (OPEX).</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 border-b pb-2 mb-4"><UserCheck className="text-indigo-600"/> 2. Peran & Tanggung Jawab</h2>
+                  <table className="w-full text-sm text-left border-collapse">
+                    <thead className="bg-slate-100 text-slate-700">
+                      <tr>
+                        <th className="p-3 border">Peran di Lapangan</th>
+                        <th className="p-3 border">Modul ERP yang Diinput</th>
+                        <th className="p-3 border">Dampak ke Laporan</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="hover:bg-slate-50"><td className="p-3 border font-bold">Site Engineer</td><td className="p-3 border">Requirement Plan (AHSP)</td><td className="p-3 border">Menentukan Rencana Kebutuhan & Pagu RAP</td></tr>
+                      <tr className="hover:bg-slate-50"><td className="p-3 border font-bold">Logistik / Gudang</td><td className="p-3 border">Penerimaan Barang (GRN) & Stock Opname</td><td className="p-3 border">Menentukan Biaya Material Terpasang (HPP)</td></tr>
+                      <tr className="hover:bg-slate-50"><td className="p-3 border font-bold">QS / Admin</td><td className="p-3 border">Purchase Order (PO) & Pembayaran</td><td className="p-3 border">Mengakui Utang Usaha & Kas Keluar</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 border-b pb-2 mb-4"><Calendar className="text-indigo-600"/> 3. Alur Kerja Harian Logistik</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="border rounded-xl p-5 bg-slate-50">
+                      <h3 className="font-bold text-indigo-700 mb-3 flex items-center gap-2"><Truck size={18}/> Barang Datang (IN)</h3>
+                      <ol className="list-decimal ml-5 space-y-2 text-sm text-slate-700">
+                        <li>Logistik menerima barang & cek fisik dengan Surat Jalan.</li>
+                        <li>Buka Tab <strong>Purchase Order</strong> di menu Material.</li>
+                        <li>Klik tombol <strong>Terima Barang (GRN)</strong> pada PO terkait.</li>
+                        <li>Sistem otomatis menambah Stok Gudang & mencatat Actual Cost.</li>
+                      </ol>
+                    </div>
+                    <div className="border rounded-xl p-5 bg-slate-50">
+                      <h3 className="font-bold text-emerald-700 mb-3 flex items-center gap-2"><Boxes size={18}/> Barang Keluar (OUT)</h3>
+                      <ol className="list-decimal ml-5 space-y-2 text-sm text-slate-700">
+                        <li>Mandor meminta material untuk pekerjaan tertentu.</li>
+                        <li>Buka Tab <strong>Stok Gudang</strong> &rarr; Klik <strong>Keluar</strong>.</li>
+                        <li>Pilih <strong>Beban Biaya</strong> (WBS atau Overhead).</li>
+                        <li>Sistem otomatis memotong Stok & mencatat HPP/OPEX.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 border-b pb-2 mb-4"><CheckCircle2 className="text-indigo-600"/> 4. Checklist Admin Logistik (Interactive)</h2>
+                  <p className="text-sm text-slate-500 mb-4">Centang dan ikuti tautan di bawah ini untuk memastikan tidak ada pekerjaan yang terlewat.</p>
+                  
+                  <div className="space-y-4">
+                    {/* ITEM 1: GRN */}
+                    <div className="flex items-start gap-4 p-4 border rounded-xl hover:bg-slate-50 transition-colors bg-white">
+                      <input type="checkbox" className="w-5 h-5 mt-1 text-indigo-600 rounded cursor-pointer" />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2"><Truck size={18} className="text-indigo-600"/> Penerimaan Material (GRN)</h4>
+                        <p className="text-sm text-slate-600 mt-1">Apakah ada Surat Jalan material yang datang hari ini?</p>
+                        <div className="mt-2 text-xs text-indigo-700 bg-indigo-50 p-2 rounded border border-indigo-100 inline-block">
+                          <strong>Cara Input:</strong> Buka menu <strong>Material</strong> &rarr; Tab <strong>Purchase Order</strong> &rarr; Klik tombol <strong>Terima Barang</strong> pada PO terkait.
+                        </div>
+                      </div>
+                      <button onClick={() => setActiveTab('po')} className="px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-indigo-200">
+                        Ke Menu <ExternalLink size={12}/>
+                      </button>
+                    </div>
+
+                    {/* ITEM 2: Stok Keluar */}
+                    <div className="flex items-start gap-4 p-4 border rounded-xl hover:bg-slate-50 transition-colors bg-white">
+                      <input type="checkbox" className="w-5 h-5 mt-1 text-indigo-600 rounded cursor-pointer" />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2"><Boxes size={18} className="text-emerald-600"/> Pemakaian Material (Stock OUT)</h4>
+                        <p className="text-sm text-slate-600 mt-1">Apakah ada material yang diambil mandor untuk pekerjaan WBS?</p>
+                        <div className="mt-2 text-xs text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100 inline-block">
+                          <strong>Cara Input:</strong> Buka Tab <strong>Stok Gudang</strong> &rarr; Klik <strong>Keluar</strong> pada material &rarr; Pilih WBS tujuan.
+                        </div>
+                      </div>
+                      <button onClick={() => setActiveTab('inventory')} className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-emerald-200">
+                        Ke Menu <ExternalLink size={12}/>
+                      </button>
+                    </div>
+
+                    {/* ITEM 3: Kas Kecil */}
+                    <div className="flex items-start gap-4 p-4 border rounded-xl hover:bg-slate-50 transition-colors bg-white">
+                      <input type="checkbox" className="w-5 h-5 mt-1 text-indigo-600 rounded cursor-pointer" />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-slate-800 flex items-center gap-2"><Wallet size={18} className="text-amber-600"/> Kas Kecil / Petty Cash</h4>
+                        <p className="text-sm text-slate-600 mt-1">Apakah semua nota kontan (BBM, konsumsi, ATK) sudah diinput?</p>
+                        <div className="mt-2 text-xs text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 inline-block">
+                          <strong>Cara Input:</strong> Buka menu <strong>Cash Flow</strong> &rarr; Klik <strong>+ Tambah Transaksi</strong> &rarr; Tipe: <strong>Kas Keluar</strong>.
+                        </div>
+                      </div>
+                      <a href="/finances" target="_blank" className="px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-amber-200">
+                        Ke Menu <ExternalLink size={12}/>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

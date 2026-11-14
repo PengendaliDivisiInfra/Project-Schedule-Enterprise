@@ -3,9 +3,14 @@ import { useEffect, useState } from 'react';
 import { Package, ArrowDownToLine, ArrowUpFromLine, Search, AlertCircle, X, CheckCircle, History, Edit3, ShieldAlert, Box, Link as LinkIcon, Plus, Save, Trash2 } from 'lucide-react';
 import { getInventoryStock, recordTransaction, getMaterialHistory, updateTransaction, updateStokMinimum, getGlobalLedger, createMasterMaterial, getMaterialPOs, voidTransaction } from '@/lib/services/inventory-service';
 import { supabase } from '@/lib/supabase';
+import { useRole } from '@/lib/hooks/useRole'; // TAMBAHAN RBAC
 import type { InventoryItem, InventoryTransaction } from '@/types/inventory';
 
 export function InventoryManager({ projectId }: { projectId: string }) {
+  // RBAC HOOK
+  const { can } = useRole(projectId);
+  const canEdit = can('EDIT_INVENTORY'); // Menggunakan permission key standar
+
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [wbsList, setWbsList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +89,6 @@ export function InventoryManager({ projectId }: { projectId: string }) {
 
   useEffect(() => { loadData(); }, [projectId]);
 
-  // LOGIKA AUTO-SELECT TIPE BIAYA
   const getResourceTypeFromCategory = (category?: string) => {
     if (category === 'Alat Bantu') return 'Equipment';
     if (category === 'Consumable' || category === 'Material Bantu') return 'Consumable';
@@ -96,11 +100,8 @@ export function InventoryManager({ projectId }: { projectId: string }) {
     setModalType(type);
     setQty(''); setRef(''); setNotes(''); setPoRef(''); setInvoiceNo('');
     setSelectedWbs(''); 
-    
-    // Auto-Select Tipe Biaya
     setResourceType(getResourceTypeFromCategory(item.master_hsd?.kategori_akun));
     
-    // Fetch PO untuk material ini
     try {
       const pos = await getMaterialPOs(projectId, item.hsd_id);
       setMaterialPOs(pos);
@@ -190,19 +191,16 @@ export function InventoryManager({ projectId }: { projectId: string }) {
     
     setIsUpdating(true);
     try {
-      // Menggunakan editingTrx.inventory_id langsung
       await updateTransaction(editingTrx.id, Number(editQty), editNotes, editingTrx.quantity, editingTrx.type, editingTrx.inventory_id);
       showToast('Transaksi berhasil direvisi!'); setEditingTrx(null); await loadData();
       if (isHistoryOpen && selectedItem) setHistoryData(await getMaterialHistory(selectedItem.id));
     } catch (e: any) { showToast(e.message, 'error'); } finally { setIsUpdating(false); }
   };
 
-  // FUNGSI VOID TRANSAKSI
   const handleVoidTransaction = async () => {
     if (!editingTrx) return;
     setIsVoiding(true);
     try {
-      // Menggunakan editingTrx.inventory_id langsung
       await voidTransaction(editingTrx.id, editingTrx.inventory_id, editingTrx.quantity, editingTrx.type);
       showToast('Transaksi berhasil dibatalkan (Void) & stok dikembalikan!');
       setEditingTrx(null); 
@@ -258,9 +256,12 @@ export function InventoryManager({ projectId }: { projectId: string }) {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in">
             <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
               <h4 className="font-bold text-slate-700">Buku Besar Mutasi Material & BBM</h4>
-              <button onClick={handleOpenTransactionFromLedger} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
-                <Plus className="w-4 h-4" /> Tambah Transaksi Manual
-              </button>
+              {/* RBAC: TOMBOL TAMBAH HANYA UNTUK YANG BERHAK */}
+              {canEdit && (
+                <button onClick={handleOpenTransactionFromLedger} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
+                  <Plus className="w-4 h-4" /> Tambah Transaksi Manual
+                </button>
+              )}
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm whitespace-nowrap">
@@ -307,10 +308,13 @@ export function InventoryManager({ projectId }: { projectId: string }) {
                       <td className="p-3 text-right font-mono font-bold text-rose-700">{trx.type === 'OUT' ? trx.quantity : '-'}</td>
                       <td className="p-3 text-xs text-slate-500 max-w-[200px] truncate" title={trx.notes}>{trx.notes}</td>
                       <td className="p-3 text-center">
+                        {/* RBAC: TOMBOL EDIT HANYA UNTUK YANG BERHAK */}
                         {isPO ? (
                           <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-1 rounded" title="Locked"><ShieldAlert className="w-3 h-3 inline"/></span>
-                        ) : (
+                        ) : canEdit ? (
                           <button onClick={() => handleOpenEditTrx(trx)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-colors" title="Koreksi / Void"><Edit3 className="w-4 h-4" /></button>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic font-semibold">Read-Only</span>
                         )}
                       </td>
                     </tr>
@@ -350,11 +354,23 @@ export function InventoryManager({ projectId }: { projectId: string }) {
                       </td>
                       <td className="p-4 text-center text-slate-600">{item.master_hsd?.satuan}</td>
                       <td className="p-4 text-right font-mono font-bold text-lg text-emerald-700 bg-emerald-50/30">{item.stok_on_hand.toLocaleString('id-ID')}</td>
-                      <td className="p-4 text-right font-mono text-slate-500"><button onClick={() => handleOpenEditMin(item)} className="hover:text-blue-600 flex items-center justify-end gap-1 w-full">{item.stok_minimum} <Edit3 className="w-3 h-3 opacity-50" /></button></td>
+                      <td className="p-4 text-right font-mono text-slate-500">
+                        {canEdit ? (
+                          <button onClick={() => handleOpenEditMin(item)} className="hover:text-blue-600 flex items-center justify-end gap-1 w-full">{item.stok_minimum} <Edit3 className="w-3 h-3 opacity-50" /></button>
+                        ) : (
+                          <span>{item.stok_minimum}</span>
+                        )}
+                      </td>
                       <td className="p-4 text-center">{isLow ? <span className="px-2 py-1 bg-rose-100 text-rose-700 rounded text-xs font-bold"><AlertCircle className="w-3 h-3 inline mr-1"/>Menipis</span> : <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded text-xs font-bold"><CheckCircle className="w-3 h-3 inline mr-1"/>Aman</span>}</td>
                       <td className="p-4"><div className="flex justify-center gap-2">
-                        <button onClick={() => handleOpenModal(item, 'IN')} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold"><ArrowDownToLine className="w-3 h-3" /> Masuk</button>
-                        <button onClick={() => handleOpenModal(item, 'OUT')} className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-md text-xs font-semibold"><ArrowUpFromLine className="w-3 h-3" /> Keluar</button>
+                        {canEdit ? (
+                          <>
+                            <button onClick={() => handleOpenModal(item, 'IN')} className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md text-xs font-semibold"><ArrowDownToLine className="w-3 h-3" /> Masuk</button>
+                            <button onClick={() => handleOpenModal(item, 'OUT')} className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-md text-xs font-semibold"><ArrowUpFromLine className="w-3 h-3" /> Keluar</button>
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic font-semibold bg-slate-100 px-2 py-1 rounded-md">Read-Only</span>
+                        )}
                       </div></td>
                     </tr>
                   );
@@ -365,8 +381,7 @@ export function InventoryManager({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      {/* --- MODALS --- */}
-
+      {/* --- MODALS (SAMA SEPERTI SEBELUMNYA, TETAP LENGKAP) --- */}
       {/* MODAL PILIH MATERIAL / TAMBAH BARU */}
       {showMaterialSelect && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
@@ -584,8 +599,10 @@ export function InventoryManager({ projectId }: { projectId: string }) {
                         <td className="p-3 text-center">
                           {isPO ? (
                             <span className="inline-flex items-center gap-1 text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-1 rounded" title="Transaksi PO tidak bisa diedit di sini"><ShieldAlert className="w-3 h-3" /> Locked</span>
-                          ) : (
+                          ) : canEdit ? (
                             <button onClick={() => handleOpenEditTrx(trx)} className="text-blue-600 hover:bg-blue-50 px-2 py-1 rounded text-xs font-bold transition-colors flex items-center gap-1 mx-auto"><Edit3 className="w-3 h-3" /> Koreksi</button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic font-semibold">Read-Only</span>
                           )}
                         </td>
                       </tr>
