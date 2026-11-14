@@ -42,7 +42,6 @@ export default function TasksPage() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [deleteTarget, setDeleteTarget] = useState(null);
 
-  // STATE BARU: Untuk Loading Inline Edit
   const [editingTaskId, setEditingTaskId] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -54,10 +53,14 @@ export default function TasksPage() {
     fetchTasksAndCalendar();
   }, [activeProjectId]);
 
+  // PERBAIKAN 1: Realtime listener mendengarkan tabel calendars & calendar_exceptions
   useEffect(() => {
     if (!activeProjectId) return;
     const channel = supabase.channel('realtime-project-calendar')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendars' }, () => {
+        fetchTasksAndCalendar();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_exceptions' }, () => {
         fetchTasksAndCalendar();
       })
       .subscribe();
@@ -139,13 +142,21 @@ export default function TasksPage() {
     setLoading(true);
     if (!activeProjectId) { setLoading(false); return; }
     
-    const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').eq('id', activeProjectId).maybeSingle();
     let cwd = [1,2,3,4,5];
     let cex = [];
-    if (projectData) {
-      if (projectData.working_days && Array.isArray(projectData.working_days) && projectData.working_days.length > 0) cwd = projectData.working_days.map(Number);
-      if (projectData.exceptions) cex = projectData.exceptions;
+    
+    const { data: calData } = await supabase.from('calendars').select('id, work_days').eq('project_id', activeProjectId).maybeSingle();
+    
+    if (calData) {
+      if (calData.work_days) {
+        const parsed = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
+        if (parsed.length > 0) cwd = parsed;
+      }
+      
+      const { data: excData } = await supabase.from('calendar_exceptions').select('exception_date, description').eq('calendar_id', calData.id);
+      if (excData) cex = excData;
     }
+    
     setWorkingDays(cwd);
     setExceptions(cex);
 

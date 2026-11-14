@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Fuel, AlertTriangle, CheckCircle2, Loader2, Gauge, Droplets, Info, Settings, X, Edit, Trash2, FileText, Filter, AlertCircle, Calculator, Search, ShoppingCart } from 'lucide-react';
 import { processFuelTransaction, getDynamicRate, getEquipmentUnits, updateUnitFuelRates, getFuelHistory, updateFuelTransaction, voidFuelTransaction, getEquipmentCategories, receiveFuelPO, getFuelPOs } from '@/lib/services/equipment.service';
+import { recordFuelDispensing } from '@/lib/services/inventory-service'; // IMPORT FUNGSI BUKU BESAR
 
 export default function FuelManagementPage({ params }) {
   const projectId = params.projectId;
@@ -15,9 +16,9 @@ export default function FuelManagementPage({ params }) {
   const [equipments, setEquipments] = useState([]);
   const [categories, setCategories] = useState([]); 
   const [history, setHistory] = useState([]);
+  const [openPOs, setOpenPOs] = useState([]); // STATE BARU UNTUK LIST PO
   
   const [filterCategory, setFilterCategory] = useState('ALL');
-
   const [selectedEq, setSelectedEq] = useState(null);
   const [currentStandardRate, setCurrentStandardRate] = useState(0);
   
@@ -28,20 +29,16 @@ export default function FuelManagementPage({ params }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [voidTarget, setVoidTarget] = useState(null);
 
-  // State untuk Custom Tooltip (Opsi C)
   const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0 });
-  
-  // State untuk Custom Modal Audit (Opsi B)
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [auditData, setAuditData] = useState(null);
 
-  // State untuk Penerimaan PO BBM
-  const [openPOs, setOpenPOs] = useState([]);
   const [isReceiveModalOpen, setIsReceiveModalOpen] = useState(false);
   const [receiveData, setReceiveData] = useState({ po_id: '', actual_volume: '' });
 
+  // STATE FORM: Menambahkan po_id
   const [formData, setFormData] = useState({
-    tank_id: '', equipment_id: '', quantity_liter: '', hm_recorded: '', work_load_type: 'Medium', transaction_date: new Date().toISOString().split('T')[0]
+    tank_id: '', equipment_id: '', po_id: '', quantity_liter: '', hm_recorded: '', work_load_type: 'Medium', transaction_date: new Date().toISOString().split('T')[0]
   });
 
   const showToast = (msg, type = 'success') => { 
@@ -100,6 +97,7 @@ export default function FuelManagementPage({ params }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Sesi login tidak ditemukan.");
 
+      // 1. Simpan ke tabel fuel_transactions (Sistem BBM Alat)
       const res = await processFuelTransaction({
         project_id: projectId, 
         ...formData, 
@@ -109,10 +107,24 @@ export default function FuelManagementPage({ params }) {
         created_by: user.id
       });
 
+      // 2. TARIK KE BUKU BESAR GUDANG (Auto-Cost & Ledger)
+      const selectedEquipment = equipments.find(eq => eq.id === formData.equipment_id);
+      if (selectedEquipment) {
+        await recordFuelDispensing(
+          projectId, 
+          res.fuel_hsd_id || '', // Pastikan processFuelTransaction mengembalikan ID Solar, atau kita cari manual
+          Number(formData.quantity_liter), 
+          formData.equipment_id, 
+          selectedEquipment.unit_code, 
+          Number(formData.hm_recorded), 
+          formData.po_id || 'Tanpa PO'
+        );
+      }
+
       if (res.isAnomaly) showToast(res.anomalyReason, 'error'); 
       else showToast(res.message, 'success');
       
-      setFormData({ ...formData, quantity_liter: '', hm_recorded: '' });
+      setFormData({ ...formData, quantity_liter: '', hm_recorded: '', po_id: '' });
       fetchData(); 
     } catch (err) {
       showToast(err.message, 'error');
@@ -201,7 +213,6 @@ export default function FuelManagementPage({ params }) {
     } catch (err) { showToast(err.message, 'error'); } finally { setLoading(false); setVoidTarget(null); }
   };
 
-  // 🟢 PERBAIKAN: Fetch Timesheet untuk mendapatkan Pemakaian riil pada tanggal tersebut
   const handleOpenAudit = async (trx) => {
     setLoading(true);
     try {
@@ -260,12 +271,8 @@ export default function FuelManagementPage({ params }) {
         </div>
       )}
 
-      {/* 🟢 CUSTOM FIXED TOOLTIP (Opsi C) */}
       {tooltip.show && (
-        <div 
-          className="fixed z-[99999] w-64 p-3 bg-slate-800 text-white text-[11px] rounded-xl shadow-2xl text-left font-sans pointer-events-none animate-in fade-in zoom-in-95"
-          style={{ top: tooltip.y, left: tooltip.x }}
-        >
+        <div className="fixed z-[99999] w-64 p-3 bg-slate-800 text-white text-[11px] rounded-xl shadow-2xl text-left font-sans pointer-events-none animate-in fade-in zoom-in-95" style={{ top: tooltip.y, left: tooltip.x }}>
           <p className="font-bold text-red-400 mb-1 flex items-center gap-1"><AlertTriangle size={12}/> Indikasi Defisit BBM</p>
           <ul className="list-disc pl-4 space-y-1 text-slate-300">
             <li>Pengisian fisik (jerigen) belum diinput.</li>
@@ -275,7 +282,6 @@ export default function FuelManagementPage({ params }) {
         </div>
       )}
 
-      {/* BANNER PERINGATAN STOK RENDAH */}
       {tanks.map(t => {
         if (t.current_stock_liter <= (t.reorder_point_liter || 1000)) {
           return (
@@ -292,7 +298,6 @@ export default function FuelManagementPage({ params }) {
       })}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* KOLOM KIRI: FORM INPUT */}
         <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Fuel className="text-indigo-600" /> Form Pengisian BBM</h1>
@@ -316,12 +321,22 @@ export default function FuelManagementPage({ params }) {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Pilih Alat Sewa</label>
-              <select required value={formData.equipment_id} onChange={e => setFormData({...formData, equipment_id: e.target.value})} className="w-full border rounded-lg p-2.5 bg-slate-50">
-                <option value="">-- Pilih Unit --</option>
-                {equipments.map(eq => <option key={eq.id} value={eq.id}>{eq.unit_code} - {eq.equipment_categories?.name}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Pilih Alat Sewa</label>
+                <select required value={formData.equipment_id} onChange={e => setFormData({...formData, equipment_id: e.target.value})} className="w-full border rounded-lg p-2.5 bg-slate-50">
+                  <option value="">-- Pilih Unit --</option>
+                  {equipments.map(eq => <option key={eq.id} value={eq.id}>{eq.unit_code} - {eq.equipment_categories?.name}</option>)}
+                </select>
+              </div>
+              <div>
+                {/* DROPDOWN PO BBM BARU */}
+                <label className="block text-sm font-bold text-slate-700 mb-1">Referensi PO BBM</label>
+                <select value={formData.po_id} onChange={e => setFormData({...formData, po_id: e.target.value})} className="w-full border rounded-lg p-2.5 bg-slate-50">
+                  <option value="">-- Tanpa PO / Stok Awal --</option>
+                  {openPOs.map(po => <option key={po.id} value={po.id}>{po.po_number} ({po.total_volume} L)</option>)}
+                </select>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -350,7 +365,6 @@ export default function FuelManagementPage({ params }) {
           </form>
         </div>
 
-        {/* KOLOM KANAN: SMART INFO BOX */}
         <div className="md:col-span-1">
           <div className="bg-slate-800 text-white p-6 rounded-xl shadow-lg sticky top-6">
             <h3 className="text-lg font-bold flex items-center gap-2 mb-4 border-b border-slate-600 pb-3"><Gauge size={20} className="text-emerald-400" /> Standar Operasional</h3>
@@ -373,7 +387,6 @@ export default function FuelManagementPage({ params }) {
         </div>
       </div>
 
-      {/* BANNER PERINGATAN DEFISIT BBM */}
       {!loadingData && hasNegativeFuel && (
         <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start gap-3 animate-in fade-in mt-6">
           <AlertCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
@@ -384,7 +397,6 @@ export default function FuelManagementPage({ params }) {
         </div>
       )}
 
-      {/* TABEL RIWAYAT BBM */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-6">
         <div className="p-5 border-b border-slate-200 bg-slate-50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div><h3 className="font-bold text-slate-800 text-lg flex items-center gap-2"><FileText size={20} className="text-indigo-600" /> Riwayat Pengisian BBM</h3></div>
@@ -425,7 +437,6 @@ export default function FuelManagementPage({ params }) {
                     <td className="p-4 text-slate-600">{trx.fuel_tanks?.tank_name}</td>
                     <td className="p-4 text-right font-mono text-slate-600">{Number(trx.hm_recorded).toFixed(1)}</td>
                     <td className="p-4 text-right font-mono font-bold text-slate-800">{Number(trx.quantity_liter).toFixed(0)} L</td>
-                    
                     <td 
                       className={`p-4 text-right font-mono font-bold ${trx.fuel_balance < 0 ? 'text-red-600 bg-red-50/30 cursor-help' : 'text-cyan-600 bg-cyan-50/30'}`}
                       onMouseEnter={(e) => {
@@ -441,14 +452,12 @@ export default function FuelManagementPage({ params }) {
                         {trx.fuel_balance?.toFixed(1) || '0'} L
                       </div>
                     </td>
-                    
                     <td className="p-4 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-bold">{trx.work_load_type}</span></td>
                     <td className="p-4 text-center">
                       {trx.is_anomaly ? (<span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold border border-red-200" title={trx.anomaly_reason}>YA</span>) : (<span className="text-emerald-500 text-xs font-bold">Aman</span>)}
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {/* TOMBOL CEK ANOMALI (Opsi B) */}
                         {trx.fuel_balance < 0 && (
                           <button onClick={() => handleOpenAudit(trx)} className="text-amber-600 p-1.5 bg-amber-50 rounded-lg hover:bg-amber-100 animate-pulse" title="Cek Anomali"><Search size={16} /></button>
                         )}
@@ -464,7 +473,7 @@ export default function FuelManagementPage({ params }) {
         </div>
       </div>
 
-      {/* MODAL PENERIMAAN BBM (PO) */}
+      {/* MODAL PENERIMAAN BBM (PO) - TETAP SAMA */}
       {isReceiveModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 flex flex-col border border-slate-200">
@@ -502,12 +511,10 @@ export default function FuelManagementPage({ params }) {
       {isAuditModalOpen && auditData && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col border border-slate-200">
-            
             <div className="flex justify-between items-center px-6 py-4 border-b bg-red-600 text-white">
               <h3 className="font-bold text-lg flex items-center gap-2"><Calculator className="w-5 h-5" /> Audit Anomali Defisit BBM</h3>
               <button onClick={() => setIsAuditModalOpen(false)} className="text-red-200 hover:text-white bg-red-700 hover:bg-red-800 p-1.5 rounded-lg"><X size={20} /></button>
             </div>
-            
             <div className="p-6 space-y-6 bg-slate-50">
               <div className="flex justify-between items-center bg-white p-4 rounded-xl border shadow-sm">
                 <div>
@@ -519,7 +526,6 @@ export default function FuelManagementPage({ params }) {
                   <p className="font-semibold">{formatDate(auditData.date)}</p>
                 </div>
               </div>
-
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
                 <table className="w-full text-sm text-left">
                   <tbody className="divide-y divide-slate-100">
@@ -542,26 +548,24 @@ export default function FuelManagementPage({ params }) {
                   </tbody>
                 </table>
               </div>
-
               <div>
                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1"><AlertCircle size={14} className="text-red-500"/> Analisis Kemungkinan Penyebab</h4>
                 <ul className="text-sm text-slate-700 space-y-2 list-disc pl-5">
-                  <li><b>Pengisian Liar / Jerigen:</b> Operator atau pihak vendor mengisi BBM secara fisik menggunakan jerigen/drum, namun tidak melaporkannya ke Admin untuk diinput ke sistem.</li>
-                  <li><b>Rasio Konsumsi (L/Jam) Terlalu Tinggi:</b> Standar yang di-setting di sistem (misal 16 L/Jam) lebih besar dari pemakaian riil mesin, sehingga sistem kehabisan stok (false alarm).</li>
-                  <li><b>Kebocoran / Pencurian:</b> Terjadi kebocoran pada selang/tangki, atau BBM hilang dicuri di lokasi proyek.</li>
-                  <li><b>HM (Hour Meter) Error:</b> Operator salah input HM Akhir, atau odometer mesin rusak/meloncat.</li>
+                  <li><b>Pengisian Liar / Jerigen:</b> Operator mengisi BBM via jerigen, tidak dilaporkan ke Admin.</li>
+                  <li><b>Rasio (L/Jam) Terlalu Tinggi:</b> Standar di sistem lebih besar dari pemakaian riil mesin.</li>
+                  <li><b>Kebocoran / Pencurian:</b> Terjadi kebocoran selang/tangki, atau hilang dicuri.</li>
+                  <li><b>HM Error:</b> Operator salah input HM Akhir, atau odometer mesin rusak.</li>
                 </ul>
               </div>
             </div>
-
             <div className="p-4 border-t bg-white flex justify-end">
-              <button onClick={() => setIsAuditModalOpen(false)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Tutup & Lakukan Stock Opname</button>
+              <button onClick={() => setIsAuditModalOpen(false)} className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Tutup</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL EDIT BBM */}
+      {/* MODAL EDIT & VOID TETAP SAMA */}
       {isEditModalOpen && editData && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95">
@@ -579,7 +583,6 @@ export default function FuelManagementPage({ params }) {
         </div>
       )}
 
-      {/* MODAL CONFIRM VOID */}
       {voidTarget && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-in zoom-in-95">
@@ -591,7 +594,6 @@ export default function FuelManagementPage({ params }) {
         </div>
       )}
 
-      {/* MODAL SETTING STANDAR BBM */}
       {isRateModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95">

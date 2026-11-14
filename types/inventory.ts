@@ -14,6 +14,7 @@ export interface InventoryItem {
     harga_dasar: number;
     tipe: string;
     kategori_akun?: string;
+    spesifikasi?: string;
   };
 }
 
@@ -26,4 +27,19 @@ export interface InventoryTransaction {
   transaction_date: string;
   notes: string | null;
   created_at: string;
+  
+  // Kolom Baru Terintegrasi
+  invoice_number?: string | null;
+  equipment_id?: string | null;
+  po_reference?: string | null;
+  
+  // Untuk Display di Buku Besar
+  inventory_materials?: {
+    master_hsd: {
+      nama_item: string;
+      satuan: string;
+      spesifikasi: string;
+    }
+  };
+  equipment_name?: string; // Hasil Join
 }

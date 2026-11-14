@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
-import { useProject } from '../../../context/ProjectContext';
-import { updateProjectScheduleSecure, countWorkingDays } from '../../../lib/scheduler';
+// PERBAIKAN: Menggunakan Absolute Import
+import { supabase } from '@/lib/supabase';
+import { useProject } from '@/context/ProjectContext';
+import { updateProjectScheduleSecure, countWorkingDays } from '@/lib/scheduler';
 import { 
   Printer, ArrowLeft, Loader2, Settings, X, PieChart, Users, Package, Calendar 
 } from 'lucide-react';
@@ -386,6 +387,7 @@ export default function MasterReportPage() {
         const proporsiSisa = task.sisa_vol / task.volume; 
         const sisaTotalKebutuhan = res.total_kebutuhan * proporsiSisa; 
         
+        // PERBAIKAN 2: Mencegah Division by Zero
         const targetHarian = task.sisa_hari > 0 ? (task.sisa_vol / task.sisa_hari) : 0;
         const kapasitasNyata = 10; 
         const jumlahTim = targetHarian > 0 ? (targetHarian / kapasitasNyata) : 0;
@@ -691,7 +693,6 @@ export default function MasterReportPage() {
         </html>
       `;
 
-      // FIXED: Mengubah URL Railway menjadi API Route Next.js
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -712,7 +713,7 @@ export default function MasterReportPage() {
 
     } catch (error) {
       console.error(error);
-      alert(error.message);
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: { message: error.message, type: 'error' } }));
     } finally {
       setIsGeneratingPrint(false);
     }

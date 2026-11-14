@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ShoppingCart, Plus, X, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, Plus, X, Loader2, CheckCircle2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { getFuelPOs, createFuelPO } from '@/lib/services/equipment.service';
+import { FuelReceiptModal } from '@/components/equipment/FuelReceiptModal'; // IMPORT MODAL BARU
 
 export default function FuelPurchasePage({ params }) {
   const projectId = params.projectId;
@@ -15,6 +16,9 @@ export default function FuelPurchasePage({ params }) {
   const [loadingData, setLoadingData] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // State untuk Penerimaan BBM
+  const [selectedPOForReceipt, setSelectedPOForReceipt] = useState(null);
 
   const [formData, setFormData] = useState({
     po_number: '', vendor_id: '', tank_id: '', 
@@ -106,13 +110,14 @@ export default function FuelPurchasePage({ params }) {
                 <th className="p-4 font-bold text-right">Harga / L</th>
                 <th className="p-4 font-bold text-right">Total Nilai</th>
                 <th className="p-4 font-bold text-center">Status</th>
+                <th className="p-4 font-bold text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {loadingData ? (
-                <tr><td colSpan={7} className="p-10 text-center text-slate-400"><Loader2 size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />Memuat data...</td></tr>
+                <tr><td colSpan={8} className="p-10 text-center text-slate-400"><Loader2 size={24} className="animate-spin mx-auto mb-2 text-indigo-500" />Memuat data...</td></tr>
               ) : pos.length === 0 ? (
-                <tr><td colSpan={7} className="p-10 text-center text-slate-400 italic">Belum ada PO BBM.</td></tr>
+                <tr><td colSpan={8} className="p-10 text-center text-slate-400 italic">Belum ada PO BBM.</td></tr>
               ) : (
                 pos.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 transition-colors">
@@ -124,6 +129,13 @@ export default function FuelPurchasePage({ params }) {
                     <td className="p-4 text-right font-mono font-bold">{formatCurrency(p.total_amount)}</td>
                     <td className="p-4 text-center">
                       <span className={`px-2 py-1 rounded text-xs font-bold ${p.status === 'Completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{p.status}</span>
+                    </td>
+                    <td className="p-4 text-center">
+                      {p.status !== 'Completed' && (
+                        <button onClick={() => setSelectedPOForReceipt(p)} className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 mx-auto transition-colors">
+                          <CheckCircle size={14} /> Terima
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -198,6 +210,16 @@ export default function FuelPurchasePage({ params }) {
           </div>
         </div>
       )}
+
+      {/* PANGGIL MODAL PENERIMAAN BBM */}
+      <FuelReceiptModal 
+        isOpen={!!selectedPOForReceipt}
+        onClose={() => setSelectedPOForReceipt(null)}
+        poId={selectedPOForReceipt?.id || ''}
+        poNumber={selectedPOForReceipt?.po_number || ''}
+        projectId={projectId}
+        onSuccess={() => fetchData()}
+      />
     </div>
   );
 }

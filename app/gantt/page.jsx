@@ -4,9 +4,11 @@ import { supabase } from '../../lib/supabase';
 import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { updateProjectScheduleSecure, countWorkingDays } from '../../lib/scheduler';
+import { useProject } from '../../context/ProjectContext'; // PERBAIKAN 2: Gunakan Context
 import { AlertTriangle, BarChart3 } from 'lucide-react';
 
 export default function GanttPage() {
+  const { activeProjectId } = useProject(); // Gunakan Context
   const [tasks, setTasks] = useState([]);
   const [relations, setRelations] = useState([]);
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
@@ -64,18 +66,26 @@ export default function GanttPage() {
 
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
-    
-    const { data: projectData } = await supabase.from('projects').select('working_days, exceptions').limit(1).maybeSingle();
+    if (!activeProjectId) { setLoading(false); return; }
+
     let currentWorkingDays = [1,2,3,4,5];
     let currentExceptions = [];
-    if (projectData) {
-      if (projectData.working_days) currentWorkingDays = Array.isArray(projectData.working_days) ? projectData.working_days.map(Number) : [1,2,3,4,5];
-      if (projectData.exceptions) currentExceptions = projectData.exceptions;
-      setWorkingDays(currentWorkingDays);
-      setExceptions(currentExceptions);
+    
+    const { data: calData } = await supabase.from('calendars').select('id, work_days').eq('project_id', activeProjectId).maybeSingle();
+    
+    if (calData) {
+      if (calData.work_days) {
+        const parsed = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
+        if (parsed.length > 0) currentWorkingDays = parsed;
+      }
+      const { data: excData } = await supabase.from('calendar_exceptions').select('exception_date, description').eq('calendar_id', calData.id);
+      if (excData) currentExceptions = excData;
     }
 
-    const { data: taskData } = await supabase.from('wbs_tasks').select('*').order('wbs_code');
+    setWorkingDays(currentWorkingDays);
+    setExceptions(currentExceptions);
+
+    const { data: taskData } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code');
     const { data: assignmentsData } = await supabase.from('task_assignments').select('*');
     const { data: resourcesData } = await supabase.from('project_resources').select('*');
     if (assignmentsData) setTaskAssignments(assignmentsData);
@@ -127,19 +137,24 @@ export default function GanttPage() {
 
   useEffect(() => {
     fetchData();
+    
     const channel = supabase.channel('realtime-gantt-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, () => {
         if (isUpdatingRef.current) return;
         if (window.ganttTimer) clearTimeout(window.ganttTimer);
         window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'projects' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendars' }, () => {
+        if (window.ganttTimer) clearTimeout(window.ganttTimer);
+        window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_exceptions' }, () => {
         if (window.ganttTimer) clearTimeout(window.ganttTimer);
         window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [activeProjectId]);
 
   const handleInlineUpdate = async (taskId, field, value) => {
     isUpdatingRef.current = true; 

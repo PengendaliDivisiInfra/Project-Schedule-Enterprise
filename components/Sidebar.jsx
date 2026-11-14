@@ -48,7 +48,7 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
       {/* NAVIGATION */}
       <nav className={`flex-1 py-6 space-y-8 overflow-y-auto custom-scrollbar overflow-x-hidden transition-all duration-300 ${isCollapsed ? 'px-2' : 'px-4'}`}>
         
-        {/* SECTION 1: UTAMA (Menu Manajemen Proyek DIHAPUS dari sini) */}
+        {/* SECTION 1: UTAMA */}
         <div>
           {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Utama</p>}
           <div className="space-y-1.5">
@@ -146,7 +146,6 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
           {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Sistem</p>}
           <div className="space-y-1.5">
             
-            {/* TAMBAHAN BARU: MANAJEMEN PROYEK DIPINDAHKAN KE SINI */}
             <Link href="/projects" title="Manajemen Proyek" className={`${baseMenu} ${isActive('/projects') || isPathIncludes('/projects/new') ? activeMenu : inactiveMenu}`}>
               <Building2 size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Manajemen Proyek</span>}
@@ -156,6 +155,13 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
               <Settings size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Pengaturan</span>}
             </Link>
+
+            {/* MENU BARU: PENGATURAN KALENDER */}
+            <Link href="/settings/calendar" title="Kalender Kerja" className={`${baseMenu} ${isActive('/settings/calendar') ? activeMenu : inactiveMenu}`}>
+              <Calendar size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Kalender Kerja</span>}
+            </Link>
+
             <Link href="/settings/team" title="Manajemen Tim" className={`${baseMenu} ${isActive('/settings/team') ? activeMenu : inactiveMenu}`}>
               <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Manajemen Tim</span>}

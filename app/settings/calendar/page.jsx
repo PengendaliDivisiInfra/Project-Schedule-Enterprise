@@ -1,13 +1,16 @@
 ﻿'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { useProject } from '../../../context/ProjectContext'; // Gunakan Context
 import LoadingSpinner from '../../../components/LoadingSpinner';
 
 export default function CalendarSettingsPage() {
+  const { activeProjectId } = useProject(); // Ambil ID Proyek yang valid
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [calendarId, setCalendarId] = useState(null);
   
-  // State Hari Kerja (0=Minggu, 1=Senin, dst)
+  // State Hari Kerja
   const [workingDays, setWorkingDays] = useState([1, 2, 3, 4, 5]);
   
   // State Hari Libur
@@ -15,28 +18,90 @@ export default function CalendarSettingsPage() {
   const [newHolidayDate, setNewHolidayDate] = useState('');
   const [newHolidayDesc, setNewHolidayDesc] = useState('');
 
+  // Ref untuk mencegah bentrok Realtime saat menyimpan
+  const isSavingRef = useRef(false);
+
+  const showToast = (message, type = 'success') => {
+    window.dispatchEvent(new CustomEvent('app-toast', { 
+      detail: { message, type } 
+    }));
+  };
+
   useEffect(() => {
+    if (!activeProjectId) return;
+    
     fetchCalendarSettings();
 
-        const channel = supabase.channel('realtime-calendar')
+    const channel = supabase.channel('realtime-calendar')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'calendar_exceptions' }, () => {
-        fetchCalendarSettings(); // Update kalender jika ada hari libur baru
+        if (isSavingRef.current) return; // Abaikan jika sedang dalam proses simpan
+        fetchCalendarSettings(); 
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'calendars' }, () => {
+        if (isSavingRef.current) return; // Abaikan jika sedang dalam proses simpan
+        fetchCalendarSettings(); 
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [activeProjectId]);
 
   const fetchCalendarSettings = async () => {
+    if (!activeProjectId) { setLoading(false); return; }
     setLoading(true);
-    // Mengambil data dari tabel projects (Asumsi: setting kalender disimpan di tabel projects)
-    const { data, error } = await supabase.from('projects').select('id, working_days, exceptions').limit(1).maybeSingle();
     
-    if (data) {
-      if (data.working_days) setWorkingDays(Array.isArray(data.working_days) ? data.working_days.map(Number) : [1,2,3,4,5]);
-      if (data.exceptions) setHolidays(data.exceptions);
+    try {
+      // Menggunakan limit(1) agar tidak crash jika ada duplikasi data di database
+      let { data: calData, error: fetchErr } = await supabase
+        .from('calendars')
+        .select('id, work_days')
+        .eq('project_id', activeProjectId)
+        .limit(1)
+        .maybeSingle();
+      
+      if (fetchErr) throw fetchErr;
+
+      // Jika belum ada kalender untuk proyek ini, buat otomatis
+      if (!calData) {
+        const { data: newCal, error: createError } = await supabase
+          .from('calendars')
+          .insert([{ 
+            project_id: activeProjectId, 
+            name: 'Kalender Proyek Default', 
+            work_days: '1,2,3,4,5',
+            hours_per_day: 8
+          }])
+          .select()
+          .single();
+          
+        if (createError) throw createError;
+        calData = newCal;
+      }
+
+      if (calData) {
+        setCalendarId(calData.id);
+        
+        if (calData.work_days && calData.work_days.trim() !== '') {
+          const parsedDays = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
+          setWorkingDays(parsedDays);
+        } else {
+          setWorkingDays([]);
+        }
+
+        const { data: excData } = await supabase
+          .from('calendar_exceptions')
+          .select('id, exception_date, description')
+          .eq('calendar_id', calData.id)
+          .order('exception_date', { ascending: true });
+
+        setHolidays(excData || []);
+      }
+    } catch (error) {
+      console.error(error);
+      showToast("Gagal memuat kalender: " + error.message, "error");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const toggleDay = (dayIndex) => {
@@ -48,13 +113,16 @@ export default function CalendarSettingsPage() {
   };
 
   const handleAddHoliday = () => {
-    if (!newHolidayDate) return alert("Pilih tanggal libur terlebih dahulu!");
-    const newException = { exception_date: newHolidayDate, description: newHolidayDesc || 'Hari Libur' };
+    if (!newHolidayDate) return showToast("Pilih tanggal libur terlebih dahulu!", "error");
     
-    // Cek duplikasi
     if (holidays.some(h => h.exception_date === newHolidayDate)) {
-      return alert("Tanggal tersebut sudah ada di daftar libur.");
+      return showToast("Tanggal tersebut sudah ada di daftar libur.", "error");
     }
+
+    const newException = { 
+      exception_date: newHolidayDate, 
+      description: newHolidayDesc || 'Hari Libur' 
+    };
 
     setHolidays(prev => [...prev, newException].sort((a, b) => new Date(a.exception_date) - new Date(b.exception_date)));
     setNewHolidayDate('');
@@ -66,21 +134,43 @@ export default function CalendarSettingsPage() {
   };
 
   const handleSave = async () => {
+    if (!calendarId) return showToast("Gagal: ID Kalender tidak ditemukan.", "error");
+    
     setSaving(true);
-    // Menyimpan ke tabel projects. Pastikan kolom working_days dan exceptions bertipe JSONB di Supabase.
-    const { error } = await supabase
-      .from('projects')
-      .update({ 
-        working_days: workingDays,
-        exceptions: holidays
-      })
-      .neq('id', '00000000-0000-0000-0000-000000000000'); // Update semua baris proyek (biasanya cuma 1)
+    isSavingRef.current = true; // Kunci Realtime agar tidak menimpa data lokal
+    
+    try {
+      const { data: updatedCal, error: calError } = await supabase
+        .from('calendars')
+        .update({ work_days: workingDays.join(',') })
+        .eq('id', calendarId)
+        .select();
 
-    setSaving(false);
-    if (error) {
-      alert("Gagal menyimpan kalender: " + error.message);
-    } else {
-      alert("✅ Kalender Kerja berhasil disimpan!");
+      if (calError) throw calError;
+      if (!updatedCal || updatedCal.length === 0) throw new Error("Gagal update kalender (Periksa RLS).");
+
+      await supabase.from('calendar_exceptions').delete().eq('calendar_id', calendarId);
+      
+      if (holidays.length > 0) {
+        const inserts = holidays.map(h => ({
+          calendar_id: calendarId,
+          exception_date: h.exception_date,
+          description: h.description
+        }));
+        
+        const { error: excError } = await supabase.from('calendar_exceptions').insert(inserts);
+        if (excError) throw excError;
+      }
+
+      showToast("✅ Kalender Kerja berhasil disimpan!", "success");
+      
+    } catch (error) {
+      console.error(error);
+      showToast("Gagal menyimpan kalender: " + error.message, "error");
+    } finally {
+      setSaving(false);
+      // Buka kunci Realtime setelah 1 detik agar transisi database selesai
+      setTimeout(() => { isSavingRef.current = false; }, 1000); 
     }
   };
 
@@ -170,9 +260,9 @@ export default function CalendarSettingsPage() {
               </button>
             </div>
 
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="border border-slate-200 rounded-lg overflow-hidden max-h-[300px] overflow-y-auto">
               <table className="w-full text-sm text-left">
-                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200 sticky top-0">
                   <tr>
                     <th className="p-3">Tanggal</th>
                     <th className="p-3">Keterangan</th>
@@ -187,7 +277,9 @@ export default function CalendarSettingsPage() {
                   ) : (
                     holidays.map((h, i) => (
                       <tr key={i} className="hover:bg-slate-50">
-                        <td className="p-3 font-medium text-slate-700">{new Date(h.exception_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'})}</td>
+                        <td className="p-3 font-medium text-slate-700">
+                          {new Date(h.exception_date).toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'})}
+                        </td>
                         <td className="p-3 text-slate-500">{h.description}</td>
                         <td className="p-3 text-center">
                           <button onClick={() => handleRemoveHoliday(h.exception_date)} className="text-red-500 hover:text-red-700 font-bold p-1">🗑️</button>
@@ -205,6 +297,3 @@ export default function CalendarSettingsPage() {
     </div>
   );
 }
-
-
-
