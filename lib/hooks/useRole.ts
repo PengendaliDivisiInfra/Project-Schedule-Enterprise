@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../supabase'; // Sesuaikan path jika berbeda
-import { checkPermission, PERMISSIONS } from '../config/permissions'; // Sesuaikan path
+import { supabase } from '../supabase';
+import { checkPermission, PERMISSIONS } from '../config/permissions';
+import { getFromCache, saveToCache } from '../utils/cache'; // IMPORT CACHE
 
 export function useRole(projectId?: string) {
   const [role, setRole] = useState<string | null>(null);
@@ -8,10 +9,22 @@ export function useRole(projectId?: string) {
 
   useEffect(() => {
     const fetchRole = async (userId: string) => {
+      const cacheKey = `user_role_${userId}_${projectId || 'global'}`;
+
       try {
         let finalRole: string | null = null;
 
-        // 1. Cek Owner Global (Profile)
+        // 🟢 1. Cek Mode Offline Terlebih Dahulu
+        if (typeof window !== 'undefined' && !navigator.onLine) {
+          const cachedRole = getFromCache(cacheKey);
+          if (cachedRole) {
+            setRole(cachedRole);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // 2. Cek Owner Global (Profile)
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -22,29 +35,33 @@ export function useRole(projectId?: string) {
           finalRole = 'Owner';
         } 
         
-        // 2. Cek Role Proyek (Project Members)
+        // 3. Cek Role Proyek (Project Members)
         if (!finalRole && projectId) {
           const { data: member } = await supabase
             .from('project_members')
             .select('role')
             .eq('project_id', projectId)
             .eq('user_id', userId)
-            .maybeSingle(); // Gunakan maybeSingle agar tidak error jika bukan member
+            .maybeSingle();
           
           if (member?.role) {
             finalRole = member.role;
           }
         }
 
-        // 3. JIKA TIDAK PUNYA AKSES, JADIKAN 'Guest' (BUKAN SITE ADMIN)
+        // 4. JIKA TIDAK PUNYA AKSES, JADIKAN 'Guest'
         if (!finalRole) {
           finalRole = 'Guest'; 
         }
         
         setRole(finalRole);
+        saveToCache(cacheKey, finalRole); // Simpan Role ke Cache
+        
       } catch (err) {
         console.error("Error mengambil role:", err);
-        setRole('Guest');
+        // 🟢 Fallback ke Cache jika Fetch Gagal
+        const cachedRole = getFromCache(cacheKey);
+        setRole(cachedRole || 'Guest');
       } finally {
         setLoading(false);
       }
@@ -63,9 +80,8 @@ export function useRole(projectId?: string) {
     return () => { authListener.subscription.unsubscribe(); };
   }, [projectId]);
 
-  // Fungsi pemanggil permission
   const can = (permissionKey: keyof typeof PERMISSIONS) => {
-    if (role === 'Guest') return false; // Blokir akses total jika Guest
+    if (role === 'Guest') return false;
     return checkPermission(role, permissionKey);
   };
 

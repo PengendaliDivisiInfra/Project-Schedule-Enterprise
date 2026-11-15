@@ -1,13 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },
-    // Pindahkan ke dalam experimental agar tidak merah
-    serverComponentsExternalPackages: ["puppeteer", "puppeteer-core", "@sparticuz/chromium"],
+    serverComponentsExternalPackages: ['puppeteer', 'puppeteer-core', '@sparticuz/chromium'],
   },
   async headers() {
     return [
@@ -20,7 +17,56 @@ const nextConfig = {
         ],
       },
     ];
-  }
+  },
 };
 
-module.exports = nextConfig;
+const withPWA = require('@ducanh2912/next-pwa').default({
+  dest: 'public',
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  swcMinify: true,
+  disable: process.env.NODE_ENV === 'development',
+  fallbacks: {
+    document: '/offline',
+  },
+  workboxOptions: {
+    disableDevLogs: true,
+    navigationPreload: false, 
+    runtimeCaching: [
+      {
+        // 🟢 WAJIB: Jangan pernah cache rute auth (Login/SSO)
+        urlPattern: /\/auth\/.*/i,
+        handler: 'NetworkOnly',
+      },
+      {
+        urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+        handler: 'NetworkOnly', 
+      },
+      {
+        urlPattern: ({ url }) => url.searchParams.has('_rsc'),
+        handler: 'StaleWhileRevalidate', 
+        options: { 
+          cacheName: 'rsc-payloads', 
+          expiration: { maxEntries: 50, maxAgeSeconds: 86400 } 
+        },
+      },
+      {
+        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|json)$/i,
+        handler: 'StaleWhileRevalidate',
+        options: { cacheName: 'static-assets', expiration: { maxEntries: 50, maxAgeSeconds: 2592000 } },
+      },
+      {
+        urlPattern: ({ request }) => request.mode === 'navigate',
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'pages-cache',
+          networkTimeoutSeconds: 3,
+          expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
+        },
+      },
+    ],
+  },
+});
+
+module.exports = withPWA(nextConfig);

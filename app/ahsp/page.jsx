@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AssignmentModal from '../../components/AssignmentModal';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 import { Plus, Printer, Trash2, AlertTriangle, CheckCircle2, Save, X, Edit, Loader2, FileText } from 'lucide-react';
 
 export default function AhspPage() {
@@ -12,19 +13,12 @@ export default function AhspPage() {
   const [details, setDetails] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // State Modal Assignment (Tambah Komponen)
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
-  
-  // State Modal Master AHSP (Tambah AHSP Baru)
   const [isAhspModalOpen, setIsAhspModalOpen] = useState(false);
   const [editingAhsp, setEditingAhsp] = useState(null);
   const [isSavingAhsp, setIsSavingAhsp] = useState(false);
   const [formAhsp, setFormAhsp] = useState({ kode_ahsp: '', name: '', unit: 'Unit' });
-
-  // State Overhead
   const [overheadPct, setOverheadPct] = useState(15);
-
-  // State Custom Dialog & Toast
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [toast, setToast] = useState(null);
@@ -34,52 +28,85 @@ export default function AhspPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // 1. Fetch Daftar Induk AHSP
+  // 1. Fetch Daftar Induk AHSP (DENGAN CACHE)
   const fetchAhspList = async () => {
     setLoading(true);
-    const { data } = await supabase.from('ahsp_templates').select('*').order('name');
-    if (data && data.length > 0) {
-      setAhspList(data);
-      if (!selectedAhspId) {
-        setSelectedAhspId(data[0].id);
-        setSelectedAhsp(data[0]);
-      }
-    } else {
-      setAhspList([]);
-      setSelectedAhsp(null);
-    }
-    setLoading(false);
-  };
+    const cacheKey = 'ahsp_list_master';
 
-  // 2. Fetch Detail Komponen
-  const fetchAhspDetails = useCallback(async (ahspId) => {
-    if (!ahspId) return;
-    
-    const { data: detailData, error: detailError } = await supabase
-      .from('ahsp_details')
-      .select('*')
-      .eq('ahsp_template_id', ahspId);
-      
-    if (detailError) {
-      showToast('danger', "Gagal memuat detail: " + detailError.message);
+    const cached = getFromCache(cacheKey);
+    if (cached && cached.length > 0) {
+      setAhspList(cached);
+      if (!selectedAhspId) {
+        setSelectedAhspId(cached[0].id);
+        setSelectedAhsp(cached[0]);
+      }
+    }
+
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoading(false);
       return;
     }
 
-    if (detailData) {
-      const hsdIds = detailData.map(d => d.hsd_id).filter(id => id);
-      let hsdData = [];
-      
-      if (hsdIds.length > 0) {
-        const { data: hsdRes } = await supabase.from('master_hsd').select('*').in('id', hsdIds);
-        hsdData = hsdRes || [];
+    try {
+      const { data } = await supabase.from('ahsp_templates').select('*').order('name');
+      if (data && data.length > 0) {
+        setAhspList(data);
+        saveToCache(cacheKey, data);
+        if (!selectedAhspId) {
+          setSelectedAhspId(data[0].id);
+          setSelectedAhsp(data[0]);
+        }
+      } else if (!cached) {
+        setAhspList([]);
+        setSelectedAhsp(null);
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      const merged = detailData.map(d => ({
-        ...d,
-        master_hsd: hsdData.find(h => h.id === d.hsd_id) || {}
-      }));
-      
-      setDetails(merged);
+  // 2. Fetch Detail Komponen (DENGAN CACHE)
+  const fetchAhspDetails = useCallback(async (ahspId) => {
+    if (!ahspId) return;
+    const cacheKey = `ahsp_details_${ahspId}`;
+
+    const cached = getFromCache(cacheKey);
+    if (cached) setDetails(cached);
+
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      if (!cached) showToast('danger', 'Offline: Detail AHSP belum tersimpan di cache.');
+      return;
+    }
+
+    try {
+      const { data: detailData, error: detailError } = await supabase
+        .from('ahsp_details')
+        .select('*')
+        .eq('ahsp_template_id', ahspId);
+        
+      if (detailError) throw detailError;
+
+      if (detailData) {
+        const hsdIds = detailData.map(d => d.hsd_id).filter(id => id);
+        let hsdData = [];
+        
+        if (hsdIds.length > 0) {
+          const { data: hsdRes } = await supabase.from('master_hsd').select('*').in('id', hsdIds);
+          hsdData = hsdRes || [];
+        }
+
+        const merged = detailData.map(d => ({
+          ...d,
+          master_hsd: hsdData.find(h => h.id === d.hsd_id) || {}
+        }));
+        
+        setDetails(merged);
+        saveToCache(cacheKey, merged);
+      }
+    } catch (err) {
+      console.error(err);
     }
   }, []);
 
@@ -97,7 +124,6 @@ export default function AhspPage() {
     if (selectedAhspId) fetchAhspDetails(selectedAhspId);
   };
 
-  // 3. Handle Tambah/Edit Master AHSP
   const handleOpenEditAhsp = () => {
     if (!selectedAhsp) return;
     setEditingAhsp(selectedAhsp);
@@ -155,14 +181,16 @@ export default function AhspPage() {
     setIsSavingAhsp(false);
   };
 
-  // 4. Update Koefisien
   const handleUpdateKoefisien = async (detailId, newKoefisien) => {
     const val = Number(newKoefisien) || 0;
     setDetails(prev => prev.map(d => d.id === detailId ? { ...d, koefisien: val } : d));
-    const { error } = await supabase.from('ahsp_details').update({ koefisien: val }).eq('id', detailId);
-    if (error) {
-      showToast('danger', "Gagal update koefisien: " + error.message);
-      handleRefresh(); 
+    
+    if (typeof window !== 'undefined' && navigator.onLine) {
+      const { error } = await supabase.from('ahsp_details').update({ koefisien: val }).eq('id', detailId);
+      if (error) {
+        showToast('danger', "Gagal update koefisien: " + error.message);
+        handleRefresh(); 
+      }
     }
   };
 
@@ -170,18 +198,23 @@ export default function AhspPage() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     await new Promise(resolve => setTimeout(resolve, 300));
-    const { error } = await supabase.from('ahsp_details').delete().eq('id', deleteTarget.id);
-    if (error) {
-      showToast('danger', "Gagal menghapus: " + error.message);
+    
+    if (typeof window !== 'undefined' && navigator.onLine) {
+      const { error } = await supabase.from('ahsp_details').delete().eq('id', deleteTarget.id);
+      if (error) {
+        showToast('danger', "Gagal menghapus: " + error.message);
+      } else {
+        showToast('success', "Komponen berhasil dihapus.");
+        handleRefresh();
+      }
     } else {
-      showToast('success', "Komponen berhasil dihapus.");
-      handleRefresh();
+      showToast('danger', "Tidak bisa menghapus saat offline.");
     }
+    
     setIsDeleting(false);
     setDeleteTarget(null);
   };
 
-  // --- KALKULASI TOTAL ---
   const getTotalByType = (typeString) => {
     return details
       .filter(d => d.master_hsd?.tipe?.toLowerCase() === typeString.toLowerCase())
@@ -215,7 +248,6 @@ export default function AhspPage() {
 
       <div className="p-6 w-full bg-slate-50 min-h-screen relative print:bg-white print:p-0">
         
-        {/* TOAST NOTIFICATION */}
         {toast && (
           <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-xl shadow-xl text-white font-bold animate-in slide-in-from-top-4 fade-in flex items-center gap-2 print-hidden ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
             {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
@@ -223,11 +255,9 @@ export default function AhspPage() {
           </div>
         )}
 
-        {/* KONTROL ATAS (RESPONSIVE) */}
         <div className="w-full max-w-[1700px] mx-auto mb-6 print-hidden">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
             
-            {/* KIRI: Pilih Template & AHSP Baru */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full xl:w-auto flex-1">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">Template AHSP:</label>
               <div className="flex flex-col sm:flex-row gap-2 w-full xl:max-w-xl">
@@ -252,7 +282,6 @@ export default function AhspPage() {
               </div>
             </div>
 
-            {/* KANAN: Aksi Cepat */}
             <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto shrink-0 mt-2 xl:mt-0">
               <button onClick={() => setIsAssignmentModalOpen(true)} disabled={!selectedAhsp} className="w-full sm:w-auto justify-center bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2 disabled:bg-slate-400 disabled:shadow-none whitespace-nowrap">
                 <Plus size={16} /> Tambah Komponen
@@ -265,11 +294,9 @@ export default function AhspPage() {
           </div>
         </div>
 
-        {/* KERTAS DOKUMEN PUPR */}
         <div className="bg-white w-full max-w-[1700px] mx-auto shadow-xl border border-slate-300 p-8 print-container rounded-sm">
           {selectedAhsp ? (
             <>
-              {/* HEADER DOKUMEN */}
               <div className="mb-6 border-b-2 border-slate-800 pb-4 relative">
                 <div className="absolute right-0 top-0 print-hidden">
                   <button onClick={handleOpenEditAhsp} className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1.5 text-xs font-bold shadow-sm" title="Edit Nama & Satuan AHSP">
@@ -293,7 +320,6 @@ export default function AhspPage() {
                 </div>
               </div>
 
-              {/* TABEL PUPR */}
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse border border-slate-800 text-sm text-slate-800 mb-8">
                   <thead>
@@ -454,7 +480,6 @@ export default function AhspPage() {
                 </table>
               </div>
               
-              {/* TANDA TANGAN */}
               <div className="hidden print:grid grid-cols-2 gap-8 mt-12 text-center text-xs">
                 <div>
                   <p>Diperiksa Oleh,</p>
@@ -483,7 +508,6 @@ export default function AhspPage() {
         </div>
       </div>
 
-      {/* MODAL TAMBAH/EDIT MASTER AHSP */}
       {isAhspModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 print-hidden">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -520,7 +544,6 @@ export default function AhspPage() {
         </div>
       )}
 
-      {/* ENTERPRISE DELETE MODAL */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 print-hidden">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 text-center p-6">
@@ -541,7 +564,6 @@ export default function AhspPage() {
         </div>
       )}
 
-      {/* MODAL TAMBAH KOMPONEN */}
       <AssignmentModal 
         isOpen={isAssignmentModalOpen} 
         onClose={() => setIsAssignmentModalOpen(false)} 

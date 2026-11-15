@@ -1,13 +1,47 @@
 'use client';
-import { Menu, Search, Bell, ChevronDown, UserCircle, Building2, HelpCircle } from 'lucide-react';
+import { Menu, Search, Bell, ChevronDown, UserCircle, Building2, HelpCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { db } from '../lib/db/offline-db';
+import { processSyncQueue } from '../lib/services/sync-service';
 
 export default function Header({ toggleSidebar }) {
   const { activeProjectId, selectProject } = useProject();
   const [projects, setProjects] = useState([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  
+  // State PWA
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingSyncs, setPendingSyncs] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  useEffect(() => {
+    // Setup status koneksi awal
+    setIsOnline(navigator.onLine);
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      setIsSyncing(true);
+      processSyncQueue().finally(() => setIsSyncing(false));
+    };
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Polling antrean Dexie setiap 5 detik
+    const interval = setInterval(async () => {
+      const count = await db.syncQueue.count();
+      setPendingSyncs(count);
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -40,11 +74,9 @@ export default function Header({ toggleSidebar }) {
   };
 
   return (
-    // Glassmorphism Header: Blur, semi-transparan, border tipis
     <header className="h-[72px] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-6 sticky top-0 z-40 print:hidden transition-all">
       
       <div className="flex items-center gap-4">
-        {/* Tombol Hamburger dengan efek hover */}
         <button 
           onClick={toggleSidebar} 
           className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/80 rounded-xl transition-all duration-200 active:scale-95"
@@ -54,7 +86,6 @@ export default function Header({ toggleSidebar }) {
         
         <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
-        {/* Project Selector (Pill Style) */}
         <div className="relative">
           <button 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -90,7 +121,20 @@ export default function Header({ toggleSidebar }) {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Search Bar yang lebih modern */}
+        
+        {/* --- INDIKATOR OFFLINE / SYNC --- */}
+        {!isOnline ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-100 text-amber-700 rounded-full text-xs font-bold animate-pulse border border-amber-200">
+            <WifiOff size={14} />
+            <span className="hidden sm:inline">Offline {pendingSyncs > 0 && `(${pendingSyncs} antrean)`}</span>
+          </div>
+        ) : (pendingSyncs > 0 || isSyncing) ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full text-xs font-bold border border-blue-200">
+            <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+            <span className="hidden sm:inline">{isSyncing ? 'Sinkronisasi...' : `${pendingSyncs} data tertunda`}</span>
+          </div>
+        ) : null}
+
         <div className="relative hidden lg:block group">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
           <input 
@@ -111,7 +155,6 @@ export default function Header({ toggleSidebar }) {
         
         <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
-        {/* User Profile */}
         <div className="flex items-center gap-3 cursor-pointer group">
           <div className="text-right hidden md:block">
             <div className="text-sm font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">Admin User</div>

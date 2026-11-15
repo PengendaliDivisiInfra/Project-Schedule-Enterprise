@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 import { AlertTriangle, Loader2, RefreshCw, Plus, Edit, X, Save, CheckCircle2, Search, Trash2 } from 'lucide-react';
 
 export default function HsdPage() {
@@ -11,17 +12,13 @@ export default function HsdPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // State Modal Add/Edit
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [formData, setFormData] = useState({ tipe: 'Upah', kode: '', nama_item: '', satuan: 'Unit', harga_dasar: 0 });
 
-  // State Modal Hapus
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // State Toast
   const [toast, setToast] = useState(null);
 
   const showToast = (type, message) => {
@@ -33,11 +30,33 @@ export default function HsdPage() {
     if (isRefresh) setIsRefreshing(true);
     else setLoading(true);
 
-    const { data, error } = await supabase.from('master_hsd').select('*').order('nama_item');
-    if (data) setHsdList(data);
-    
-    if (isRefresh) setIsRefreshing(false);
-    else setLoading(false);
+    const cacheKey = 'hsd_master_data';
+
+    // 1. Ambil dari Cache
+    const cached = getFromCache(cacheKey);
+    if (cached) setHsdList(cached);
+
+    // 2. Jika Offline
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      if (isRefresh) setIsRefreshing(false);
+      else setLoading(false);
+      if (!cached) showToast('danger', 'Offline & belum ada data HSD di cache.');
+      return;
+    }
+
+    // 3. Fetch Online
+    try {
+      const { data, error } = await supabase.from('master_hsd').select('*').order('nama_item');
+      if (data) {
+        setHsdList(data);
+        saveToCache(cacheKey, data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (isRefresh) setIsRefreshing(false);
+      else setLoading(false);
+    }
   };
 
   useEffect(() => { fetchHsd(); }, []);
@@ -58,6 +77,8 @@ export default function HsdPage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa menyimpan saat offline.');
+    
     setIsSaving(true);
 
     const payload = {
@@ -77,7 +98,6 @@ export default function HsdPage() {
     }
 
     if (errorMsg) {
-      // FIX: Menghapus alert(), ganti dengan Toast
       showToast('danger', "Gagal menyimpan: " + errorMsg);
     } else {
       setIsModalOpen(false);
@@ -88,12 +108,13 @@ export default function HsdPage() {
 
   const handleDeleteConfirm = async () => {
     if (!deleteTarget) return;
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa menghapus saat offline.');
+    
     setIsDeleting(true);
     await new Promise(resolve => setTimeout(resolve, 300));
 
     const { error } = await supabase.from('master_hsd').delete().eq('id', deleteTarget.id);
     if (error) {
-      // FIX: Menghapus alert(), ganti dengan Toast
       showToast('danger', "Gagal menghapus: " + error.message);
     } else {
       setDeleteTarget(null);
@@ -121,7 +142,6 @@ export default function HsdPage() {
   return (
     <div className="p-6 bg-slate-50 min-h-screen relative">
       
-      {/* TOAST */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[9999] px-6 py-3 rounded-xl shadow-xl text-white font-bold animate-in slide-in-from-top-4 fade-in flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
           {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
@@ -131,7 +151,6 @@ export default function HsdPage() {
 
       <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in duration-300">
         
-        {/* HEADER & KONTROL */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2 tracking-tight">Harga Satuan Dasar (HSD)</h1>
@@ -158,7 +177,6 @@ export default function HsdPage() {
           </div>
         </div>
 
-        {/* TABEL DATA */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="overflow-x-auto max-h-[70vh]">
             <table className="w-full text-sm text-left">
@@ -207,7 +225,6 @@ export default function HsdPage() {
         </div>
       </div>
 
-      {/* MODAL ADD/EDIT HSD */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
@@ -258,7 +275,6 @@ export default function HsdPage() {
         </div>
       )}
 
-      {/* MODAL HAPUS HSD */}
       {deleteTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200 text-center p-6">
