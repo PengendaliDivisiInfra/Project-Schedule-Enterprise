@@ -102,6 +102,10 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
               <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Sumber Daya</span>}
             </Link>
+            <Link href="/manpower" title="Manpower & Payroll" className={`${baseMenu} ${isActive('/manpower') ? activeMenu : inactiveMenu}`}>
+              <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Manpower & Payroll</span>}
+            </Link>
             <Link href="/materials" title="Kebutuhan Material" className={`${baseMenu} ${isActive('/materials') ? activeMenu : inactiveMenu}`}>
               <Package size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Kebutuhan Material</span>}

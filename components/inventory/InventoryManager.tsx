@@ -3,13 +3,13 @@ import { useEffect, useState } from 'react';
 import { Package, ArrowDownToLine, ArrowUpFromLine, Search, AlertCircle, X, CheckCircle, History, Edit3, ShieldAlert, Box, Link as LinkIcon, Plus, Save, Trash2 } from 'lucide-react';
 import { getInventoryStock, recordTransaction, getMaterialHistory, updateTransaction, updateStokMinimum, getGlobalLedger, createMasterMaterial, getMaterialPOs, voidTransaction } from '@/lib/services/inventory-service';
 import { supabase } from '@/lib/supabase';
-import { useRole } from '@/lib/hooks/useRole'; // TAMBAHAN RBAC
+import { useRole } from '@/lib/hooks/useRole'; 
 import type { InventoryItem, InventoryTransaction } from '@/types/inventory';
 
 export function InventoryManager({ projectId }: { projectId: string }) {
-  // RBAC HOOK
+  // RBAC HOOK - PERBAIKAN: Menggunakan "EDIT_PO" yang terdaftar di useRole.ts
   const { can } = useRole(projectId);
-  const canEdit = can('EDIT_INVENTORY'); // Menggunakan permission key standar
+  const canEdit = can('EDIT_PO'); 
 
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [wbsList, setWbsList] = useState<any[]>([]);
@@ -256,7 +256,6 @@ export function InventoryManager({ projectId }: { projectId: string }) {
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in">
             <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
               <h4 className="font-bold text-slate-700">Buku Besar Mutasi Material & BBM</h4>
-              {/* RBAC: TOMBOL TAMBAH HANYA UNTUK YANG BERHAK */}
               {canEdit && (
                 <button onClick={handleOpenTransactionFromLedger} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors">
                   <Plus className="w-4 h-4" /> Tambah Transaksi Manual
@@ -308,7 +307,6 @@ export function InventoryManager({ projectId }: { projectId: string }) {
                       <td className="p-3 text-right font-mono font-bold text-rose-700">{trx.type === 'OUT' ? trx.quantity : '-'}</td>
                       <td className="p-3 text-xs text-slate-500 max-w-[200px] truncate" title={trx.notes}>{trx.notes}</td>
                       <td className="p-3 text-center">
-                        {/* RBAC: TOMBOL EDIT HANYA UNTUK YANG BERHAK */}
                         {isPO ? (
                           <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 px-2 py-1 rounded" title="Locked"><ShieldAlert className="w-3 h-3 inline"/></span>
                         ) : canEdit ? (
@@ -381,7 +379,8 @@ export function InventoryManager({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      {/* --- MODALS (SAMA SEPERTI SEBELUMNYA, TETAP LENGKAP) --- */}
+      {/* --- MODALS --- */}
+
       {/* MODAL PILIH MATERIAL / TAMBAH BARU */}
       {showMaterialSelect && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
