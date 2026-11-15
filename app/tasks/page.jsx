@@ -8,6 +8,7 @@ import { useRealtimeWBS } from '../../hooks/useRealtimeWBS';
 import { useRole } from '../../lib/hooks/useRole';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 import { 
   ListTree, Plus, Edit, Trash2, X, Settings, Pin, CheckCircle, XCircle, 
   TrendingDown, TrendingUp, Minus, Eye, EyeOff, Info, Link2, Folder, AlertTriangle, Diamond, Loader2
@@ -53,9 +54,12 @@ export default function TasksPage() {
     fetchTasksAndCalendar();
   }, [activeProjectId]);
 
-  // PERBAIKAN 1: Realtime listener mendengarkan tabel calendars & calendar_exceptions
   useEffect(() => {
     if (!activeProjectId) return;
+    
+    // Jika offline, jangan buka koneksi realtime
+    if (typeof window !== 'undefined' && !navigator.onLine) return;
+
     const channel = supabase.channel('realtime-project-calendar')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'calendars' }, () => {
         fetchTasksAndCalendar();
@@ -139,41 +143,72 @@ export default function TasksPage() {
   };
 
   const fetchTasksAndCalendar = async () => {
-    setLoading(true);
     if (!activeProjectId) { setLoading(false); return; }
     
-    let cwd = [1,2,3,4,5];
-    let cex = [];
-    
-    const { data: calData } = await supabase.from('calendars').select('id, work_days').eq('project_id', activeProjectId).maybeSingle();
-    
-    if (calData) {
-      if (calData.work_days) {
-        const parsed = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
-        if (parsed.length > 0) cwd = parsed;
+    setLoading(true);
+    const cacheKey = `tasks_${activeProjectId}`;
+
+    // 1. Tampilkan dari Cache dulu
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      setWorkingDays(cached.workingDays || [1,2,3,4,5]);
+      setExceptions(cached.exceptions || []);
+      if (cached.tasks) setTasks(cached.tasks);
+    }
+
+    // 2. Jika offline, hentikan proses
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoading(false);
+      if (!cached) {
+        window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'warning', message: 'Offline & belum ada cache data tugas.' } }));
+      }
+      return;
+    }
+
+    // 3. Fetch Online
+    try {
+      let cwd = [1,2,3,4,5];
+      let cex = [];
+      
+      const { data: calData } = await supabase.from('calendars').select('id, work_days').eq('project_id', activeProjectId).maybeSingle();
+      
+      if (calData) {
+        if (calData.work_days) {
+          const parsed = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
+          if (parsed.length > 0) cwd = parsed;
+        }
+        
+        const { data: excData } = await supabase.from('calendar_exceptions').select('exception_date, description').eq('calendar_id', calData.id);
+        if (excData) cex = excData;
       }
       
-      const { data: excData } = await supabase.from('calendar_exceptions').select('exception_date, description').eq('calendar_id', calData.id);
-      if (excData) cex = excData;
-    }
-    
-    setWorkingDays(cwd);
-    setExceptions(cex);
+      setWorkingDays(cwd);
+      setExceptions(cex);
 
-    const { data, error } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code', { ascending: true }); 
-    if (data) {
-      const engineResult = updateProjectScheduleSecure(data, cwd, cex);
-      if (engineResult.success) {
-        const evmTasks = calculateEVM(engineResult.tasks, cwd, cex);
-        const sorted = evmTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+      const { data, error } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code', { ascending: true }); 
+      
+      if (data) {
+        const engineResult = updateProjectScheduleSecure(data, cwd, cex);
+        let finalTasks = [];
+        if (engineResult.success) {
+          finalTasks = calculateEVM(engineResult.tasks, cwd, cex);
+          await syncScheduleToDB(engineResult.tasks); 
+        } else {
+          finalTasks = calculateEVM(data, cwd, cex);
+        }
+        const sorted = finalTasks.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+        
         setTasks(sorted);
-        await syncScheduleToDB(engineResult.tasks); 
-      } else {
-        setTasks(calculateEVM(data, cwd, cex));
+        
+        // 4. Simpan ke Cache
+        saveToCache(cacheKey, { tasks: sorted, workingDays: cwd, exceptions: cex });
       }
+      if (error) console.error(error);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    if (error) console.error(error);
-    setLoading(false);
   };
 
   const handleVolumeUpdate = async (taskId, inputVolume) => {
@@ -357,7 +392,6 @@ export default function TasksPage() {
 
       <div className="max-w-[1920px] mx-auto px-0 space-y-6 animate-in fade-in duration-300">
         
-        {/* HEADER PREMIUM */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">
@@ -378,7 +412,6 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* TABEL PREMIUM - FIXED HEADERS */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
           <div className="overflow-x-auto max-h-[75vh] custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-max">

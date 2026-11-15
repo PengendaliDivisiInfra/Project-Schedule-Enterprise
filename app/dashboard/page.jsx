@@ -5,6 +5,7 @@ import { useProject } from '../../context/ProjectContext';
 import { Activity, DollarSign, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
 import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import ComplianceWidget from '@/components/dashboard/ComplianceWidget';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 
 export default function DashboardPage() {
   const { activeProjectId } = useProject();
@@ -25,46 +26,96 @@ export default function DashboardPage() {
 
     const fetchDashboardData = async () => {
       setLoading(true);
+      const cacheKey = `dashboard_${activeProjectId}`;
+      
+      // 1. TAMPILKAN DATA DARI CACHE DULU (Agar instan saat offline)
+      const cached = getFromCache(cacheKey);
+      if (cached) {
+        setBac(cached.bac || 0);
+        setContractValue(cached.contractValue || 0);
+        setWeightedProgress(cached.weightedProgress || 0);
+        setSpi(cached.spi);
+        setCpi(cached.cpi);
+        setSCurveData(cached.sCurveData || []);
+      }
+
+      // 2. Cek Koneksi
+      if (typeof window !== 'undefined' && !navigator.onLine) {
+        setLoading(false); // Langsung hilangkan loading!
+        if (!cached) {
+          window.dispatchEvent(new CustomEvent('app-toast', { 
+            detail: { type: 'warning', message: 'Anda offline dan belum ada data cache untuk proyek ini.' } 
+          }));
+        }
+        return; 
+      }
+
+      // 3. Jika Online, Fetch Data Terbaru
       try {
         const { data: project } = await supabase.from('projects').select('contract_value').eq('id', activeProjectId).single();
-        if (project) setContractValue(Number(project.contract_value) || 0);
-
         const { data: tasks } = await supabase.from('wbs_tasks').select('cost, progress_percent, summary').eq('project_id', activeProjectId);
 
-        const res = await fetch(`/api/analytics/scurve?project_id=${activeProjectId}`);
-        const scurveRes = await res.json();
-        
-        if (scurveRes.ok && scurveRes.data) {
-          setSCurveData(scurveRes.data);
+        let scurveData = [];
+        // FIX: Bungkus fetch dengan pengecekan offline
+        try {
+          const res = await fetch(`/api/analytics/scurve?project_id=${activeProjectId}`);
+          if (res.ok) {
+            const scurveRes = await res.json();
+            if (scurveRes.ok && scurveRes.data) scurveData = scurveRes.data;
+          }
+        } catch (e) {
+          console.warn("Gagal fetch S-Curve, mungkin offline", e);
         }
+
+        let newBac = 0;
+        let newWeightedProgress = 0;
+        let newSpi = null;
+        let newCpi = null;
 
         if (tasks && tasks.length > 0) {
           const leafTasks = tasks.filter(t => t.summary !== 'Yes');
-          const totalBac = leafTasks.reduce((sum, t) => sum + (Number(t.cost) || 0), 0);
+          newBac = leafTasks.reduce((sum, t) => sum + (Number(t.cost) || 0), 0);
           const totalWeightedCost = leafTasks.reduce((sum, t) => sum + (Number(t.cost) || 0) * ((Number(t.progress_percent) || 0) / 100), 0);
-          const actualWeightedProgress = totalBac > 0 ? (totalWeightedCost / totalBac) * 100 : 0;
-          
-          setBac(totalBac);
-          setWeightedProgress(actualWeightedProgress);
+          newWeightedProgress = newBac > 0 ? (totalWeightedCost / newBac) * 100 : 0;
 
-          if (scurveRes.ok && scurveRes.data.length > 0) {
-            const validData = scurveRes.data.filter(d => d.earned_value_cumulative !== null && d.actual_cost_cumulative !== null);
+          if (scurveData.length > 0) {
+            const validData = scurveData.filter(d => d.earned_value_cumulative !== null && d.actual_cost_cumulative !== null);
             const latestData = validData.length > 0 ? validData[validData.length - 1] : null;
             
             if (latestData) {
               const pv = latestData.planned_cost_cumulative || 0;
-              const ev = totalBac * (actualWeightedProgress / 100);
+              const ev = newBac * (newWeightedProgress / 100);
               const ac = latestData.actual_cost_cumulative || 0;
 
-              setSpi(pv > 0 ? ev / pv : null);
-              setCpi(ac > 0 ? ev / ac : null);
+              newSpi = pv > 0 ? ev / pv : null;
+              newCpi = ac > 0 ? ev / ac : null;
             }
           }
         }
+
+        // 4. Update State & Simpan ke Cache
+        const newContractValue = project ? Number(project.contract_value) || 0 : 0;
+        
+        setContractValue(newContractValue);
+        setBac(newBac);
+        setWeightedProgress(newWeightedProgress);
+        setSpi(newSpi);
+        setCpi(newCpi);
+        setSCurveData(scurveData);
+
+        saveToCache(cacheKey, {
+          bac: newBac,
+          contractValue: newContractValue,
+          weightedProgress: newWeightedProgress,
+          spi: newSpi,
+          cpi: newCpi,
+          sCurveData: scurveData
+        });
+
       } catch (err) {
         console.error("Error fetching dashboard:", err);
       } finally {
-        setLoading(false);
+        setLoading(false); // PASTIKAN LOADING MATI
       }
     };
 
@@ -108,8 +159,6 @@ export default function DashboardPage() {
   }
 
   const isOverbudget = bac > contractValue && contractValue > 0;
-
-  // FIX Y-AXIS: Membulatkan ke atas ke kelipatan 5 Miliar terdekat
   const maxVal = Math.max(bac, contractValue);
   const yAxisMax = Math.ceil(maxVal / 5000000000) * 5000000000 || 5000000000;
 
@@ -199,7 +248,6 @@ export default function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="month" tick={{fontSize: 12, fill: '#64748b'}} axisLine={false} tickLine={false} />
                   
-                  {/* FIX: Domain Y-Axis Dikunci ke yAxisMax */}
                   <YAxis 
                     domain={[0, yAxisMax]} 
                     allowDataOverflow={true}

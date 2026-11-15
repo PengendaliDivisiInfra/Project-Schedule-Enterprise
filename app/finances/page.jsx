@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck, Trash2, Activity, TrendingUp, TrendingDown, Banknote, FileText, Users, Info } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
 import { useRole } from '@/lib/hooks/useRole';
@@ -73,108 +74,145 @@ export default function CashFlowPage() {
   };
 
   const fetchData = async () => {
-    if (!projectId) {
-      setLoading(false);
-      return;
-    }
+    if (!projectId) { setLoading(false); return; }
     
     setLoading(true);
-    
-    // 1. Ambil data Cash Flows
-    const { data: flowData } = await supabase
-      .from('cash_flows')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('transaction_date', { ascending: false });
-    if (flowData) setFlows(flowData);
+    const cacheKey = `finances_${projectId}`;
 
-    // 2. Ambil data WBS Cost Control
-    const { data: taskData } = await supabase
-      .from('v_cost_control_wbs')
-      .select('*')
-      .eq('project_id', projectId)
-      .order('wbs_code');
-    if (taskData) {
-      setTasks(taskData);
-      setCostControlData(taskData);
+    // 1. TAMPILKAN DARI CACHE (Agar instan saat offline)
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      setFlows(cached.flows || []);
+      setTasks(cached.tasks || []);
+      setCostControlData(cached.tasks || []);
+      setProjectData(cached.projectData || null);
+      setArData(cached.arData || []);
+      setApData(cached.apData || []);
+      setTotalAr(cached.totalAr || 0);
+      setTotalAp(cached.totalAp || 0);
+      setChartData(cached.chartData || []);
     }
 
-    // 3. Ambil Nilai Kontrak Proyek
-    const { data: projData } = await supabase
-      .from('projects')
-      .select('contract_value, name')
-      .eq('id', projectId)
-      .single();
-    if (projData) setProjectData(projData);
-
-    // 4. Ambil Data AR
-    const { data: invData } = await supabase
-      .from('client_invoices')
-      .select('*')
-      .eq('project_id', projectId)
-      .neq('status', 'Paid')
-      .neq('status', 'Void')
-      .order('invoice_date', { ascending: true });
-      
-    if (invData) {
-      let arTotal = 0;
-      const formattedAR = invData.map(inv => {
-        const outstanding = Number(inv.net_payable_amount) - Number(inv.paid_amount);
-        if (outstanding > 0) arTotal += outstanding;
-        return { ...inv, outstanding, aging: getAgingBucket(inv.invoice_date) };
-      }).filter(item => item.outstanding > 0); 
-      setArData(formattedAR);
-      setTotalAr(arTotal);
-    } else {
-      setArData([]); setTotalAr(0);
+    // 2. CEK KONEKSI
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoading(false); // Langsung hilangkan loading!
+      if (!cached) {
+        showToast('warning', 'Anda offline dan belum ada data cache untuk halaman ini.');
+      }
+      return;
     }
 
-    // 5. Ambil Data AP
-    const { data: subconPayData } = await supabase
-      .from('subcontractor_payments')
-      .select(`*, subcontractor_contracts ( subcontractors ( company_name ) )`)
-      .eq('project_id', projectId)
-      .in('status', ['Pending', 'Approved'])
-      .order('payment_date', { ascending: true });
+    // 3. FETCH ONLINE (Kode asli Anda)
+    try {
+      // 1. Ambil data Cash Flows
+      const { data: flowData } = await supabase
+        .from('cash_flows')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('transaction_date', { ascending: false });
+      if (flowData) setFlows(flowData);
 
-    if (subconPayData) {
-      let apTotal = 0;
-      const formattedAP = subconPayData.map(pay => {
-        apTotal += Number(pay.amount);
-        return {
-          ...pay,
-          vendor_name: pay.subcontractor_contracts?.subcontractors?.company_name || 'Vendor Subkon',
-          aging: getAgingBucket(pay.payment_date)
-        };
-      });
-      setApData(formattedAP);
-      setTotalAp(apTotal);
-    } else {
-      setApData([]); setTotalAp(0);
-    }
+      // 2. Ambil data WBS Cost Control
+      const { data: taskData } = await supabase
+        .from('v_cost_control_wbs')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('wbs_code');
+      if (taskData) {
+        setTasks(taskData);
+        setCostControlData(taskData);
+      }
 
-    // 6. Ambil data Chart
-    const { data: viewData } = await supabase.from('v_dashboard_cashflow').select('*').eq('project_id', projectId);
-    if (viewData) {
-      const monthlyData = {};
-      viewData.forEach(item => {
-        if (!item.transaction_date) return;
-        const date = new Date(item.transaction_date);
-        const monthYear = date.toLocaleString('id-ID', { month: 'short', year: 'numeric' });
-        if (!monthlyData[monthYear]) monthlyData[monthYear] = { month: monthYear, Inflow: 0, Outflow: 0 };
+      // 3. Ambil Nilai Kontrak Proyek
+      const { data: projData } = await supabase
+        .from('projects')
+        .select('contract_value, name')
+        .eq('id', projectId)
+        .single();
+      if (projData) setProjectData(projData);
+
+      // 4. Ambil Data AR
+      const { data: invData } = await supabase
+        .from('client_invoices')
+        .select('*')
+        .eq('project_id', projectId)
+        .neq('status', 'Paid')
+        .neq('status', 'Void')
+        .order('invoice_date', { ascending: true });
         
-        if (item.category && (item.category.includes('Termin') || item.category.includes('Pendapatan') || item.category === 'Retur')) {
-          monthlyData[monthYear].Inflow += Number(item.amount);
-        } else {
-          monthlyData[monthYear].Outflow += Number(item.amount);
-        }
-      });
-      setChartData(Object.values(monthlyData).reverse());
-    } else {
-      setChartData([]);
-    }
+      let newArTotal = 0;
+      let newArData = [];
+      if (invData) {
+        newArData = invData.map(inv => {
+          const outstanding = Number(inv.net_payable_amount) - Number(inv.paid_amount);
+          if (outstanding > 0) newArTotal += outstanding;
+          return { ...inv, outstanding, aging: getAgingBucket(inv.invoice_date) };
+        }).filter(item => item.outstanding > 0); 
+      }
+      setArData(newArData);
+      setTotalAr(newArTotal);
 
-    setLoading(false);
+      // 5. Ambil Data AP
+      const { data: subconPayData } = await supabase
+        .from('subcontractor_payments')
+        .select(`*, subcontractor_contracts ( subcontractors ( company_name ) )`)
+        .eq('project_id', projectId)
+        .in('status', ['Pending', 'Approved'])
+        .order('payment_date', { ascending: true });
+
+      let newApTotal = 0;
+      let newApData = [];
+      if (subconPayData) {
+        newApData = subconPayData.map(pay => {
+          newApTotal += Number(pay.amount);
+          return {
+            ...pay,
+            vendor_name: pay.subcontractor_contracts?.subcontractors?.company_name || 'Vendor Subkon',
+            aging: getAgingBucket(pay.payment_date)
+          };
+        });
+      }
+      setApData(newApData);
+      setTotalAp(newApTotal);
+
+      // 6. Ambil data Chart
+      let newChartData = [];
+      const { data: viewData } = await supabase.from('v_dashboard_cashflow').select('*').eq('project_id', projectId);
+      if (viewData) {
+        const monthlyData = {};
+        viewData.forEach(item => {
+          if (!item.transaction_date) return;
+          const date = new Date(item.transaction_date);
+          const monthYear = date.toLocaleString('id-ID', { month: 'short', year: 'numeric' });
+          if (!monthlyData[monthYear]) monthlyData[monthYear] = { month: monthYear, Inflow: 0, Outflow: 0 };
+          
+          if (item.category && (item.category.includes('Termin') || item.category.includes('Pendapatan') || item.category === 'Retur')) {
+            monthlyData[monthYear].Inflow += Number(item.amount);
+          } else {
+            monthlyData[monthYear].Outflow += Number(item.amount);
+          }
+        });
+        newChartData = Object.values(monthlyData).reverse();
+        setChartData(newChartData);
+      }
+
+      // 4. SIMPAN KE CACHE
+      saveToCache(cacheKey, {
+        flows: flowData || [],
+        tasks: taskData || [],
+        projectData: projData || null,
+        arData: newArData,
+        apData: newApData,
+        totalAr: newArTotal,
+        totalAp: newApTotal,
+        chartData: newChartData
+      });
+
+    } catch (err) {
+      console.error("Error fetching finances:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { 
@@ -189,16 +227,19 @@ export default function CashFlowPage() {
   };
 
   const handleApprove = async (id) => {
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa approve saat offline.');
     const { error } = await supabase.from('cash_flows').update({ approval_status: 'Approved' }).eq('id', id);
     if (!error) { showToast('success', 'Transaksi di-approve!'); fetchData(); }
   };
 
   const handleReject = async (id) => {
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa reject saat offline.');
     const { error } = await supabase.from('cash_flows').update({ approval_status: 'Rejected' }).eq('id', id);
     if (!error) { showToast('danger', 'Transaksi ditolak.'); fetchData(); }
   };
 
   const handleVoid = async () => {
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa void saat offline.');
     if (!voidTarget || !voidReason.trim()) return showToast('danger', 'Alasan VOID wajib diisi!');
     setIsVoiding(true);
     try {
@@ -216,6 +257,7 @@ export default function CashFlowPage() {
   const handleSave = async (e) => {
     e.preventDefault();
     if (!projectId) return showToast('danger', "ID Proyek tidak ditemukan.");
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa menyimpan data finansial saat offline.');
 
     const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
     if (isUploadRequired && !file) return showToast('danger', "Wajib unggah bukti untuk Tunai/Petty Cash!");

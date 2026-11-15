@@ -1,72 +1,66 @@
 # 📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
 
-**Status Proyek:** 🚀 Production Ready (V35-G - Enterprise Gold Standard)
+**Status Proyek:** 🚀 Production Ready (V35-I - Enterprise Gold Standard)
 **Terakhir Diperbarui:** 15 November 2026
-**Environment Setup:** Next.js 14, Vercel, Railway (Puppeteer), Supabase (PostgreSQL, RLS, Storage).
+**Environment Setup:** Next.js 14, Vercel, Supabase (PostgreSQL, RLS, Storage), PWA (Service Worker, Dexie).
 
 ## 1. EXECUTIVE SUMMARY
 InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi **PSAK 115**, **PSAK 207**, dan **Project Balance Sheet**. 
-Fokus V35-G adalah penyelesaian **Modul Manajemen Tenaga Kerja & Payroll (Manpower)**. Sistem menjamin perhitungan gaji akurat sesuai regulasi PP 35/2021, mendukung sistem *All-In*, dan terintegrasi otomatis ke HPP Upah (Laba Rugi) serta Arus Kas (PSAK 207). Dilengkapi dengan *Print Engine* standar HR (A4 Landscape) yang anti-terpotong.
+Fokus V35-I adalah implementasi **PWA (Progressive Web App) & Offline Mode**. Sistem kini dapat di-*install* di perangkat mobile (Android/iOS), dilengkapi *Bottom Navigation*, dan memiliki kemampuan *Offline-First*. Data dasbor, keuangan, dan WBS disimpan di *Local Cache* (localStorage), sementara input lapangan (Progres) disimpan di *IndexedDB* (Dexie) dan disinkronkan otomatis saat online.
 
-## 2. IMPLEMENTED FEATURES (V35-G)
+## 2. IMPLEMENTED FEATURES
 
-### A. Manajemen Tenaga Kerja & Payroll (V35-G)
-- **Master Karyawan**: Mendukung Karyawan Bulanan (Office) dan Harian (Project). Dilengkapi fitur toggle **Sistem All-In (Lump Sum)**.
-- **Absensi Harian**: Pencatatan Hadir, Sakit, Izin, dan Mangkir (Absent). Sinkronisasi dengan potongan gaji dan Uang Makan.
-- **Generate Payroll**: Perhitungan Gaji Pokok, Tunjangan, Lembur (1/173), dan Uang Makan. Menerapkan prorata 21 hari untuk karyawan bulanan.
-- **Auto-Cost Integration**: Saat Payroll di-Approve, otomatis insert ke `actual_costs` (Labor/Upah). Saat di-Pay, otomatis insert ke `cash_flows` (Kas Keluar).
-- **Void Payroll**: Fitur pembatalan gaji yang mengembalikan Actual Cost dan mencatat pembalik Kas (*Soft Delete* pada semua baris terkait).
-- **Print Engine (A4 Landscape)**: Menampilkan Laporan Pengajuan (Halaman 1) dan Slip Gaji (Halaman 2+) secara presisi. Dilengkapi *Watermark* VOID, Terbilang otomatis, Label RAHASIA, dan Footer korporat.
+### A. PWA & Offline Mode (V35-I)
+- **Service Worker**: Menggunakan `@ducanh2912/next-pwa`. Mencakup *caching* halaman (`NetworkFirst`), aset statis (`StaleWhileRevalidate`), dan RSC Payload untuk navigasi instan.
+- **Local Cache System**: Menggunakan `lib/utils/cache.js` untuk menyimpan data Supabase (Dasbor, Gantt, Tugas, Keuangan) ke `localStorage`. Saat offline, halaman memuat data terakhir secara instan tanpa *loading* lama.
+- **Offline Input (IndexedDB)**: Menggunakan `Dexie` untuk antrean sinkronisasi (saat ini diimplementasikan di `/progress`). Data yang diinput saat offline akan dikirim ke Supabase saat koneksi kembali.
+- **Mobile UI**: Penambahan `BottomNav.jsx` (khusus layar mobile) dan indikator status Online/Offline di `Header.jsx`.
+- **Robust Auth Middleware**: Memperbaiki konfigurasi Supabase SSR dan Middleware agar Google SSO berjalan lancar, serta mencegah *redirect loop* atau *MIME type error* saat berpindah halaman dalam mode offline.
 
-### B. Multi-Tenancy & Security Audit (V35-D s/d V35-G)
-- **Database RLS**: Implementasi fungsi `is_project_member` dan `has_project_role` pada seluruh tabel inti.
-- **Security Fallback**: User tanpa role proyek otomatis menjadi `Guest` (Akses Ditolak).
-- **RBAC UI**: Tombol aksi krusial disembunyikan jika user tidak memiliki izin (misal: `can('MANAGE_COA')` untuk Edit Karyawan).
+### B. Cash Flow & Financials (V35-H)
+- **Cost Control Fix**: Memperbaiki View `v_cost_control_wbs` (menambahkan `project_id` dan `security_invoker`) untuk mengatasi error 400 Bad Request pada halaman Arus Kas.
+- **Forecasting**: Proyeksi kas 3 bulan (Inflow/Outflow) & Cetak PDF A4 Landscape.
 
-### C. Manajemen Gudang & Ledger (V35-F)
-- **Buku Besar Mutasi (Ledger)**: Mencatat pergerakan material (IN/OUT) beserta No. PO, Invoice, dan spesifikasi.
-- **Auto-Cost Integration**: Pemakaian material (OUT) otomatis masuk ke `actual_costs` (HPP/OPEX).
-- **BBM Integration**: Pengadaan dan pengisian BBM ke alat tercatat sebagai IN/OUT.
-
-### D. UI/UX Compliance (Zero `alert`/`confirm`)
-- **Global Toast**: Seluruh notifikasi menggunakan Custom Event (`app-toast`).
-- **Custom Modal**: Semua konfirmasi (Hapus, Void, Simpan) menggunakan Custom Modal.
+### C. Manpower & Payroll (V35-G)
+- **Master Karyawan**: Sistem All-In dan Harian.
+- **Auto-Cost**: Payroll `Approved` insert ke `actual_costs`, `Paid` insert ke `cash_flows`.
 
 ## 3. ARCHITECTURE & CORE LOGIC
-- **Database Triggers (Supabase)**: `log_daily_progress()` berjalan normal.
-- **Print Engine Rules**: Menggunakan `@page { size: A4 landscape; }` dengan teknik *Absolute Footer* dan *Flexbox Wrapper* untuk mencegah tumpang tindih (overlap) dan halaman kosong.
-- **Data Flow**: Absensi -> Generate Payroll -> Approve (P&L) -> Pay (Cash Flow) -> Cetak PDF.
+- **Data Fetching**: Menggunakan pola *Local-First*. Cek `getFromCache()` -> Cek `navigator.onLine` -> Jika online, `fetch` ke Supabase -> `saveToCache()`.
+- **Print Engine Rules**: Menggunakan `@page { size: A4 landscape; }` dengan teknik **`<table>` murni (NO FLEXBOX/GRID)** dan *Absolute Footer* untuk mencegah tumpang tindih (overlap) dan halaman kosong.
+- **Schema & RLS**: RLS aktif di semua tabel. View `v_cost_control_wbs` menggunakan `security_invoker = true` agar RLS tabel dasar berlaku pada View.
 
 ## 4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
 1. **UI/UX**: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal / Toast.
 2. **Database**: DILARANG Hard Delete pada data finansial & inventaris. Gunakan Soft Delete (`is_deleted` / `voided_at`).
-3. **Print Engine**: NO TAILWIND IN PDF, WAJIB `<table>` murni, ANTI PAGE-BREAK & BLANK PAGE.
+3. **Print Engine**: NO TAILWIND IN PDF, **NO FLEXBOX/GRID**, WAJIB `<table>` murni, ANTI PAGE-BREAK.
 4. **RLS**: Wajib update Row Level Security setiap membuat tabel/bucket baru.
-5. **RBAC**: Setiap tombol aksi baru (Edit, Delete, Approve, Void) **WAJIB** dibungkus dengan hook `useRole`.
+5. **RBAC**: Setiap tombol aksi baru **WAJIB** dibungkus dengan hook `useRole`.
 
-## 5. NEXT STEPS (ROADMAP SPRINT V35-H KE ATAS)
+## 5. NEXT STEPS (ROADMAP SPRINT V35-I KE ATAS)
 
-**FASE 1: Financial & Cost Control (Prioritas Utama)**
+**FASE 1: Financial & Cost Control (Sisa)**
 - **A. Variation Order (CCO)**: Pencatatan pekerjaan tambah/kurang (Addendum) yang otomatis meng-update Nilai Kontrak, RAP, dan P&L.
-- **B. Cash Flow Forecasting**: Proyeksi Arus Kas 1-3 bulan ke depan berdasarkan komitmen PO, sisa termin, dan jadwal gaji.
-- **C. Modul Rekonsiliasi Bank**: Upload CSV Mutasi Bank (BCA/Mandiri) vs Cash Flow (Auto-Matching).
+- **B. Modul Rekonsiliasi Bank**: Upload CSV Mutasi Bank vs Cash Flow.
 
-**FASE 2: Operations & Field Management (Sisa)**
-- **D. Multi-Warehouse**: Pemisahan stok antar gudang site (Gudang Pusat & Gudang Spillway) beserta fitur Stock Transfer.
-- **E. Document Control & RFI**: Integrasi Supabase Storage untuk Shop Drawing/Addendum (Versioning, Link to WBS, RFI).
+**FASE 2: Operations & Field Management**
+- **C. Multi-Warehouse**: Pemisahan stok antar gudang site beserta fitur Stock Transfer.
+- **D. Document Control & RFI**: Integrasi Supabase Storage untuk Shop Drawing/Addendum.
 
 **FASE 3: Quality & Executive**
-- **F. Upgrade Modul QHSE**: Digital checklist ITP, *Defect Tracking* (Punch List) dengan foto, dan *Safety Report* (K3).
-- **G. Executive Multi-Project Dashboard**: Dasbor Owner untuk agregasi SPI, CPI, dan Margin dari seluruh proyek.
+- **E. Upgrade Modul QHSE**: Digital checklist ITP, Defect Tracking, Safety Report.
+- **F. Executive Multi-Project Dashboard**: Agregasi SPI, CPI, dan Margin dari seluruh proyek.
 
-**FASE 4: Advanced Tech & Integration**
-- **H. PWA & Offline Mode**: Optimasi Mobile-First untuk Site Engineer.
-- **I. Integrasi WhatsApp Bot**: *Daily Report* otomatis ke Owner dan input progres via WA.
-- **J. OCR Auto-Read Nota**: Scan Surat Jalan/Nota belanja.
-- **K. Sinkronisasi API Pajak / e-Faktur (Opsional)**.
+**FASE 4: Advanced Tech**
+- **G. PWA & Offline Mode**: ✅ SELESAI (V35-I).
+- **H. Integrasi WhatsApp Bot**: Daily Report & Input via WA.
+- **I. OCR Auto-Read Nota**: Scan Surat Jalan/Nota.
 
-## 6. WORKFLOW GIT & DEPLOYMENT
-1. `npm run build` (Pastikan 0 error, validasi TypeScript lolos).
-2. `git add .`
-3. `git commit -m "feat(V35-G): Complete Manpower & Payroll with PP 35/2021 Compliance & Enterprise Print Engine"`
-4. `git push origin main` (Otomatis trigger Vercel).
+## 6. WORKFLOW GIT & DEPLOYMENT (ENTERPRISE STANDARD)
+1. Buat branch baru: `git checkout -b feat/V35-I-nama-fitur`.
+2. Lakukan *development* dan jalankan `npm run build` (Pastikan 0 error).
+3. `git add .` lalu `git commit -m "feat(V35-I): Deskripsi Fitur"`.
+4. `git push -u origin feat/V35-I-nama-fitur` (Otomatis trigger Vercel Preview).
+5. Lakukan QA di Link Preview Vercel.
+6. Buat Pull Request (PR) di GitHub, lalu Merge ke `main`.
+7. Vercel otomatis deploy ke Production.

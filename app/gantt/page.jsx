@@ -4,11 +4,12 @@ import { supabase } from '../../lib/supabase';
 import ClientGanttWrapper from '../../components/ClientGanttWrapper';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { updateProjectScheduleSecure, countWorkingDays } from '../../lib/scheduler';
-import { useProject } from '../../context/ProjectContext'; // PERBAIKAN 2: Gunakan Context
+import { useProject } from '../../context/ProjectContext';
 import { AlertTriangle, BarChart3 } from 'lucide-react';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 
 export default function GanttPage() {
-  const { activeProjectId } = useProject(); // Gunakan Context
+  const { activeProjectId } = useProject();
   const [tasks, setTasks] = useState([]);
   const [relations, setRelations] = useState([]);
   const [workingDays, setWorkingDays] = useState([1,2,3,4,5]);
@@ -65,79 +66,121 @@ export default function GanttPage() {
   };
 
   const fetchData = async (silent = false) => {
-    if (!silent) setLoading(true);
     if (!activeProjectId) { setLoading(false); return; }
+    
+    if (!silent) setLoading(true);
+    const cacheKey = `gantt_${activeProjectId}`;
 
-    let currentWorkingDays = [1,2,3,4,5];
-    let currentExceptions = [];
-    
-    const { data: calData } = await supabase.from('calendars').select('id, work_days').eq('project_id', activeProjectId).maybeSingle();
-    
-    if (calData) {
-      if (calData.work_days) {
-        const parsed = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
-        if (parsed.length > 0) currentWorkingDays = parsed;
+    // 1. Tampilkan data dari cache (instan)
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      setTasks(cached.tasks || []);
+      setRelations(cached.relations || []);
+      setWorkingDays(cached.workingDays || [1,2,3,4,5]);
+      setExceptions(cached.exceptions || []);
+      setTaskAssignments(cached.taskAssignments || []);
+      setResources(cached.resources || []);
+    }
+
+    // 2. Jika offline, hentikan proses (jangan panggil supabase)
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoading(false);
+      if (!cached && !silent) {
+        window.dispatchEvent(new CustomEvent('app-toast', { 
+          detail: { type: 'warning', message: 'Mode Offline: Belum ada data Gantt tersimpan untuk proyek ini.' } 
+        }));
       }
-      const { data: excData } = await supabase.from('calendar_exceptions').select('exception_date, description').eq('calendar_id', calData.id);
-      if (excData) currentExceptions = excData;
+      return; 
     }
 
-    setWorkingDays(currentWorkingDays);
-    setExceptions(currentExceptions);
-
-    const { data: taskData } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code');
-    const { data: assignmentsData } = await supabase.from('task_assignments').select('*');
-    const { data: resourcesData } = await supabase.from('project_resources').select('*');
-    if (assignmentsData) setTaskAssignments(assignmentsData);
-    if (resourcesData) setResources(resourcesData);
+    try {
+      let currentWorkingDays = [1,2,3,4,5];
+      let currentExceptions = [];
       
-    if (taskData) {
-      const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
-      let formattedTasks = uniqueTasks.map(t => {
-        let calculatedDuration = Number(t.duration) || 1;
-        if (t.summary !== 'Yes' && t.start_date && t.end_date) {
-          calculatedDuration = countWorkingDays(t.start_date, t.end_date, currentWorkingDays, currentExceptions);
+      const { data: calData } = await supabase.from('calendars').select('id, work_days').eq('project_id', activeProjectId).maybeSingle();
+      
+      if (calData) {
+        if (calData.work_days) {
+          const parsed = calData.work_days.split(',').map(Number).filter(n => !isNaN(n));
+          if (parsed.length > 0) currentWorkingDays = parsed;
         }
-        return { 
-          ...t, 
-          satuan_hsd: t.satuan_hsd || '-', 
-          volume: Number(t.volume) || 0, 
-          cost: Number(t.cost) || 0, 
-          duration: calculatedDuration 
-        };
+        const { data: excData } = await supabase.from('calendar_exceptions').select('exception_date, description').eq('calendar_id', calData.id);
+        if (excData) currentExceptions = excData;
+      }
+
+      setWorkingDays(currentWorkingDays);
+      setExceptions(currentExceptions);
+
+      const { data: taskData } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId).order('wbs_code');
+      const { data: assignmentsData } = await supabase.from('task_assignments').select('*');
+      const { data: resourcesData } = await supabase.from('project_resources').select('*');
+      
+      if (assignmentsData) setTaskAssignments(assignmentsData);
+      if (resourcesData) setResources(resourcesData);
+        
+      let sortedTasks = [];
+      let rels = [];
+
+      if (taskData) {
+        const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
+        let formattedTasks = uniqueTasks.map(t => {
+          let calculatedDuration = Number(t.duration) || 1;
+          if (t.summary !== 'Yes' && t.start_date && t.end_date) {
+            calculatedDuration = countWorkingDays(t.start_date, t.end_date, currentWorkingDays, currentExceptions);
+          }
+          return { 
+            ...t, 
+            satuan_hsd: t.satuan_hsd || '-', 
+            volume: Number(t.volume) || 0, 
+            cost: Number(t.cost) || 0, 
+            duration: calculatedDuration 
+          };
+        });
+
+        const result = updateProjectScheduleSecure(formattedTasks, currentWorkingDays, currentExceptions);
+        let finalTasks = result.success ? result.tasks : formattedTasks;
+        
+        finalTasks = calculateEVM(finalTasks, currentWorkingDays, currentExceptions);
+        sortedTasks = finalTasks.sort((a,b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
+        
+        setTasks(sortedTasks);
+
+        taskData.forEach(t => {
+          if (t.predecessors && t.summary !== 'Yes') {
+            const predStrings = t.predecessors.split(',').map(s => s.trim());
+            predStrings.forEach(predStr => {
+              const match = predStr.match(/^([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?$/i);
+              if (match) {
+                rels.push({ from: match[1], to: t.wbs_code, type: match[2] ? match[2].toUpperCase() : 'FS', is_critical: t.is_critical });
+              }
+            });
+          }
+        });
+        setRelations(rels);
+      }
+
+      // 3. Simpan ke Cache setelah sukses fetch
+      saveToCache(cacheKey, {
+        tasks: sortedTasks,
+        relations: rels,
+        workingDays: currentWorkingDays,
+        exceptions: currentExceptions,
+        taskAssignments: assignmentsData || [],
+        resources: resourcesData || []
       });
 
-      const result = updateProjectScheduleSecure(formattedTasks, currentWorkingDays, currentExceptions);
-      let finalTasks = result.success ? result.tasks : formattedTasks;
-      
-      finalTasks = calculateEVM(finalTasks, currentWorkingDays, currentExceptions);
-      
-      const sorted = finalTasks.sort((a,b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
-      setTasks(sorted);
+    } catch (err) {
+      console.error("Error fetching Gantt:", err);
+    } finally {
+      if (!silent) setLoading(false);
     }
-
-    if (taskData) {
-      const rels = [];
-      taskData.forEach(t => {
-        if (t.predecessors && t.summary !== 'Yes') {
-          const predStrings = t.predecessors.split(',').map(s => s.trim());
-          predStrings.forEach(predStr => {
-            const match = predStr.match(/^([0-9.]+)(FS|SS|FF|SF)?([+-]\d+)?$/i);
-            if (match) {
-              rels.push({ from: match[1], to: t.wbs_code, type: match[2] ? match[2].toUpperCase() : 'FS', is_critical: t.is_critical });
-            }
-          });
-        }
-      });
-      setRelations(rels);
-    }
-
-    if (!silent) setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
     
+    if (typeof window !== 'undefined' && !navigator.onLine) return;
+
     const channel = supabase.channel('realtime-gantt-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wbs_tasks' }, () => {
         if (isUpdatingRef.current) return;
@@ -153,6 +196,7 @@ export default function GanttPage() {
         window.ganttTimer = setTimeout(() => { fetchData(true); }, 500);
       })
       .subscribe();
+      
     return () => { supabase.removeChannel(channel); };
   }, [activeProjectId]);
 
@@ -215,8 +259,6 @@ export default function GanttPage() {
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8">
       <div className="max-w-[1920px] mx-auto space-y-6 animate-in fade-in duration-300">
-        
-        {/* HEADER PREMIUM */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">

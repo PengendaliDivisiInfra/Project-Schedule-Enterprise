@@ -1,37 +1,68 @@
 ﻿'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Search, RefreshCw, BarChart3, Database, Loader2, CalendarDays, Download } from 'lucide-react';
+import { supabase } from '@/lib/supabase'; 
+import { Search, RefreshCw, BarChart3, Database, Loader2, CalendarDays, Download, Plus, X, Save } from 'lucide-react';
+import { useProject } from '../../context/ProjectContext'; 
+import { useRole } from '../../lib/hooks/useRole'; 
+import { queueOfflineAction } from '../../lib/services/sync-service';
+import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 
 export default function ProgressHarianPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [data, setData] = useState([]);
+  const [rawTasks, setRawTasks] = useState([]); 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({ task_id: '', volume: '' });
+
+  const { activeProjectId } = useProject();
+  const { can } = useRole(activeProjectId);
+  const canInputProgress = can('EDIT_PROGRESS') || can('INPUT_PROGRESS'); 
 
   const fetchProgress = async () => {
+    if (!activeProjectId) { setLoading(false); return; }
+
     setLoading(true);
+    const cacheKey = `progress_${activeProjectId}`;
+
+    // 1. Ambil dari Cache
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      setData(cached.data || []);
+      setRawTasks(cached.rawTasks || []);
+    }
+
+    // 2. Cek Offline
+    if (typeof window !== 'undefined' && !navigator.onLine) {
+      setLoading(false);
+      if (!cached) {
+        window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'warning', message: 'Offline & belum ada data cache untuk halaman ini.' } }));
+      }
+      return;
+    }
+
+    // 3. Fetch Online
     try {
       const today = new Date().toISOString().split('T')[0];
       const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-      // 1. Ambil semua leaf task
       const { data: tasks, error: taskErr } = await supabase
         .from('wbs_tasks')
         .select('id, wbs_code, name, volume, satuan_hsd, summary')
         .eq('summary', 'No');
       
       if (taskErr) throw taskErr;
-
-      // 2. Ambil semua riwayat progress
+      
       const { data: progress, error: progErr } = await supabase
         .from('daily_progress')
         .select('*');
       
       if (progErr) throw progErr;
 
-      // 3. Gabungkan data
       const merged = tasks.map(t => {
         const taskProgress = progress ? progress.filter(p => p.task_id === t.id) : [];
         
@@ -55,11 +86,15 @@ export default function ProgressHarianPage() {
         };
       });
 
-      // 4. Filter yang > 0 DAN URUTKAN WBS SECARA NATURAL (1.2 sebelum 1.10)
       const filtered = merged.filter(m => m.total_realisasi > 0);
       filtered.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
       
       setData(filtered);
+      setRawTasks(tasks || []);
+
+      // 4. Simpan ke Cache
+      saveToCache(cacheKey, { data: filtered, rawTasks: tasks || [] });
+
     } catch (err) {
       console.error(err);
     } finally {
@@ -70,14 +105,13 @@ export default function ProgressHarianPage() {
 
   useEffect(() => {
     fetchProgress();
-  }, []);
+  }, [activeProjectId]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchProgress();
   };
 
-  // FUNGSI EXPORT KE EXCEL (CSV)
   const handleExport = () => {
     if (data.length === 0) return;
 
@@ -85,7 +119,7 @@ export default function ProgressHarianPage() {
     
     const rows = data.map(item => [
       item.wbs_code,
-      `"${item.name}"`, // Bungkus nama dengan kutip agar aman jika ada koma
+      `"${item.name}"`,
       item.volume,
       item.satuan_hsd,
       item.realisasi_kemarin,
@@ -109,6 +143,43 @@ export default function ProgressHarianPage() {
     document.body.removeChild(link);
   };
 
+  const handleSubmitProgress = async (e) => {
+    e.preventDefault();
+    if (!formData.task_id || !formData.volume) {
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'error', message: 'Lengkapi semua data!' } }));
+      return;
+    }
+
+    setIsSubmitting(true);
+    const payload = {
+      id: crypto.randomUUID(),
+      task_id: formData.task_id,
+      completed_volume: parseFloat(formData.volume),
+      record_date: new Date().toISOString().split('T')[0],
+      created_at: new Date().toISOString(),
+    };
+
+    try {
+      if (navigator.onLine) {
+        const { error } = await supabase.from('daily_progress').insert(payload);
+        if (error) throw error;
+        
+        window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'success', message: 'Progres harian berhasil disimpan!' } }));
+        fetchProgress(); 
+      } else {
+        await queueOfflineAction('daily_progress', 'INSERT', payload);
+      }
+      
+      setIsModalOpen(false);
+      setFormData({ task_id: '', volume: '' });
+    } catch (err) {
+      console.error(err);
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'error', message: err.message || 'Gagal menyimpan data.' } }));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const formatNum = (num) => new Intl.NumberFormat('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
 
   const filteredData = data.filter(item => 
@@ -117,10 +188,9 @@ export default function ProgressHarianPage() {
   );
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8 animate-in fade-in duration-500">
+    <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8 animate-in fade-in duration-500 relative">
       <div className="max-w-[1920px] mx-auto space-y-6">
         
-        {/* HEADER PREMIUM */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -129,8 +199,17 @@ export default function ProgressHarianPage() {
             <p className="text-sm text-slate-500 mt-1">Pantau histori realisasi volume pekerjaan lapangan secara <em>real-time</em>.</p>
           </div>
           <div className="flex items-center gap-3">
+            {canInputProgress && (
+              <button 
+                onClick={() => setIsModalOpen(true)} 
+                className="p-2.5 px-4 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl shadow-sm hover:shadow-md transition-all flex items-center gap-2 text-sm font-bold"
+              >
+                <Plus size={16} /> Input Progres
+              </button>
+            )}
+
             <button onClick={handleExport} disabled={data.length === 0} className="p-2.5 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 rounded-xl shadow-sm transition-all flex items-center gap-2 text-sm font-bold disabled:opacity-50">
-              <Download size={16} /> Export Excel
+              <Download size={16} /> Export
             </button>
             <button onClick={handleRefresh} disabled={isRefreshing} className="p-2.5 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-200 rounded-xl shadow-sm transition-all flex items-center gap-2 text-sm font-bold disabled:opacity-50">
               <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> Refresh
@@ -138,10 +217,7 @@ export default function ProgressHarianPage() {
           </div>
         </div>
 
-        {/* MAIN CARD */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          
-          {/* TOOLBAR */}
           <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
             <div className="relative w-full sm:w-96 group">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={18} />
@@ -154,11 +230,10 @@ export default function ProgressHarianPage() {
               />
             </div>
             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-              <Database size={16} /> Total <span className="font-bold text-slate-700">{filteredData.length}</span> Item Pekerjaan
+              <Database size={16} /> Total <span className="font-bold text-slate-700">{filteredData.length}</span> Item
             </div>
           </div>
 
-          {/* DATA GRID */}
           <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse min-w-max">
               <thead className="bg-slate-50/80 backdrop-blur-md sticky top-0 z-10">
@@ -167,11 +242,9 @@ export default function ProgressHarianPage() {
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 min-w-[250px]">Nama Pekerjaan</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right">Volume Kontrak</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-center">Satuan</th>
-                  
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right bg-orange-50/50">Realisasi Kemarin</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right bg-yellow-50/50">Realisasi Hari Ini</th>
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-right bg-emerald-50/50">Total s/d Hari Ini</th>
-                  
                   <th className="px-6 py-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200 text-center w-32">Progres (%)</th>
                 </tr>
               </thead>
@@ -190,7 +263,7 @@ export default function ProgressHarianPage() {
                         <CalendarDays size={24} className="text-slate-400" />
                       </div>
                       <h3 className="text-lg font-bold text-slate-700 mb-1">Belum Ada Progress Harian</h3>
-                      <p className="text-slate-500 text-sm">Lakukan input di menu "Tugas (WBS)" terlebih dahulu.</p>
+                      <p className="text-slate-500 text-sm">Silakan input progres terlebih dahulu.</p>
                     </td>
                   </tr>
                 ) : (
@@ -201,39 +274,12 @@ export default function ProgressHarianPage() {
                           {item.wbs_code}
                         </span>
                       </td>
-                      
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">
-                          {item.name}
-                        </span>
-                      </td>
-                      
-                      <td className="px-6 py-4 text-right">
-                        <span className="font-mono text-sm tabular-nums text-slate-600">{formatNum(item.volume)}</span>
-                      </td>
-                      
-                      <td className="px-6 py-4 text-center">
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{item.satuan_hsd}</span>
-                      </td>
-                      
-                      <td className="px-6 py-4 text-right bg-orange-50/10 group-hover:bg-orange-50/30 transition-colors">
-                        <span className="font-mono text-sm tabular-nums font-semibold text-orange-600">
-                          {formatNum(item.realisasi_kemarin)}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-right bg-yellow-50/10 group-hover:bg-yellow-50/30 transition-colors">
-                        <span className="font-mono text-sm tabular-nums font-bold text-yellow-700">
-                          {formatNum(item.realisasi_hari_ini)}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-right bg-emerald-50/10 group-hover:bg-emerald-50/30 transition-colors">
-                        <span className="font-mono text-sm tabular-nums font-bold text-emerald-700">
-                          {formatNum(item.total_realisasi)}
-                        </span>
-                      </td>
-                      
+                      <td className="px-6 py-4"><span className="text-sm font-semibold text-slate-700 group-hover:text-slate-900 transition-colors">{item.name}</span></td>
+                      <td className="px-6 py-4 text-right"><span className="font-mono text-sm tabular-nums text-slate-600">{formatNum(item.volume)}</span></td>
+                      <td className="px-6 py-4 text-center"><span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{item.satuan_hsd}</span></td>
+                      <td className="px-6 py-4 text-right bg-orange-50/10 group-hover:bg-orange-50/30 transition-colors"><span className="font-mono text-sm tabular-nums font-semibold text-orange-600">{formatNum(item.realisasi_kemarin)}</span></td>
+                      <td className="px-6 py-4 text-right bg-yellow-50/10 group-hover:bg-yellow-50/30 transition-colors"><span className="font-mono text-sm tabular-nums font-bold text-yellow-700">{formatNum(item.realisasi_hari_ini)}</span></td>
+                      <td className="px-6 py-4 text-right bg-emerald-50/10 group-hover:bg-emerald-50/30 transition-colors"><span className="font-mono text-sm tabular-nums font-bold text-emerald-700">{formatNum(item.total_realisasi)}</span></td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span className="font-mono text-xs font-bold text-indigo-600">{item.progress_pct.toFixed(1)}%</span>
@@ -250,6 +296,59 @@ export default function ProgressHarianPage() {
           </div>
         </div>
       </div>
+
+      {/* --- CUSTOM MODAL INPUT PROGRES --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-800">Input Progres Harian</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmitProgress} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Pilih Pekerjaan (WBS)</label>
+                <select 
+                  value={formData.task_id}
+                  onChange={(e) => setFormData({...formData, task_id: e.target.value})}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 text-slate-700"
+                  required
+                >
+                  <option value="">-- Pilih Pekerjaan --</option>
+                  {rawTasks.map(t => (
+                    <option key={t.id} value={t.id}>{t.wbs_code} - {t.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Volume Realisasi</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={formData.volume}
+                  onChange={(e) => setFormData({...formData, volume: e.target.value})}
+                  placeholder="Masukkan angka..."
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 text-slate-700"
+                  required
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+                  Batal
+                </button>
+                <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+                  {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Simpan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

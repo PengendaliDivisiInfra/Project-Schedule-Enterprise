@@ -140,6 +140,13 @@ aside, aside *, nav, .sidebar-container {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- TAMBAHAN UNTUK PWA (BOTTOM NAV SAFE AREA) --- */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 /* Custom Scrollbar untuk Tabel Enterprise */
 ::-webkit-scrollbar {
   width: 6px;
