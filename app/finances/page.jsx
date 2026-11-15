@@ -10,6 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import CashFlowStatementView from '@/components/finances/CashFlowStatementView';
+import CashFlowForecastView from '@/components/finances/CashFlowForecastView'; // <-- NEW IMPORT
 
 export default function CashFlowPage() {
   const { userRole, activeProjectId } = useProject(); 
@@ -251,6 +252,8 @@ export default function CashFlowPage() {
     } catch (err) { showToast('danger', err.message); } finally { setIsVoiding(false); }
   };
 
+  const isOverbudget = selectedWbsBudget !== null && Number(formData.amount) > selectedWbsBudget;
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!projectId) return showToast('danger', "ID Proyek tidak ditemukan.");
@@ -307,7 +310,6 @@ export default function CashFlowPage() {
   const runway = burnRate > 0 ? (netCash / burnRate) : 0;
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
-  const isOverbudget = selectedWbsBudget !== null && Number(formData.amount) > selectedWbsBudget;
 
   // Cek apakah ada transaksi hari ini untuk SOP Alert
   const todayStr = new Date().toISOString().split('T')[0];
@@ -387,6 +389,10 @@ export default function CashFlowPage() {
           </button>
           <button onClick={() => setActiveTab('aging')} className={`pb-3 font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'aging' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
             <FileText size={16} /> Aging & Liabilitas
+          </button>
+          {/* TAB BARU: CASH FLOW FORECAST */}
+          <button onClick={() => setActiveTab('forecast')} className={`pb-3 font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'forecast' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+            <TrendingUp size={16} /> Cash Flow Forecast
           </button>
           <button onClick={() => setActiveTab('cash_flow_statement')} className={`pb-3 font-medium transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'cash_flow_statement' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
             <FileText size={16} /> Laporan Arus Kas
@@ -677,6 +683,11 @@ export default function CashFlowPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* TAB CASH FLOW FORECAST (NEW) */}
+        {activeTab === 'forecast' && (
+          <CashFlowForecastView projectId={projectId} />
         )}
 
         {/* TAB LAPORAN ARUS KAS SAK ETAP */}
