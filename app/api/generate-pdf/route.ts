@@ -21,7 +21,6 @@ export async function POST(req: Request) {
     let args: string[] = [];
 
     if (process.env.NODE_ENV === 'development') {
-      // ... (Logika development Anda biarkan sama seperti sebelumnya)
       const winChrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
       const winEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
       const winEdge64 = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -33,15 +32,12 @@ export async function POST(req: Request) {
       
       args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
     } else {
-      // === PERBAIKAN PRODUCTION (VERCEL) ===
       chromium.setGraphicsMode = false;
       
-      // Fallback: Cari folder bin secara manual jika tracing gagal
       const binPath = path.join(process.cwd(), "node_modules/@sparticuz/chromium/bin");
       if (fs.existsSync(binPath)) {
         executablePath = await chromium.executablePath(binPath);
       } else {
-        // Biarkan default (mencoba path standar) jika binPath tidak ditemukan
         executablePath = await chromium.executablePath();
       }
       
@@ -69,8 +65,9 @@ export async function POST(req: Request) {
     
     await page.emulateMediaType('print');
 
+    // PERBAIKAN: Gunakan single string 'networkidle0' untuk menghindari Type Error
     await page.setContent(html, { 
-      waitUntil: ['networkidle0', 'domcontentloaded'], 
+      waitUntil: 'networkidle0', 
       timeout: 45000 
     });
 
