@@ -1,6 +1,8 @@
 import puppeteer, { Browser } from 'puppeteer-core';
-import chromium from '@sparticuz/chromium-min';
+import chromium from '@sparticuz/chromium';
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
@@ -19,7 +21,7 @@ export async function POST(req: Request) {
     let args: string[] = [];
 
     if (process.env.NODE_ENV === 'development') {
-      // ... (Logika development Anda biarkan sama seperti sebelumnya)
+      // Logika development (Windows)
       const winChrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
       const winEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
       const winEdge64 = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -34,11 +36,13 @@ export async function POST(req: Request) {
       // === PERBAIKAN PRODUCTION (VERCEL) ===
       chromium.setGraphicsMode = false;
       
-      // URL ke binary Chromium yang di-host (sesuaikan versi dengan puppeteer-core Anda)
-      const CHROMIUM_PACK_URL = "https://github.com/Sparticuz/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar";
-      
-      // Gunakan chromium-min untuk mengunduh dan mengekstrak binary ke /tmp
-      executablePath = await chromium.executablePath(CHROMIUM_PACK_URL);
+      // Cari path binary secara manual (fallback)
+      const binPath = path.join(process.cwd(), "node_modules/@sparticuz/chromium/bin");
+      if (fs.existsSync(binPath)) {
+        executablePath = await chromium.executablePath(binPath);
+      } else {
+        executablePath = await chromium.executablePath();
+      }
       
       args = [
         ...chromium.args,
