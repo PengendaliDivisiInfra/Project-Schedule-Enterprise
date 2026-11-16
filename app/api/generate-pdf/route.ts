@@ -1,8 +1,6 @@
 import puppeteer, { Browser } from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 
 export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
@@ -21,6 +19,7 @@ export async function POST(req: Request) {
     let args: string[] = [];
 
     if (process.env.NODE_ENV === 'development') {
+      // ... (Logika development Anda biarkan sama seperti sebelumnya)
       const winChrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
       const winEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
       const winEdge64 = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -32,14 +31,14 @@ export async function POST(req: Request) {
       
       args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
     } else {
+      // === PERBAIKAN PRODUCTION (VERCEL) ===
       chromium.setGraphicsMode = false;
       
-      const binPath = path.join(process.cwd(), "node_modules/@sparticuz/chromium/bin");
-      if (fs.existsSync(binPath)) {
-        executablePath = await chromium.executablePath(binPath);
-      } else {
-        executablePath = await chromium.executablePath();
-      }
+      // URL ke binary Chromium yang di-host (sesuaikan versi dengan puppeteer-core Anda)
+      const CHROMIUM_PACK_URL = "https://github.com/Sparticuz/chromium/releases/download/v131.0.0/chromium-v131.0.0-pack.tar";
+      
+      // Gunakan chromium-min untuk mengunduh dan mengekstrak binary ke /tmp
+      executablePath = await chromium.executablePath(CHROMIUM_PACK_URL);
       
       args = [
         ...chromium.args,
@@ -62,22 +61,10 @@ export async function POST(req: Request) {
     });
 
     const page = await browser.newPage();
-    
     await page.emulateMediaType('print');
-
-    // PERBAIKAN TYPESCRIPT: Gunakan 'domcontentloaded' agar lolos strict type check
-    await page.setContent(html, { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 45000 
-    });
-
-    // Lalu tunggu secara manual sampai network benar-benar idle (semua aset termuat)
+    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForNetworkIdle({ idleTime: 500, timeout: 45000 });
-
-    // Pastikan font ter-render sempurna
     await page.evaluateHandle('document.fonts.ready');
-    
-    // Buffer ekstra untuk layout tabel kompleks
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const pdfBuffer = await page.pdf({
