@@ -2,10 +2,22 @@
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
+  
+  // 1. Hanya sisakan puppeteer-core dan sparticuz
+  serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
+  
+  // 2. Paksa Vercel menyertakan file binary Chromium ke dalam Serverless Function
+  outputFileTracingIncludes: {
+    '/api/generate-pdf': [
+      './node_modules/@sparticuz/chromium/bin/**',
+    ],
+  },
+
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },
-    serverComponentsExternalPackages: ['puppeteer', 'puppeteer-core', '@sparticuz/chromium'],
+    // serverComponentsExternalPackages sudah dipindah ke root (serverExternalPackages)
   },
+  
   async headers() {
     return [
       {
@@ -35,7 +47,6 @@ const withPWA = require('@ducanh2912/next-pwa').default({
     navigationPreload: false, 
     runtimeCaching: [
       {
-        // 🟢 WAJIB: Jangan pernah cache rute auth (Login/SSO)
         urlPattern: /\/auth\/.*/i,
         handler: 'NetworkOnly',
       },
