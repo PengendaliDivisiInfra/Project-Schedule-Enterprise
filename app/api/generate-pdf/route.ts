@@ -6,7 +6,6 @@ import fs from 'fs';
 export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
 
-// Cache path agar tidak diekstrak berulang kali
 let cachedExecutablePath: string | null = null;
 
 export async function POST(req: Request) {
@@ -23,7 +22,6 @@ export async function POST(req: Request) {
     let args: string[] = [];
 
     if (process.env.NODE_ENV === 'development') {
-      // Logika development (Windows)
       const winChrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
       const winEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
       const winEdge64 = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -35,23 +33,18 @@ export async function POST(req: Request) {
       
       args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
     } else {
-      // === PERBAIKAN PRODUCTION (VERCEL) ===
       chromium.setGraphicsMode = false;
       
       if (!cachedExecutablePath) {
-        // Coba beberapa kemungkinan URL untuk mendapatkan file tar
-        const urlsToTry = [];
+        // PERBAIKAN: Tambahkan type annotation string[]
+        const urlsToTry: string[] = [];
         
         if (process.env.VERCEL_URL) {
           urlsToTry.push(`https://${process.env.VERCEL_URL}/chromium-pack.tar`);
         }
         
-        // Fallback 1: Gunakan origin dari request (jika VERCEL_URL tidak ada)
         const requestUrl = new URL(req.url);
         urlsToTry.push(`${requestUrl.origin}/chromium-pack.tar`);
-        
-        // Fallback 2: Gunakan URL publik Vercel (opsional, bisa disesuaikan)
-        // urlsToTry.push('https://your-production-domain.com/chromium-pack.tar');
 
         let lastError = null;
         for (const tarUrl of urlsToTry) {
@@ -59,7 +52,7 @@ export async function POST(req: Request) {
             console.log(`[PDF Engine] Mencoba mengekstrak Chromium dari: ${tarUrl}`);
             cachedExecutablePath = await chromium.executablePath(tarUrl);
             console.log(`[PDF Engine] Berhasil mengekstrak Chromium.`);
-            break; // Keluar dari loop jika berhasil
+            break; 
           } catch (err: any) {
             console.warn(`[PDF Engine] Gagal mengekstrak dari ${tarUrl}:`, err.message);
             lastError = err;
