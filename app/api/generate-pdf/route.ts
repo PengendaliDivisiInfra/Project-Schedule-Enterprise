@@ -65,14 +65,19 @@ export async function POST(req: Request) {
     
     await page.emulateMediaType('print');
 
-    // PERBAIKAN: Gunakan single string 'networkidle0' untuk menghindari Type Error
+    // PERBAIKAN TYPESCRIPT: Gunakan 'domcontentloaded' agar lolos strict type check
     await page.setContent(html, { 
-      waitUntil: 'networkidle0', 
+      waitUntil: 'domcontentloaded', 
       timeout: 45000 
     });
 
+    // Lalu tunggu secara manual sampai network benar-benar idle (semua aset termuat)
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 45000 });
+
+    // Pastikan font ter-render sempurna
     await page.evaluateHandle('document.fonts.ready');
     
+    // Buffer ekstra untuk layout tabel kompleks
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     const pdfBuffer = await page.pdf({
