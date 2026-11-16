@@ -36,7 +36,6 @@ export async function POST(req: Request) {
       chromium.setGraphicsMode = false;
       
       if (!cachedExecutablePath) {
-        // PERBAIKAN: Tambahkan type annotation string[]
         const urlsToTry: string[] = [];
         
         if (process.env.VERCEL_URL) {
@@ -46,7 +45,9 @@ export async function POST(req: Request) {
         const requestUrl = new URL(req.url);
         urlsToTry.push(`${requestUrl.origin}/chromium-pack.tar`);
 
-        let lastError = null;
+        // PERBAIKAN: Tambahkan type annotation 'any' pada lastError
+        let lastError: any = null;
+        
         for (const tarUrl of urlsToTry) {
           try {
             console.log(`[PDF Engine] Mencoba mengekstrak Chromium dari: ${tarUrl}`);
