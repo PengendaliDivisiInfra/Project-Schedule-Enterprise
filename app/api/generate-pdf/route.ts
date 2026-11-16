@@ -45,12 +45,11 @@ export async function POST(req: Request) {
         const requestUrl = new URL(req.url);
         urlsToTry.push(`${requestUrl.origin}/chromium-pack.tar`);
 
-        // PERBAIKAN: Tambahkan type annotation 'any' pada lastError
         let lastError: any = null;
-        
         for (const tarUrl of urlsToTry) {
           try {
             console.log(`[PDF Engine] Mencoba mengekstrak Chromium dari: ${tarUrl}`);
+            // Pastikan menggunakan chromium dari @sparticuz/chromium-min
             cachedExecutablePath = await chromium.executablePath(tarUrl);
             console.log(`[PDF Engine] Berhasil mengekstrak Chromium.`);
             break; 
