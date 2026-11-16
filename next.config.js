@@ -3,17 +3,15 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
 
-  // 1. Untuk Next.js 14, letakkan di dalam experimental
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },
+    // 1. Untuk Next.js 14, kedua opsi ini ada di dalam experimental
     serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
-  },
-
-  // 2. outputFileTracingIncludes harus di root
-  outputFileTracingIncludes: {
-    '/api/generate-pdf': [
-      './node_modules/@sparticuz/chromium/bin/**',
-    ],
+    outputFileTracingIncludes: {
+      '/api/generate-pdf': [
+        './node_modules/@sparticuz/chromium/bin/**',
+      ],
+    },
   },
 
   async headers() {
