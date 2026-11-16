@@ -1,11 +1,12 @@
 import puppeteer, { Browser } from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
+import chromium from '@sparticuz/chromium-min';
 import { NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
 
 export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
+
+let cachedExecutablePath: string | null = null;
 
 export async function POST(req: Request) {
   let browser: Browser | null = null;
@@ -21,7 +22,6 @@ export async function POST(req: Request) {
     let args: string[] = [];
 
     if (process.env.NODE_ENV === 'development') {
-      // Logika development (Windows)
       const winChrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
       const winEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
       const winEdge64 = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
@@ -33,16 +33,23 @@ export async function POST(req: Request) {
       
       args = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'];
     } else {
-      // === PERBAIKAN PRODUCTION (VERCEL) ===
       chromium.setGraphicsMode = false;
       
-      // Cari path binary secara manual (fallback)
-      const binPath = path.join(process.cwd(), "node_modules/@sparticuz/chromium/bin");
-      if (fs.existsSync(binPath)) {
-        executablePath = await chromium.executablePath(binPath);
-      } else {
-        executablePath = await chromium.executablePath();
+      if (!cachedExecutablePath) {
+        // Dapatkan base URL (untuk Vercel Production/Preview atau fallback)
+        const baseUrl = process.env.VERCEL_URL 
+          ? `https://${process.env.VERCEL_URL}` 
+          : new URL(req.url).origin;
+          
+        const tarUrl = `${baseUrl}/chromium-pack.tar`;
+        
+        console.log(`[PDF Engine] Menyiapkan Chromium dari: ${tarUrl}`);
+        
+        // Ekstrak dan dapatkan path executable
+        cachedExecutablePath = await chromium.executablePath(tarUrl);
       }
+      
+      executablePath = cachedExecutablePath;
       
       args = [
         ...chromium.args,

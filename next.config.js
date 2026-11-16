@@ -5,13 +5,8 @@ const nextConfig = {
 
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },
-    // 1. Untuk Next.js 14, kedua opsi ini ada di dalam experimental
-    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
-    outputFileTracingIncludes: {
-      '/api/generate-pdf': [
-        './node_modules/@sparticuz/chromium/bin/**',
-      ],
-    },
+    // Hanya gunakan puppeteer-core dan @sparticuz/chromium-min
+    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium-min'],
   },
 
   async headers() {
