@@ -2,22 +2,20 @@
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
-  
-  // 1. Hanya sisakan puppeteer-core dan sparticuz
-  serverExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
-  
-  // 2. Paksa Vercel menyertakan file binary Chromium ke dalam Serverless Function
+
+  // 1. Untuk Next.js 14, letakkan di dalam experimental
+  experimental: {
+    serverActions: { bodySizeLimit: '4mb' },
+    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium'],
+  },
+
+  // 2. outputFileTracingIncludes harus di root
   outputFileTracingIncludes: {
     '/api/generate-pdf': [
       './node_modules/@sparticuz/chromium/bin/**',
     ],
   },
 
-  experimental: {
-    serverActions: { bodySizeLimit: '4mb' },
-    // serverComponentsExternalPackages sudah dipindah ke root (serverExternalPackages)
-  },
-  
   async headers() {
     return [
       {
@@ -44,7 +42,7 @@ const withPWA = require('@ducanh2912/next-pwa').default({
   },
   workboxOptions: {
     disableDevLogs: true,
-    navigationPreload: false, 
+    navigationPreload: false,
     runtimeCaching: [
       {
         urlPattern: /\/auth\/.*/i,
@@ -52,14 +50,14 @@ const withPWA = require('@ducanh2912/next-pwa').default({
       },
       {
         urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-        handler: 'NetworkOnly', 
+        handler: 'NetworkOnly',
       },
       {
         urlPattern: ({ url }) => url.searchParams.has('_rsc'),
-        handler: 'StaleWhileRevalidate', 
-        options: { 
-          cacheName: 'rsc-payloads', 
-          expiration: { maxEntries: 50, maxAgeSeconds: 86400 } 
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'rsc-payloads',
+          expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
         },
       },
       {
