@@ -12,31 +12,44 @@ export async function POST(req: Request) {
       return new NextResponse(JSON.stringify({ error: 'HTML content is required' }), { status: 400 });
     }
 
-    // Ambil URL Railway dari Environment Variable Vercel
-    const PDF_SERVICE_URL = process.env.PDF_SERVICE_URL;
-
+    let PDF_SERVICE_URL = process.env.PDF_SERVICE_URL;
     if (!PDF_SERVICE_URL) {
       throw new Error('PDF_SERVICE_URL belum diset di Environment Variables Vercel.');
     }
 
-    console.log(`[Proxy PDF] Meneruskan request ke: ${PDF_SERVICE_URL}`);
+    // --- PERBAIKAN URL OTOMATIS ---
+    // Jika lupa https://, tambahkan otomatis
+    if (!PDF_SERVICE_URL.startsWith('http')) {
+      PDF_SERVICE_URL = `https://${PDF_SERVICE_URL}`;
+    }
+    // Hapus trailing slash jika ada
+    if (PDF_SERVICE_URL.endsWith('/')) {
+      PDF_SERVICE_URL = PDF_SERVICE_URL.slice(0, -1);
+    }
 
-    // Kirim data ke Railway
+    console.log(`[Proxy PDF] Meneruskan request ke: ${PDF_SERVICE_URL}`);
+    console.log(`[Proxy PDF] Ukuran HTML payload: ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+
+    const controller = new AbortController();
+    // Vercel maxDuration 60s, kita batasi fetch 55s
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
+
     const response = await fetch(PDF_SERVICE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ html, scale, format, isLandscape }), 
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
       throw new Error(`Railway Error (${response.status}): ${errorText}`);
     }
 
-    // Terima file PDF dari Railway
     const pdfBuffer = await response.arrayBuffer();
 
-    // Kembalikan ke browser user
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
