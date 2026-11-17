@@ -3,11 +3,7 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
 
-  experimental: {
-    serverActions: { bodySizeLimit: '4mb' },
-    // Hanya gunakan puppeteer-core dan @sparticuz/chromium-min
-    serverComponentsExternalPackages: ['puppeteer-core', '@sparticuz/chromium-min'],
-  },
+  // Semua konfigurasi experimental terkait Chromium DIHAPUS
 
   async headers() {
     return [
