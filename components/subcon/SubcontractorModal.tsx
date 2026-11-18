@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { Subcontractor } from '@/lib/types/subcon';
+import { createSubcontractor, updateSubcontractor } from '@/lib/services/subcon.service';
 import { Users, X, Save, Loader2 } from 'lucide-react';
 
 interface Props {
@@ -70,18 +70,16 @@ export function SubcontractorModal({ isOpen, onClose, projectId, onSuccess, show
     setLoading(true);
     try {
       if (isEditMode && editingSubcon) {
-        const { error } = await supabase.from('subcontractors').update(form).eq('id', editingSubcon.id);
-        if (error) throw error;
+        await updateSubcontractor(editingSubcon.id, form);
         showToast('Vendor berhasil diperbarui', 'success');
       } else {
-        const { error } = await supabase.from('subcontractors').insert({ ...form, project_id: projectId });
-        if (error) throw error;
+        await createSubcontractor({ ...form, project_id: projectId });
         showToast('Vendor berhasil ditambahkan', 'success');
       }
       onSuccess();
       onClose();
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error.message || 'Gagal menyimpan data', 'error');
     } finally {
       setLoading(false);
     }
@@ -94,7 +92,7 @@ export function SubcontractorModal({ isOpen, onClose, projectId, onSuccess, show
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <Users className="text-indigo-600" /> {isEditMode ? 'Edit Vendor Subkon' : 'Tambah Vendor Subkon'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-rose-500 bg-white p-1.5 rounded-lg border border-slate-200 transition-colors"><X size={20}/></button>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-rose-500 bg-white p-1.5 rounded-lg border border-slate-200 transition-colors"><X size={20}/></button>
         </div>
         
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto max-h-[75vh]">

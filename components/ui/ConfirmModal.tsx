@@ -24,10 +24,10 @@ export function ConfirmModal({ isOpen, onClose, onConfirm, title, message, isLoa
           <p className="text-slate-500 text-sm mb-6 leading-relaxed">{message}</p>
         </div>
         <div className="bg-slate-50 px-6 py-4 flex gap-3 border-t border-slate-100">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 text-sm font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors" disabled={isLoading}>
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 text-sm font-bold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors" disabled={isLoading}>
             Batal
           </button>
-          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-sm shadow-red-500/30 transition-all" disabled={isLoading}>
+          <button type="button" onClick={onConfirm} className="flex-1 px-4 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 shadow-sm shadow-red-500/30 transition-all" disabled={isLoading}>
             {isLoading ? 'Memproses...' : 'Ya, Lanjutkan'}
           </button>
         </div>

@@ -5,8 +5,14 @@ import {
   SubconReceipt
 } from '@/lib/types/subcon';
 
+// ===== MASTER VENDOR =====
 export async function listSubcontractors(projectId: string) {
-  const { data, error } = await supabase.from('subcontractors').select('*').eq('project_id', projectId).eq('is_active', true).order('company_name');
+  const { data, error } = await supabase
+    .from('subcontractors')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('is_active', true)
+    .order('company_name');
   if (error) throw new Error(error.message);
   return data as Subcontractor[];
 }
@@ -17,11 +23,18 @@ export async function createSubcontractor(payload: Partial<Subcontractor>) {
   return data;
 }
 
+export async function updateSubcontractor(id: string, payload: Partial<Subcontractor>) {
+  const { data, error } = await supabase.from('subcontractors').update(payload).eq('id', id).select().single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function softDeleteSubcontractor(id: string) {
   const { error } = await supabase.from('subcontractors').update({ is_active: false }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
+// ===== SPK =====
 export async function listSPK(projectId: string) {
   const { data, error } = await supabase
     .from('subcontractor_contracts')
@@ -78,17 +91,7 @@ export async function softDeleteSPK(id: string) {
   if (error) throw new Error(error.message);
 }
 
-export async function getSPKItems(contractId: string) {
-  const { data, error } = await supabase
-    .from('subcontractor_spk_items')
-    .select('*')
-    .eq('contract_id', contractId)
-    .eq('is_active', true)
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(error.message);
-  return data;
-}
-
+// ===== ADDENDUM & RAB =====
 export async function createAddendum(payload: {
   contract_id: string;
   addendum_no: number;
@@ -113,6 +116,17 @@ export async function createAddendum(payload: {
   return data;
 }
 
+export async function getSPKItems(contractId: string) {
+  const { data, error } = await supabase
+    .from('subcontractor_spk_items')
+    .select('*')
+    .eq('contract_id', contractId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function getSPKHistory(contractId: string) {
   const { data, error } = await supabase
     .from('audit_logs')
@@ -124,6 +138,7 @@ export async function getSPKHistory(contractId: string) {
   return data;
 }
 
+// ===== PEMBAYARAN =====
 export async function paySubcontractor(contractId: string, payload: { 
   payment_number: string; 
   payment_date: string; 
@@ -153,7 +168,7 @@ export async function paySubcontractor(contractId: string, payload: {
   return data;
 }
 
-// ===== FUNGSI BAPP =====
+// ===== BAPP =====
 export async function getBAPPData(contractId: string, startDate: string, endDate: string): Promise<BAPPData> {
   const { data: contract, error: cError } = await supabase
     .from('subcontractor_contracts')
@@ -250,17 +265,19 @@ export async function getBAPPHistory(projectId: string) {
     .from('bapp_documents')
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
+    .is('voided_at', null) // Hanya ambil yang belum di-void
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
 
+// PERBAIKAN: Soft Delete BAPP
 export async function deleteBAPPDocument(id: string) {
-  const { error } = await supabase.from('bapp_documents').delete().eq('id', id);
+  const { error } = await supabase.from('bapp_documents').update({ voided_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
-// ===== FUNGSI BAOP =====
+// ===== BAOP =====
 export async function getBAOPData(contractId: string, startDate: string, endDate: string) {
   const { data: contract, error: cError } = await supabase
     .from('subcontractor_contracts')
@@ -304,17 +321,19 @@ export async function getBAOPHistory(projectId: string) {
     .from('baop_documents')
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
+    .is('voided_at', null) // Hanya ambil yang belum di-void
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
 
+// PERBAIKAN: Soft Delete BAOP
 export async function deleteBAOPDocument(id: string) {
-  const { error } = await supabase.from('baop_documents').delete().eq('id', id);
+  const { error } = await supabase.from('baop_documents').update({ voided_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
-// ===== FUNGSI BPUTK =====
+// ===== BPUTK =====
 export async function getBPUTKData(contractId: string, startDate: string, endDate: string): Promise<BPUTKData> {
   const { data: contract, error: cError } = await supabase
     .from('subcontractor_contracts')
@@ -407,19 +426,20 @@ export async function saveBPUTKDocument(payload: {
   return data;
 }
 
-// Pastikan select-nya seperti ini (bintang)
 export async function getBPUTKHistory(projectId: string) {
   const { data, error } = await supabase
     .from('bputk_documents')
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
 
+// PERBAIKAN: Soft Delete BPUTK
 export async function deleteBPUTKDocument(id: string) {
-  const { error } = await supabase.from('bputk_documents').delete().eq('id', id);
+  const { error } = await supabase.from('bputk_documents').update({ voided_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
@@ -448,7 +468,7 @@ export async function saveOpnameProgress(contractId: string, opnameDate: string,
   return true;
 }
 
-// ===== FUNGSI PENGAJUAN KASBON =====
+// ===== KASBON & KWITANSI =====
 export async function createKasbonRequest(payload: {
   project_id: string;
   contract_id: string;
@@ -504,7 +524,6 @@ export async function updatePaymentStatus(paymentId: string, status: 'Approved' 
   return data;
 }
 
-// ===== FUNGSI KWITANSI =====
 export async function saveReceipt(payload: SubconReceipt) {
   const { data, error } = await supabase.from('subcon_receipts').insert([payload]).select().single();
   if (error) throw new Error(error.message);
@@ -522,46 +541,44 @@ export async function getReceiptHistory(projectId: string) {
 }
 
 export async function deleteReceipt(id: string) {
-  const { error } = await supabase.from('subcon_receipts').delete().eq('id', id);
+  // Asumsi tabel subcon_receipts juga butuh soft delete
+  const { error } = await supabase.from('subcon_receipts').update({ voided_at: new Date().toISOString() }).eq('id', id);
   if (error) throw new Error(error.message);
 }
 
-// --- FUNGSI BARU UNTUK MENARIK DOKUMEN YANG SIAP DITAGIH ---
+// ===== DOKUMEN TAGIHAN =====
 export async function getEligibleDocuments(contractId: string) {
-  // 1. Tarik BPUTK yang belum ditagih
   const { data: bputkData, error: errBputk } = await supabase
     .from('bputk_documents')
     .select('id, bputk_number, period_start, period_end, total_value, nilai_ppn, nilai_pph')
     .eq('contract_id', contractId)
-    // .eq('is_billed', false) // Opsional: jika Anda punya flag is_billed
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
 
   if (errBputk) throw new Error(errBputk.message);
 
-  // 2. Tarik BAPP yang belum ditagih
   const { data: bappData, error: errBapp } = await supabase
     .from('bapp_documents')
     .select('id, bapp_number, period_start, period_end, total_value, nilai_ppn, nilai_pph')
     .eq('contract_id', contractId)
-    // .eq('is_billed', false)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
 
   if (errBapp) throw new Error(errBapp.message);
 
-  // Gabungkan dengan penanda tipe
   return [
     ...(bputkData || []).map(d => ({ ...d, type: 'BPUTK', doc_number: d.bputk_number })),
     ...(bappData || []).map(d => ({ ...d, type: 'BAPP', doc_number: d.bapp_number }))
   ];
 }
 
-// Fungsi untuk menarik BPUTK yang BELUM dibuatkan BAPP/BAOP
 export async function getUnbilledBPUTKs(contractId: string) {
   const { data, error } = await supabase
     .from('bputk_documents')
     .select('id, bputk_number, period_start, period_end, total_value, nilai_dpp, nilai_ppn, nilai_pph, tax_mode')
     .eq('contract_id', contractId)
-    .eq('is_billed', false) // Hanya ambil yang belum ditagih
+    .eq('is_billed', false)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   
   if (error) throw new Error(error.message);
