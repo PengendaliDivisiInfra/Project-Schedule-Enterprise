@@ -2,10 +2,9 @@
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
-  experimental: {
-    serverActions: { bodySizeLimit: '4mb' },
-    serverComponentsExternalPackages: ['puppeteer', 'puppeteer-core', '@sparticuz/chromium'],
-  },
+
+  // Semua konfigurasi experimental terkait Chromium DIHAPUS
+
   async headers() {
     return [
       {
@@ -32,23 +31,22 @@ const withPWA = require('@ducanh2912/next-pwa').default({
   },
   workboxOptions: {
     disableDevLogs: true,
-    navigationPreload: false, 
+    navigationPreload: false,
     runtimeCaching: [
       {
-        // 🟢 WAJIB: Jangan pernah cache rute auth (Login/SSO)
         urlPattern: /\/auth\/.*/i,
         handler: 'NetworkOnly',
       },
       {
         urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-        handler: 'NetworkOnly', 
+        handler: 'NetworkOnly',
       },
       {
         urlPattern: ({ url }) => url.searchParams.has('_rsc'),
-        handler: 'StaleWhileRevalidate', 
-        options: { 
-          cacheName: 'rsc-payloads', 
-          expiration: { maxEntries: 50, maxAgeSeconds: 86400 } 
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'rsc-payloads',
+          expiration: { maxEntries: 50, maxAgeSeconds: 86400 },
         },
       },
       {

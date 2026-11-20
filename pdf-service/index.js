@@ -1,6 +1,9 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const app = express();
 app.use(cors());
@@ -11,37 +14,55 @@ app.get('/healthz', (req, res) => {
 });
 
 app.post('/generate-pdf', async (req, res) => {
-  const { html, scale } = req.body;
+  const { html, scale, format = 'A3', isLandscape = true, footerTemplate } = req.body;
   let browser = null;
+  let tempFilePath = null;
+
+  // Buat nama file unik di folder temp OS
+  tempFilePath = path.join(os.tmpdir(), `pdf-${Date.now()}-${Math.random().toString(36).substring(7)}.html`);
 
   try {
+    // 1. Simpan HTML ke file temporer untuk mengurangi beban memori CDP
+    fs.writeFileSync(tempFilePath, html, 'utf-8');
+
     browser = await puppeteer.launch({
       headless: "new",
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      protocolTimeout: 120000, // Naikkan timeout protocol
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--font-render-hinting=none',
+        '--js-flags="--max-old-space-size=512"' // Naikkan heap memory
+      ]
     });
 
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 60000 });
     
-    // Beri waktu CSS render
+    // 2. Buka file lokal via protokol file:// (jauh lebih ringan dari setContent)
+    await page.goto(`file://${tempFilePath}`, { 
+      waitUntil: 'networkidle0', 
+      timeout: 60000 
+    });
+    
+    await page.evaluateHandle('document.fonts.ready');
     await new Promise(r => setTimeout(r, 1000));
 
     const pdfBuffer = await page.pdf({
-      format: 'A3',
-      landscape: true,
+      format: format,
+      landscape: isLandscape,
       printBackground: true,
       scale: scale || 1,
       margin: { top: '10mm', right: '10mm', bottom: '15mm', left: '10mm' },
-      // 🟢 AKTIFKAN FOOTER UNTUK NOMOR HALAMAN
-      displayHeaderFooter: true,
-      headerTemplate: '<div></div>', // Kosongkan header default
-      footerTemplate: `
-        <div style="width: 100%; font-size: 9px; font-family: 'Segoe UI', Arial, sans-serif; color: #64748b; text-align: right; padding-right: 10mm;">
-          Page <span class="pageNumber"></span> of <span class="totalPages"></span>
-        </div>
-      `
+      displayHeaderFooter: !!footerTemplate,
+      headerTemplate: '<div></div>',
+      footerTemplate: footerTemplate || '', // Gunakan dari Vercel, atau kosongkan
+      timeout: 60000
     });
 
+    console.log(`[Railway] PDF Berhasil dibuat.`);
+    
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Length': pdfBuffer.length
@@ -49,10 +70,18 @@ app.post('/generate-pdf', async (req, res) => {
     res.send(pdfBuffer);
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('=== RAILWAY PDF ERROR ===');
+    console.error(error);
     res.status(500).json({ error: error.message });
   } finally {
-    if (browser) await browser.close();
+    // 3. Selalu hapus file temporer
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try { fs.unlinkSync(tempFilePath); } catch (e) { console.error('Gagal hapus temp file:', e); }
+    }
+    // 4. Tutup browser dengan aman
+    if (browser) {
+      try { await browser.close(); } catch (e) { console.error('Gagal tutup browser:', e); }
+    }
   }
 });
 

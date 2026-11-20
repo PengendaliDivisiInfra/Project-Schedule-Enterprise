@@ -1,89 +1,70 @@
-import puppeteer, { Browser } from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
 import { NextResponse } from 'next/server';
-import fs from 'fs';
 
 export const maxDuration = 60; 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  let browser: Browser | null = null;
-  
   try {
-    const { html, scale, format = 'A3', isLandscape = true, footerTemplate = '' } = await req.json();
+    const body = await req.json();
+    const { html, scale, format, isLandscape } = body;
 
-    let executablePath: string;
-    let args: string[] = [];
-
-    if (process.env.NODE_ENV === 'development') {
-      const winChrome = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-      const winEdge = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-      const winEdge64 = 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe';
-      
-      if (fs.existsSync(winChrome)) {
-        executablePath = winChrome;
-      } else if (fs.existsSync(winEdge64)) {
-        executablePath = winEdge64;
-      } else if (fs.existsSync(winEdge)) {
-        executablePath = winEdge;
-      } else {
-        throw new Error('Chrome atau Edge tidak ditemukan di Windows.');
-      }
-      args = ['--no-sandbox', '--disable-setuid-sandbox'];
-    } else {
-      chromium.setGraphicsMode = false;
-      executablePath = await chromium.executablePath();
-      args = [
-        ...chromium.args,
-        '--disable-gpu',
-        '--disable-dev-shm-usage',
-        '--disable-setuid-sandbox',
-        '--no-sandbox',
-        '--single-process',
-        '--hide-scrollbars'
-      ];
+    if (!html) {
+      return new NextResponse(JSON.stringify({ error: 'HTML content is required' }), { status: 400 });
     }
 
-    browser = await puppeteer.launch({
-      args,
-      defaultViewport: { width: 1920, height: 1080 },
-      executablePath: executablePath,
-      headless: true, 
+    let PDF_SERVICE_URL = process.env.PDF_SERVICE_URL;
+    if (!PDF_SERVICE_URL) {
+      throw new Error('PDF_SERVICE_URL belum diset di Environment Variables Vercel.');
+    }
+
+    // --- PERBAIKAN URL OTOMATIS ---
+    // Jika lupa https://, tambahkan otomatis
+    if (!PDF_SERVICE_URL.startsWith('http')) {
+      PDF_SERVICE_URL = `https://${PDF_SERVICE_URL}`;
+    }
+    // Hapus trailing slash jika ada
+    if (PDF_SERVICE_URL.endsWith('/')) {
+      PDF_SERVICE_URL = PDF_SERVICE_URL.slice(0, -1);
+    }
+
+    console.log(`[Proxy PDF] Meneruskan request ke: ${PDF_SERVICE_URL}`);
+    console.log(`[Proxy PDF] Ukuran HTML payload: ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+
+    const controller = new AbortController();
+    // Vercel maxDuration 60s, kita batasi fetch 55s
+    const timeoutId = setTimeout(() => controller.abort(), 55000);
+
+    const response = await fetch(PDF_SERVICE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html, scale, format, isLandscape }), 
+      signal: controller.signal
     });
 
-    const page = await browser.newPage();
-    
-    await page.setContent(html, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await new Promise(resolve => setTimeout(resolve, 500));
+    clearTimeout(timeoutId);
 
-    const pdfBuffer = await page.pdf({
-      format: format,
-      landscape: isLandscape,
-      printBackground: true,
-      scale: scale || 1,
-      displayHeaderFooter: footerTemplate ? true : false,
-      headerTemplate: '<div></div>',
-      footerTemplate: footerTemplate,
-      // MARGIN BAWAH 45mm MUTLAK
-      margin: format === 'A4' 
-        ? { top: '20mm', right: '20mm', bottom: '45mm', left: '20mm' } 
-        : { top: '10mm', right: '10mm', bottom: '15mm', left: '10mm' },
-      timeout: 30000
-    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Railway Error (${response.status}): ${errorText}`);
+    }
 
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    const pdfBuffer = await response.arrayBuffer();
+
+    return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="Document.pdf"',
-        'Content-Length': pdfBuffer.length.toString(),
       },
     });
 
   } catch (error: any) {
-    console.error('PDF Generation Error:', error);
-    return new NextResponse(JSON.stringify({ error: 'Gagal generate PDF', details: error.message }), { status: 500 });
-  } finally {
-    if (browser) { await browser.close(); }
+    console.error('=== PROXY PDF ERROR ===');
+    console.error('Message:', error.message);
+    
+    return new NextResponse(JSON.stringify({ 
+      error: 'Gagal generate PDF', 
+      details: error.message 
+    }), { status: 500 });
   }
 }
