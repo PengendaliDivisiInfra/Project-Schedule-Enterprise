@@ -30,8 +30,14 @@ export async function updateSubcontractor(id: string, payload: Partial<Subcontra
 }
 
 export async function softDeleteSubcontractor(id: string) {
-  const { error } = await supabase.from('subcontractors').update({ is_active: false }).eq('id', id);
+  const { data, error } = await supabase
+    .from('subcontractors')
+    .update({ is_active: false })
+    .eq('id', id)
+    .select(); 
+    
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Gagal menghapus. Periksa izin RLS UPDATE pada tabel subcontractors.');
 }
 
 // ===== SPK =====
@@ -40,8 +46,8 @@ export async function listSPK(projectId: string) {
     .from('subcontractor_contracts')
     .select(`
       *,
-      subcontractors ( company_name, bank_name, bank_account ),
-      subcontractor_payments ( amount, payment_type, status ),
+      subcontractors ( company_name, contact_person, bank_name, bank_account ),
+      subcontractor_payments ( amount, payment_type, status, voided_at ),
       subcontractor_addendums ( amount )
     `)
     .eq('project_id', projectId)
@@ -51,19 +57,28 @@ export async function listSPK(projectId: string) {
   if (error) throw new Error(error.message);
   
   return data.map((d: any) => {
-    const total_paid = d.subcontractor_payments
-      ?.filter((p: any) => p.status === 'Paid' || p.status === 'Approved')
-      .reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0;
+    const activePayments = (d.subcontractor_payments || []).filter(
+      (p: any) => !p.voided_at && (p.status || '').toLowerCase() !== 'void'
+    );
+
+    const total_paid = activePayments
+      .filter((p: any) => ['paid', 'approved'].includes((p.status || '').toLowerCase()))
+      .reduce((sum: number, p: any) => sum + Number(p.amount), 0);
       
-    const total_kasbon = d.subcontractor_payments
-      ?.filter((p: any) => p.payment_type === 'Kasbon' && (p.status === 'Paid' || p.status === 'Approved'))
-      .reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0;
+    const total_kasbon = activePayments
+      .filter(
+        (p: any) =>
+          (p.payment_type || '').toLowerCase() === 'kasbon' &&
+          ['paid', 'approved'].includes((p.status || '').toLowerCase())
+      )
+      .reduce((sum: number, p: any) => sum + Number(p.amount), 0);
       
     const total_addendum = d.subcontractor_addendums?.reduce((sum: number, a: any) => sum + Number(a.amount), 0) || 0;
     
     return {
       ...d,
       subcontractor_name: d.subcontractors?.company_name,
+      contact_person: d.subcontractors?.contact_person,
       bank_name: d.subcontractors?.bank_name,
       bank_account: d.subcontractors?.bank_account,
       total_paid,
@@ -87,8 +102,14 @@ export async function updateSPK(id: string, payload: Partial<SubcontractorContra
 }
 
 export async function softDeleteSPK(id: string) {
-  const { error } = await supabase.from('subcontractor_contracts').update({ status: 'Void' }).eq('id', id);
+  const { data, error } = await supabase
+    .from('subcontractor_contracts')
+    .update({ status: 'Void' })
+    .eq('id', id)
+    .select(); 
+
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Gagal membatalkan SPK. Periksa izin RLS UPDATE pada tabel subcontractor_contracts.');
 }
 
 // ===== ADDENDUM & RAB =====
@@ -185,6 +206,7 @@ export async function getBAPPData(contractId: string, startDate: string, endDate
     .from('baop_documents')
     .select('baop_number')
     .eq('contract_id', contractId)
+    .is('voided_at', null)
     .lte('period_start', endDate)
     .gte('period_end', startDate)
     .order('created_at', { ascending: false })
@@ -195,6 +217,8 @@ export async function getBAPPData(contractId: string, startDate: string, endDate
     .from('subcontractor_payments')
     .select('amount')
     .eq('contract_id', contractId)
+    .is('voided_at', null)
+    .neq('status', 'Void')
     .or('payment_type.eq.DP,description.ilike.%uang muka%,description.ilike.%dp%')
     .lte('payment_date', endDate);
     
@@ -265,16 +289,21 @@ export async function getBAPPHistory(projectId: string) {
     .from('bapp_documents')
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
-    .is('voided_at', null) // Hanya ambil yang belum di-void
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
 
-// PERBAIKAN: Soft Delete BAPP
 export async function deleteBAPPDocument(id: string) {
-  const { error } = await supabase.from('bapp_documents').update({ voided_at: new Date().toISOString() }).eq('id', id);
+  const { data, error } = await supabase
+    .from('bapp_documents')
+    .update({ voided_at: new Date().toISOString() })
+    .eq('id', id)
+    .select();
+    
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Gagal menghapus. Periksa izin RLS UPDATE pada tabel bapp_documents.');
 }
 
 // ===== BAOP =====
@@ -321,16 +350,21 @@ export async function getBAOPHistory(projectId: string) {
     .from('baop_documents')
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
-    .is('voided_at', null) // Hanya ambil yang belum di-void
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
 
-// PERBAIKAN: Soft Delete BAOP
 export async function deleteBAOPDocument(id: string) {
-  const { error } = await supabase.from('baop_documents').update({ voided_at: new Date().toISOString() }).eq('id', id);
+  const { data, error } = await supabase
+    .from('baop_documents')
+    .update({ voided_at: new Date().toISOString() })
+    .eq('id', id)
+    .select();
+    
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Gagal menghapus. Periksa izin RLS UPDATE pada tabel baop_documents.');
 }
 
 // ===== BPUTK =====
@@ -437,12 +471,18 @@ export async function getBPUTKHistory(projectId: string) {
   return data;
 }
 
-// PERBAIKAN: Soft Delete BPUTK
 export async function deleteBPUTKDocument(id: string) {
-  const { error } = await supabase.from('bputk_documents').update({ voided_at: new Date().toISOString() }).eq('id', id);
+  const { data, error } = await supabase
+    .from('bputk_documents')
+    .update({ voided_at: new Date().toISOString() })
+    .eq('id', id)
+    .select();
+
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Gagal menghapus. Periksa izin RLS UPDATE pada tabel bputk_documents.');
 }
 
+// ===== LAINNYA =====
 export async function checkOverlappingOpnames(contractId: string, startDate: string, endDate: string) {
   const { data, error } = await supabase
     .from('subcon_opnames')
@@ -468,7 +508,6 @@ export async function saveOpnameProgress(contractId: string, opnameDate: string,
   return true;
 }
 
-// ===== KASBON & KWITANSI =====
 export async function createKasbonRequest(payload: {
   project_id: string;
   contract_id: string;
@@ -476,8 +515,8 @@ export async function createKasbonRequest(payload: {
   payment_date: string;
   amount: number;
   description: string;
-  payment_method: string;
-  bank_account: string;
+  payment_method?: string;
+  bank_account?: string;
   signatures: any[];
 }) {
   const { data, error } = await supabase.from('subcontractor_payments').insert([{
@@ -496,32 +535,127 @@ export async function createKasbonRequest(payload: {
   return data;
 }
 
+export async function updateKasbonRequest(id: string, payload: {
+  contract_id: string;
+  payment_number: string;
+  payment_date: string;
+  amount: number;
+  description: string;
+  signatures: any[];
+}) {
+  const { data, error } = await supabase
+    .from('subcontractor_payments')
+    .update({
+      contract_id: payload.contract_id,
+      payment_number: payload.payment_number,
+      payment_date: payload.payment_date,
+      amount: payload.amount,
+      description: payload.description,
+      signatures: payload.signatures
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
 export async function getAllKasbonHistory(projectId: string) {
   const { data, error } = await supabase
     .from('subcontractor_payments')
-    .select(`*, subcontractor_contracts ( subcontractors ( company_name ) )`)
+    .select(`
+      *,
+      subcontractor_contracts (
+        id,
+        spk_number,
+        work_description,
+        subcontractors ( company_name, contact_person, bank_name, bank_account )
+      )
+    `)
     .eq('project_id', projectId)
     .eq('payment_type', 'Kasbon')
+    .is('voided_at', null)
+    .neq('status', 'Void')
     .order('created_at', { ascending: false });
-  if (error) { console.error("Gagal load riwayat:", error); return []; }
+  if (error) {
+    console.error('Gagal load riwayat kasbon:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function listAllProjectPayments(projectId: string) {
+  const { data, error } = await supabase
+    .from('subcontractor_payments')
+    .select(`
+      *,
+      subcontractor_contracts (
+        id,
+        spk_number,
+        work_description,
+        tax_mode,
+        subcontractors ( company_name, contact_person, bank_name, bank_account, pph_category )
+      )
+    `)
+    .eq('project_id', projectId)
+    .is('voided_at', null)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
   return data || [];
 }
 
 export async function getPendingPayments(projectId: string) {
   const { data, error } = await supabase
     .from('subcontractor_payments')
-    .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
+    .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name, contact_person ) )`)
     .eq('project_id', projectId)
     .eq('status', 'Pending')
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function updatePaymentStatus(paymentId: string, status: 'Approved' | 'Paid') {
+  const { data, error } = await supabase
+    .from('subcontractor_payments')
+    .update({ status })
+    .eq('id', paymentId)
+    .select()
+    .single();
   if (error) throw new Error(error.message);
   return data;
 }
 
-export async function updatePaymentStatus(paymentId: string, status: 'Approved' | 'Paid') {
-  const { data, error } = await supabase.from('subcontractor_payments').update({ status }).eq('id', paymentId).select().single();
+export async function voidSubconPayment(paymentId: string, reason: string) {
+  const { data, error } = await supabase
+    .from('subcontractor_payments')
+    .update({
+      status: 'Void',
+      void_reason: reason || 'Dibatalkan oleh pengguna'
+    })
+    .eq('id', paymentId)
+    .select('id');
   if (error) throw new Error(error.message);
-  return data;
+  if (!data || data.length === 0) {
+    throw new Error('Gagal membatalkan dokumen. Periksa izin RLS UPDATE pada tabel subcontractor_payments.');
+  }
+}
+
+export async function softDeleteSubconPayment(paymentId: string, reason?: string) {
+  const { data, error } = await supabase
+    .from('subcontractor_payments')
+    .update({
+      status: 'Void',
+      voided_at: new Date().toISOString(),
+      void_reason: reason || 'Dihapus dari daftar'
+    })
+    .eq('id', paymentId)
+    .select('id');
+  if (error) throw new Error(error.message);
+  if (!data || data.length === 0) {
+    throw new Error('Gagal menghapus dokumen. Periksa izin RLS UPDATE pada tabel subcontractor_payments.');
+  }
 }
 
 export async function saveReceipt(payload: SubconReceipt) {
@@ -535,18 +669,22 @@ export async function getReceiptHistory(projectId: string) {
     .from('subcon_receipts')
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
+    .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data;
 }
 
 export async function deleteReceipt(id: string) {
-  // Asumsi tabel subcon_receipts juga butuh soft delete
-  const { error } = await supabase.from('subcon_receipts').update({ voided_at: new Date().toISOString() }).eq('id', id);
+  const { data, error } = await supabase
+    .from('subcon_receipts')
+    .update({ voided_at: new Date().toISOString() })
+    .eq('id', id)
+    .select();
   if (error) throw new Error(error.message);
+  if (!data || data.length === 0) throw new Error('Gagal menghapus. Periksa izin RLS UPDATE pada tabel subcon_receipts.');
 }
 
-// ===== DOKUMEN TAGIHAN =====
 export async function getEligibleDocuments(contractId: string) {
   const { data: bputkData, error: errBputk } = await supabase
     .from('bputk_documents')
