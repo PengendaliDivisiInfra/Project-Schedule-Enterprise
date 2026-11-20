@@ -1,248 +1,578 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useState, useEffect } from 'react';
 import { useRole } from '@/lib/hooks/useRole';
+import {
+  listAllProjectPayments,
+  updatePaymentStatus,
+  voidSubconPayment,
+  softDeleteSubconPayment,
+} from '@/lib/services/subcon.service';
 import { MoneyText } from '@/components/ui/MoneyText';
-import { ConfirmModal } from '@/components/ui/ConfirmModal';
-import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
-import { FileText, CheckCircle2, XCircle, Search, Loader2, Wallet, FileCheck, Printer, ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react';
+import {
+  Wallet,
+  Search,
+  FileText,
+  Ban,
+  Trash2,
+  Loader2,
+  AlertTriangle,
+  X,
+  CheckCircle2,
+  ShieldCheck,
+  Clock,
+} from 'lucide-react';
 
-interface PendingPayment {
-  id: string;
-  payment_type: 'Kasbon' | 'Opname';
-  document_number: string;
-  document_date: string;
-  requested_amount: number;
-  vendor_name: string;
-  description: string;
-  source_table: string;
-  status: string;
+interface PaymentCenterViewProps {
+  projectId: string;
+  showToast: (msg: string, type: 'success' | 'error') => void;
 }
 
-interface AuditResult {
-  label: string;
-  status: 'PASS' | 'FAIL' | 'WARN';
-  message: string;
-}
+export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewProps) {
+  const { can } = useRole(projectId);
 
-export function PaymentCenterView({ projectId, showToast }: { projectId: string, showToast: any }) {
-  const { can } = useRole();
-  const [data, setData] = useState<PendingPayment[]>([]);
+  const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  
-  const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null);
-  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
-  const [isPaying, setIsPaying] = useState(false);
-  const [showConfirmPay, setShowConfirmPay] = useState(false);
-  const [auditResults, setAuditResults] = useState<AuditResult[]>([]);
-  const [isAuditing, setIsAuditing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<
+    'ALL' | 'PENDING' | 'APPROVED' | 'PAID' | 'VOID'
+  >('ALL');
 
-  const fetchPayments = async () => {
+  // State Modal Review & Bayar
+  const [reviewItem, setReviewItem] = useState<any | null>(null);
+  const [auditChecked, setAuditChecked] = useState(true);
+  const [isProcessingPay, setIsProcessingPay] = useState(false);
+
+  // State Modal Batal (Void) & Hapus (Soft Delete)
+  const [actionModal, setActionModal] = useState<{
+    type: 'VOID' | 'DELETE';
+    item: any;
+  } | null>(null);
+  const [reason, setReason] = useState('');
+  const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+
+  const loadPayments = async () => {
+    if (!projectId) return;
     setLoading(true);
     try {
-      const { data: pendingData, error } = await supabase.from('v_pending_subcon_payments').select('*').eq('project_id', projectId).order('document_date', { ascending: true });
-      if (error) throw error;
-      setData(pendingData || []);
+      const data = await listAllProjectPayments(projectId);
+      setItems(data || []);
     } catch (err: any) {
-      showToast(err.message, 'error');
+      showToast(err.message || 'Gagal memuat antrean pembayaran', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { if (projectId) fetchPayments(); }, [projectId]);
+  useEffect(() => {
+    loadPayments();
+  }, [projectId]);
 
-  const runComplianceAudit = async (payment: PendingPayment) => {
-    setIsAuditing(true);
-    setAuditResults([]);
-    const results: AuditResult[] = [];
+  const handleAuthorizePayment = async (targetStatus: 'Approved' | 'Paid') => {
+    if (!reviewItem) return;
+    if (!auditChecked) {
+      showToast('Centang verifikasi kepatuhan SAK/KUP terlebih dahulu', 'error');
+      return;
+    }
+
+    setIsProcessingPay(true);
     try {
-      if (payment.payment_type === 'Opname') {
-        const { data: receipt } = await supabase.from('subcon_receipts').select('id, total_gross, total_deduction, total_net, details').eq('id', payment.id).single();
-        if (receipt) {
-          results.push({ label: 'Dokumen Kwitansi', status: 'PASS', message: 'Dokumen Kwitansi tersedia.' });
-          const gross = Number(receipt.total_gross);
-          const deduction = Number(receipt.total_deduction);
-          const net = Number(receipt.total_net);
-          if (Math.abs((gross - deduction) - net) < 1) {
-            results.push({ label: 'Kalkulasi Netto', status: 'PASS', message: 'Gross - Potongan = Netto (Sesuai).' });
-          } else {
-            results.push({ label: 'Kalkulasi Netto', status: 'FAIL', message: 'Nilai Netto tidak sesuai dengan Gross - Potongan.' });
-          }
-          const details = receipt.details || [];
-          const hasPpn = details.some((d: any) => d.name.includes('PPN'));
-          const hasPph = details.some((d: any) => d.name.includes('PPh'));
-          if (hasPpn && hasPph) {
-             results.push({ label: 'Kepatuhan KUP', status: 'PASS', message: 'Pajak PPN dan PPh telah dicatat.' });
-          } else {
-             results.push({ label: 'Kepatuhan KUP', status: 'WARN', message: 'Beberapa komponen pajak tidak ditemukan.' });
-          }
-        } else {
-          results.push({ label: 'Dokumen Kwitansi', status: 'FAIL', message: 'Data Kwitansi tidak ditemukan di database.' });
-        }
+      await updatePaymentStatus(reviewItem.id, targetStatus);
+      showToast(
+        targetStatus === 'Approved'
+          ? `Dokumen ${reviewItem.payment_number} berhasil disetujui (APPROVED)`
+          : `Pembayaran ${reviewItem.payment_number} berhasil dicairkan (PAID)`,
+        'success'
+      );
+      setReviewItem(null);
+      await loadPayments();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal memproses otorisasi pembayaran', 'error');
+    } finally {
+      setIsProcessingPay(false);
+    }
+  };
+
+  const handleConfirmAction = async () => {
+    if (!actionModal) return;
+    if (actionModal.type === 'VOID' && !reason.trim()) {
+      showToast('Alasan pembatalan wajib diisi', 'error');
+      return;
+    }
+
+    setIsSubmittingAction(true);
+    try {
+      if (actionModal.type === 'VOID') {
+        await voidSubconPayment(actionModal.item.id, reason.trim());
+        showToast(
+          `Dokumen ${actionModal.item.payment_number} berhasil dibatalkan (VOID)`,
+          'success'
+        );
       } else {
-        const { data: kasbon } = await supabase.from('subcontractor_payments').select('amount, status').eq('id', payment.id).single();
-        if (kasbon) {
-          results.push({ label: 'Dokumen Kasbon', status: 'PASS', message: 'Data pengajuan Kasbon valid.' });
-          if (Number(kasbon.amount) === payment.requested_amount) {
-             results.push({ label: 'Validasi Nominal', status: 'PASS', message: 'Nominal sesuai dengan pengajuan.' });
-          }
-        }
+        await softDeleteSubconPayment(
+          actionModal.item.id,
+          reason.trim() || 'Dihapus dari antrean pembayaran'
+        );
+        setItems((prev) => prev.filter((row) => row.id !== actionModal.item.id));
+        showToast(
+          `Dokumen ${actionModal.item.payment_number} berhasil dihapus dari antrean`,
+          'success'
+        );
       }
-      results.push({ label: 'Keseimbangan Jurnal', status: 'PASS', message: 'Debet dan Kredit seimbang (Auto-Generated).' });
-      setAuditResults(results);
+
+      setActionModal(null);
+      setReason('');
+      await loadPayments();
     } catch (err: any) {
-      results.push({ label: 'System Audit', status: 'FAIL', message: err.message });
-      setAuditResults(results);
+      showToast(err.message || 'Gagal memproses aksi', 'error');
     } finally {
-      setIsAuditing(false);
+      setIsSubmittingAction(false);
     }
   };
 
-  const handleOpenReview = (payment: PendingPayment) => {
-    setSelectedPayment(payment);
-    setIsReviewModalOpen(true);
-    runComplianceAudit(payment);
-  };
+  const filteredItems = items.filter((item) => {
+    const statusUpper = (item.status || 'Pending').toUpperCase();
+    if (statusFilter !== 'ALL' && statusUpper !== statusFilter) return false;
 
-  const handleProcessPayment = async () => {
-    if (!selectedPayment) return;
-    const hasFailures = auditResults.some(r => r.status === 'FAIL');
-    if (hasFailures) return showToast('Tidak dapat memproses pembayaran. Selesaikan masalah audit terlebih dahulu.', 'error');
-    setIsPaying(true);
-    try {
-      const { error } = await supabase.from(selectedPayment.source_table).update({ status: 'PAID' }).eq('id', selectedPayment.id);
-      if (error) throw error;
-      showToast(`Pembayaran berhasil. Jurnal dan Kas Keluar telah tercatat.`, 'success');
-      setIsReviewModalOpen(false);
-      setShowConfirmPay(false);
-      fetchPayments();
-    } catch (err: any) {
-      showToast(err.message, 'error');
-    } finally {
-      setIsPaying(false);
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+
+    const docNo = (item.payment_number || '').toLowerCase();
+    const vendor = (
+      item.subcontractor_contracts?.subcontractors?.contact_person ||
+      item.subcontractor_contracts?.subcontractors?.company_name ||
+      ''
+    ).toLowerCase();
+    return docNo.includes(q) || vendor.includes(q);
+  });
+
+  const getStatusBadge = (status: string) => {
+    const s = (status || 'Pending').toLowerCase();
+    if (s === 'paid') {
+      return (
+        <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 uppercase">
+          PAID
+        </span>
+      );
     }
+    if (s === 'approved') {
+      return (
+        <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-100 text-blue-700 border border-blue-200 uppercase">
+          APPROVED
+        </span>
+      );
+    }
+    if (s === 'void') {
+      return (
+        <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-200 uppercase">
+          VOID
+        </span>
+      );
+    }
+    return (
+      <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">
+        PENDING
+      </span>
+    );
   };
-
-  const filteredData = data.filter(d => d.vendor_name?.toLowerCase().includes(search.toLowerCase()) || d.document_number?.toLowerCase().includes(search.toLowerCase()));
-
-  if (!can('SUBCON_PAY')) return <div className="p-8 text-center text-red-500 font-bold">Akses Ditolak.</div>;
-  const hasFailedAudit = auditResults.some(r => r.status === 'FAIL');
 
   return (
-    <div className="space-y-6">
-      {/* HEADER & PENCARIAN */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Header & Filter */}
+      <div className="p-6 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2 tracking-tight">
-            <Wallet className="text-emerald-600" /> Antrean Persetujuan & Pembayaran
-          </h2>
-          <p className="text-sm text-slate-500 mt-1 font-medium">Review dokumen dan validasi kepatuhan SAK/KUP sebelum mencairkan dana.</p>
+          <h3 className="font-extrabold text-lg text-slate-800 flex items-center gap-2">
+            <Wallet className="text-emerald-600" size={20} /> Antrean Persetujuan &amp; Pembayaran
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Review dokumen dan validasi kepatuhan SAK/KUP sebelum mencairkan dana.
+          </p>
         </div>
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input type="text" placeholder="Cari No. Dokumen / Mandor..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all shadow-sm" />
+
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-bold">
+            {(['ALL', 'PENDING', 'APPROVED', 'PAID', 'VOID'] as const).map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => setStatusFilter(st)}
+                className={`px-2.5 py-1.5 rounded-lg transition-colors ${
+                  statusFilter === st
+                    ? 'bg-white text-indigo-700 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                {st === 'ALL' ? 'Semua' : st}
+              </button>
+            ))}
+          </div>
+
+          <div className="relative w-full sm:w-64">
+            <Search
+              size={15}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari No. Dokumen / Mandor..."
+              className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl outline-none focus:border-indigo-500"
+            />
+          </div>
         </div>
       </div>
 
-      {/* TABEL ANTREAN */}
-      <div className="bg-white border rounded-2xl shadow-sm overflow-hidden flex flex-col">
-        <div className="overflow-x-auto max-h-[70vh]">
-          <table className="w-full text-left text-sm min-w-[900px]">
-            <thead className="bg-slate-50 border-b border-slate-300">
-              <tr className="text-slate-600 text-xs uppercase tracking-wider">
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10 text-center w-24">Tipe</th>
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">No. Dokumen</th>
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Tanggal</th>
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Mandor / Vendor</th>
-                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Nilai Diajukan</th>
-                <th className="p-4 font-bold border-b border-slate-300 text-center sticky top-0 bg-slate-50 z-10">Status</th>
-                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Aksi</th>
+      {/* Tabel Antrean */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[1000px]">
+          <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500">
+            <tr>
+              <th className="p-4 font-bold">Tipe</th>
+              <th className="p-4 font-bold">No. Dokumen</th>
+              <th className="p-4 font-bold">Tanggal</th>
+              <th className="p-4 font-bold">Mandor / Vendor</th>
+              <th className="p-4 font-bold text-right">Nilai Diajukan</th>
+              <th className="p-4 font-bold text-center">Status</th>
+              <th className="p-4 font-bold text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr>
+                <td colSpan={7} className="p-10 text-center">
+                  <Loader2 className="animate-spin mx-auto text-indigo-600" size={24} />
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr><td colSpan={7} className="p-0"><SkeletonLoader rows={5} cols={6} /></td></tr>
-              ) : filteredData.length === 0 ? (
-                <tr><td colSpan={7} className="p-16 text-center text-slate-400 font-medium italic">Tidak ada antrean pembayaran. Semua bersih!</td></tr>
-              ) : filteredData.map((item) => (
-                <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="p-4 text-center">
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] uppercase font-bold border ${item.payment_type === 'Kasbon' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                      {item.payment_type}
-                    </span>
-                  </td>
-                  <td className="p-4 font-mono font-bold text-blue-700">{item.document_number}</td>
-                  <td className="p-4 font-medium text-slate-600">{new Date(item.document_date).toLocaleDateString('id-ID')}</td>
-                  <td className="p-4 font-bold text-slate-800">{item.vendor_name}</td>
-                  <td className="p-4 text-right tabular-nums font-bold text-emerald-600"><MoneyText value={item.requested_amount} /></td>
-                  <td className="p-4 text-center">
-                    <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg text-[10px] font-bold border border-slate-200 uppercase">{item.status}</span>
-                  </td>
-                  <td className="p-4 text-right">
-                    <button onClick={() => handleOpenReview(item)} className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-sm">
-                      <FileText size={14} /> Review & Bayar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ) : filteredItems.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-12 text-center text-slate-400 italic">
+                  Tidak ada antrean pembayaran yang sesuai filter.
+                </td>
+              </tr>
+            ) : (
+              filteredItems.map((item) => {
+                const statusLower = (item.status || 'Pending').toLowerCase();
+                const isVoid = statusLower === 'void';
+                const isPaid = statusLower === 'paid';
+                const isKasbon = (item.payment_type || '').toLowerCase() === 'kasbon';
+                const vendorLabel =
+                  item.subcontractor_contracts?.subcontractors?.contact_person ||
+                  item.subcontractor_contracts?.subcontractors?.company_name ||
+                  '-';
+
+                return (
+                  <tr
+                    key={item.id}
+                    className={`transition-colors ${
+                      isVoid ? 'bg-slate-50/80 opacity-75' : 'hover:bg-slate-50/80'
+                    }`}
+                  >
+                    <td className="p-4">
+                      <span
+                        className={`px-2.5 py-1 rounded text-[11px] font-bold uppercase ${
+                          isKasbon
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-indigo-100 text-indigo-700'
+                        }`}
+                      >
+                        {(item.payment_type || 'OPNAME').toUpperCase()}
+                      </span>
+                    </td>
+
+                    <td className="p-4 font-bold font-mono text-indigo-700 text-xs">
+                      {item.payment_number}
+                      {isVoid && item.void_reason && (
+                        <span className="block font-sans font-normal text-[11px] text-rose-600 mt-0.5">
+                          Alasan batal: {item.void_reason}
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="p-4 text-slate-600 text-xs">
+                      {item.payment_date
+                        ? new Date(item.payment_date).toLocaleDateString('id-ID')
+                        : '-'}
+                    </td>
+
+                    <td className="p-4 font-bold text-slate-800 uppercase text-xs">
+                      {vendorLabel}
+                    </td>
+
+                    <td className="p-4 text-right font-bold text-emerald-600 tabular-nums">
+                      <MoneyText value={item.amount} />
+                    </td>
+
+                    <td className="p-4 text-center">{getStatusBadge(item.status)}</td>
+
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {can('SUBCON_PAY') && !isVoid && !isPaid && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAuditChecked(true);
+                                setReviewItem(item);
+                              }}
+                              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                            >
+                              <FileText size={13} /> Review &amp; Bayar
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setReason('');
+                                setActionModal({ type: 'VOID', item });
+                              }}
+                              className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+                              title="Batalkan Pengajuan (Status menjadi VOID)"
+                            >
+                              <Ban size={13} /> Batal
+                            </button>
+                          </>
+                        )}
+
+                        {can('SUBCON_PAY') && !isPaid && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReason('');
+                              setActionModal({ type: 'DELETE', item });
+                            }}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+                            title="Hapus dari Antrean (Soft Delete)"
+                          >
+                            <Trash2 size={13} /> Hapus
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* MODAL REVIEW DENGAN AUDIT KEPATUHAN */}
-      {isReviewModalOpen && selectedPayment && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col">
-            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-bold flex items-center gap-2"><FileCheck className="text-emerald-400" /> Review & Audit Dokumen</h3>
-                <p className="text-slate-300 text-xs mt-1 font-medium">{selectedPayment.document_number} <span className="mx-2">|</span> {selectedPayment.payment_type} <span className="mx-2">|</span> {selectedPayment.vendor_name}</p>
-              </div>
-              <button onClick={() => setIsReviewModalOpen(false)} className="text-slate-400 hover:text-rose-400 bg-white/10 p-2 rounded-full transition-colors"><XCircle size={24} /></button>
+      {/* MODAL REVIEW & OTORISASI PEMBAYARAN */}
+      {reviewItem && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                <ShieldCheck size={19} className="text-emerald-600" />
+                Review &amp; Otorisasi Pembayaran
+              </h4>
+              <button
+                type="button"
+                onClick={() => setReviewItem(null)}
+                disabled={isProcessingPay}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
             </div>
-            
-            <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh]">
-              <div className="bg-emerald-50 border border-emerald-200 p-6 rounded-2xl text-center shadow-sm">
-                <p className="text-emerald-700 text-xs font-bold uppercase tracking-wider mb-1">Nilai Pengajuan (Netto)</p>
-                <p className="text-4xl font-extrabold text-emerald-800 tabular-nums"><MoneyText value={selectedPayment.requested_amount} /></p>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Nomor Dokumen</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {reviewItem.payment_number}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tipe Pengajuan</span>
+                  <span className="font-bold text-indigo-700 uppercase">
+                    {reviewItem.payment_type || 'OPNAME'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">No. SPK</span>
+                  <span className="font-mono font-semibold text-slate-700">
+                    {reviewItem.subcontractor_contracts?.spk_number || '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Mandor / Vendor</span>
+                  <span className="font-bold text-slate-800 uppercase">
+                    {reviewItem.subcontractor_contracts?.subcontractors?.contact_person ||
+                      reviewItem.subcontractor_contracts?.subcontractors?.company_name ||
+                      '-'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Rekening Tujuan</span>
+                  <span className="font-semibold text-slate-700">
+                    {reviewItem.subcontractor_contracts?.subcontractors?.bank_name
+                      ? `${reviewItem.subcontractor_contracts.subcontractors.bank_name} - ${
+                          reviewItem.subcontractor_contracts.subcontractors.bank_account || ''
+                        }`
+                      : '-'}
+                  </span>
+                </div>
+                <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center">
+                  <span className="font-bold text-slate-700">Nominal Netto Pencairan</span>
+                  <span className="text-base font-extrabold text-emerald-600 tabular-nums">
+                    <MoneyText value={reviewItem.amount} />
+                  </span>
+                </div>
               </div>
 
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                <div className={`p-4 font-bold text-sm flex items-center gap-2 border-b ${hasFailedAudit ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                  {isAuditing ? <Loader2 className="animate-spin" size={18} /> : hasFailedAudit ? <ShieldAlert size={18} /> : <ShieldCheck size={18} />}
-                  {isAuditing ? 'Menjalankan Audit Kepatuhan...' : hasFailedAudit ? 'Audit Gagal: Ditemukan Ketidaksesuaian' : 'Audit Kepatuhan SAK & KUP: LULUS'}
+              {reviewItem.description && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-amber-900">
+                  <span className="font-bold block mb-1">Keterangan / Tujuan:</span>
+                  <p className="whitespace-pre-line">{reviewItem.description}</p>
                 </div>
-                <div className="bg-white p-5 space-y-3">
-                  {auditResults.map((res, idx) => (
-                    <div key={idx} className="flex items-start gap-3 text-sm">
-                      {res.status === 'PASS' && <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 flex-shrink-0" />}
-                      {res.status === 'FAIL' && <XCircle size={18} className="text-rose-500 mt-0.5 flex-shrink-0" />}
-                      {res.status === 'WARN' && <AlertTriangle size={18} className="text-amber-500 mt-0.5 flex-shrink-0" />}
-                      <div>
-                        <span className="font-bold text-slate-800">{res.label}: </span>
-                        <span className={res.status === 'FAIL' ? 'text-rose-600 font-medium' : res.status === 'WARN' ? 'text-amber-600 font-medium' : 'text-slate-600'}>{res.message}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-2">
-                <button onClick={() => setIsReviewModalOpen(false)} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 border border-slate-300 rounded-xl transition-colors">Tutup</button>
-                <button onClick={() => setShowConfirmPay(true)} disabled={hasFailedAudit || isAuditing} className={`px-6 py-2.5 text-sm font-bold text-white rounded-xl flex items-center gap-2 shadow-md transition-all ${hasFailedAudit || isAuditing ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-                  <CheckCircle2 size={18} /> Konfirmasi Pembayaran
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-emerald-200 bg-emerald-50/60 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={auditChecked}
+                  onChange={(e) => setAuditChecked(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className="text-slate-700 leading-relaxed font-medium">
+                  Saya telah memverifikasi kelengkapan dokumen fisik, perhitungan pajak
+                  (PPN/PPh 4 ayat 2), dan kesesuaian saldo SPK sesuai standar SAK/KUP.
+                </span>
+              </label>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setReviewItem(null)}
+                disabled={isProcessingPay}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Tutup
+              </button>
+
+              {(reviewItem.status || 'Pending').toLowerCase() === 'pending' && (
+                <button
+                  type="button"
+                  onClick={() => handleAuthorizePayment('Approved')}
+                  disabled={isProcessingPay}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  {isProcessingPay ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Clock size={14} />
+                  )}
+                  Approve (Setujui)
                 </button>
-              </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleAuthorizePayment('Paid')}
+                disabled={isProcessingPay}
+                className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl flex items-center gap-1.5 shadow-sm transition-colors"
+              >
+                {isProcessingPay ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={14} />
+                )}
+                Konfirmasi Pembayaran (PAID)
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <ConfirmModal isOpen={showConfirmPay} title="Konfirmasi Pembayaran" message={`Apakah Anda yakin dana sebesar Rp ${selectedPayment?.requested_amount.toLocaleString('id-ID')} sudah ditransfer? Tindakan ini akan mencatat Kas Keluar di Buku Besar.`} onConfirm={handleProcessPayment} onClose={() => setShowConfirmPay(false)} isLoading={isPaying} />
+      {/* CUSTOM MODAL KONFIRMASI BATAL (VOID) & HAPUS (SOFT DELETE) */}
+      {actionModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                <AlertTriangle
+                  size={18}
+                  className={actionModal.type === 'VOID' ? 'text-amber-600' : 'text-rose-600'}
+                />
+                {actionModal.type === 'VOID'
+                  ? 'Batalkan Pengajuan Pembayaran'
+                  : 'Hapus Pengajuan dari Antrean'}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setActionModal(null)}
+                disabled={isSubmittingAction}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Dokumen:{' '}
+                <strong className="font-mono text-slate-800">
+                  {actionModal.item.payment_number}
+                </strong>
+                <br />
+                {actionModal.type === 'VOID'
+                  ? 'Status dokumen akan diubah menjadi VOID dan tidak dapat dicairkan, namun tetap tampil pada riwayat pembayaran sebagai bukti pembatalan.'
+                  : 'Dokumen akan dihapus dari tampilan antrean (Soft Delete) dan tetap tersimpan pada log audit sistem.'}
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  {actionModal.type === 'VOID'
+                    ? 'Alasan Pembatalan (Wajib)'
+                    : 'Catatan Penghapusan (Opsional)'}
+                </label>
+                <textarea
+                  rows={3}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder={
+                    actionModal.type === 'VOID'
+                      ? 'Contoh: Nominal pengajuan salah / revisi volume opname...'
+                      : 'Contoh: Duplikat input draft...'
+                  }
+                  className="w-full border border-slate-300 rounded-xl p-2.5 text-xs outline-none focus:border-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setActionModal(null)}
+                disabled={isSubmittingAction}
+                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAction}
+                disabled={isSubmittingAction}
+                className={`px-5 py-2 text-xs font-bold text-white rounded-xl flex items-center gap-1.5 shadow-sm transition-colors ${
+                  actionModal.type === 'VOID'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-rose-600 hover:bg-rose-700'
+                }`}
+              >
+                {isSubmittingAction ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={14} />
+                )}
+                {actionModal.type === 'VOID' ? 'Ya, Batalkan (VOID)' : 'Ya, Hapus'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
