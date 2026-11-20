@@ -2,8 +2,7 @@
 const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   reactStrictMode: true,
-
-  // Semua konfigurasi experimental terkait Chromium DIHAPUS
+  poweredByHeader: false,
 
   async headers() {
     return [
@@ -13,6 +12,8 @@ const nextConfig = {
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
         ],
       },
     ];
@@ -33,6 +34,10 @@ const withPWA = require('@ducanh2912/next-pwa').default({
     disableDevLogs: true,
     navigationPreload: false,
     runtimeCaching: [
+      {
+        urlPattern: /\/api\/.*/i,
+        handler: 'NetworkOnly',
+      },
       {
         urlPattern: /\/auth\/.*/i,
         handler: 'NetworkOnly',
