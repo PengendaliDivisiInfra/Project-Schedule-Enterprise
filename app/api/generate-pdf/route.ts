@@ -1,47 +1,76 @@
 import { NextResponse } from 'next/server';
 
-export const maxDuration = 60; 
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { html, scale, format, isLandscape } = body;
+    const { html, scale, format, isLandscape, footerTemplate } = body;
 
     if (!html) {
-      return new NextResponse(JSON.stringify({ error: 'HTML content is required' }), { status: 400 });
+      return NextResponse.json(
+        { error: 'HTML content is required' },
+        { status: 400 }
+      );
     }
 
     let PDF_SERVICE_URL = process.env.PDF_SERVICE_URL;
     if (!PDF_SERVICE_URL) {
-      throw new Error('PDF_SERVICE_URL belum diset di Environment Variables Vercel.');
+      throw new Error(
+        'PDF_SERVICE_URL belum diset di Environment Variables Vercel (Production/Preview).'
+      );
     }
 
-    // --- PERBAIKAN URL OTOMATIS ---
-    // Jika lupa https://, tambahkan otomatis
+    // Pastikan protokol https:// tersedia dan hapus trailing slash
     if (!PDF_SERVICE_URL.startsWith('http')) {
       PDF_SERVICE_URL = `https://${PDF_SERVICE_URL}`;
     }
-    // Hapus trailing slash jika ada
     if (PDF_SERVICE_URL.endsWith('/')) {
       PDF_SERVICE_URL = PDF_SERVICE_URL.slice(0, -1);
     }
 
+    const payloadToRailway: Record<string, any> = {
+      html,
+      scale,
+      format,
+      isLandscape,
+    };
+
+    // Teruskan footerTemplate (tabel paraf & nomor halaman SPK) jika dikirim oleh client
+    if (footerTemplate) {
+      payloadToRailway.footerTemplate = footerTemplate;
+    }
+
     console.log(`[Proxy PDF] Meneruskan request ke: ${PDF_SERVICE_URL}`);
-    console.log(`[Proxy PDF] Ukuran HTML payload: ${(html.length / 1024 / 1024).toFixed(2)} MB`);
+    console.log(
+      `[Proxy PDF] Ukuran HTML payload: ${(html.length / 1024 / 1024).toFixed(2)} MB`
+    );
 
     const controller = new AbortController();
-    // Vercel maxDuration 60s, kita batasi fetch 55s
+    // Vercel maxDuration 60s, batasi fetch 55s agar error tetap tertangkap rapi
     const timeoutId = setTimeout(() => controller.abort(), 55000);
 
-    const response = await fetch(PDF_SERVICE_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html, scale, format, isLandscape }), 
-      signal: controller.signal
-    });
-
-    clearTimeout(timeoutId);
+    let response: Response;
+    try {
+      response = await fetch(PDF_SERVICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadToRailway),
+        signal: controller.signal,
+      });
+    } catch (fetchErr: any) {
+      if (fetchErr?.name === 'AbortError') {
+        throw new Error(
+          'Timeout (55 detik): Layanan PDF Railway tidak merespons. Periksa status container Railway atau URL gambar/logo di dokumen.'
+        );
+      }
+      throw new Error(
+        `Koneksi ke layanan PDF Railway gagal: ${fetchErr?.message || 'Network error'}`
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -57,14 +86,16 @@ export async function POST(req: Request) {
         'Content-Disposition': 'attachment; filename="Document.pdf"',
       },
     });
-
   } catch (error: any) {
     console.error('=== PROXY PDF ERROR ===');
     console.error('Message:', error.message);
-    
-    return new NextResponse(JSON.stringify({ 
-      error: 'Gagal generate PDF', 
-      details: error.message 
-    }), { status: 500 });
+
+    return NextResponse.json(
+      {
+        error: 'Gagal generate PDF',
+        details: error.message || 'Unknown server error',
+      },
+      { status: 500 }
+    );
   }
 }
