@@ -627,35 +627,30 @@ export async function updatePaymentStatus(paymentId: string, status: 'Approved' 
   return data;
 }
 
-export async function voidSubconPayment(paymentId: string, reason: string) {
-  const { data, error } = await supabase
-    .from('subcontractor_payments')
-    .update({
-      status: 'Void',
-      void_reason: reason || 'Dibatalkan oleh pengguna'
-    })
-    .eq('id', paymentId)
-    .select('id');
-  if (error) throw new Error(error.message);
-  if (!data || data.length === 0) {
-    throw new Error('Gagal membatalkan dokumen. Periksa izin RLS UPDATE pada tabel subcontractor_payments.');
+export async function voidSubconPayment(paymentId: string, reason?: string) {
+  const { data, error } = await supabase.rpc('rpc_sync_void_subcon_payment', {
+    p_payment_id: paymentId,
+    p_reason: reason?.trim() || 'Dibatalkan oleh pengguna',
+    p_soft_delete: false,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Gagal membatalkan dokumen pembayaran (Sync VOID).');
   }
+  return data;
 }
 
 export async function softDeleteSubconPayment(paymentId: string, reason?: string) {
-  const { data, error } = await supabase
-    .from('subcontractor_payments')
-    .update({
-      status: 'Void',
-      voided_at: new Date().toISOString(),
-      void_reason: reason || 'Dihapus dari daftar'
-    })
-    .eq('id', paymentId)
-    .select('id');
-  if (error) throw new Error(error.message);
-  if (!data || data.length === 0) {
-    throw new Error('Gagal menghapus dokumen. Periksa izin RLS UPDATE pada tabel subcontractor_payments.');
+  const { data, error } = await supabase.rpc('rpc_sync_void_subcon_payment', {
+    p_payment_id: paymentId,
+    p_reason: reason?.trim() || 'Dihapus dari daftar',
+    p_soft_delete: true,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Gagal menghapus dokumen pembayaran (Soft Delete).');
   }
+  return data;
 }
 
 export async function saveReceipt(payload: SubconReceipt) {

@@ -32,6 +32,7 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
   const { can } = useRole(projectId);
 
   const [items, setItems] = useState<any[]>([]);
+  const [softDeletedIds, setSoftDeletedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<
@@ -105,7 +106,7 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
       if (actionModal.type === 'VOID') {
         await voidSubconPayment(actionModal.item.id, reason.trim());
         showToast(
-          `Dokumen ${actionModal.item.payment_number} berhasil dibatalkan (VOID)`,
+          `Dokumen ${actionModal.item.payment_number} berhasil di-VOID dan disinkronkan lintas modul keuangan`,
           'success'
         );
       } else {
@@ -113,6 +114,11 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
           actionModal.item.id,
           reason.trim() || 'Dihapus dari antrean pembayaran'
         );
+        setSoftDeletedIds((prev) => {
+          const next = new Set(prev);
+          next.add(actionModal.item.id);
+          return next;
+        });
         setItems((prev) => prev.filter((row) => row.id !== actionModal.item.id));
         showToast(
           `Dokumen ${actionModal.item.payment_number} berhasil dihapus dari antrean`,
@@ -131,6 +137,8 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
   };
 
   const filteredItems = items.filter((item) => {
+    if (item.is_deleted || softDeletedIds.has(item.id)) return false;
+
     const statusUpper = (item.status || 'Pending').toUpperCase();
     if (statusFilter !== 'ALL' && statusUpper !== statusFilter) return false;
 
@@ -281,7 +289,9 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
                     </td>
 
                     <td className="p-4 font-bold font-mono text-indigo-700 text-xs">
-                      {item.payment_number}
+                      <span className={isVoid ? 'line-through text-slate-400' : ''}>
+                        {item.payment_number}
+                      </span>
                       {isVoid && item.void_reason && (
                         <span className="block font-sans font-normal text-[11px] text-rose-600 mt-0.5">
                           Alasan batal: {item.void_reason}
@@ -299,7 +309,11 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
                       {vendorLabel}
                     </td>
 
-                    <td className="p-4 text-right font-bold text-emerald-600 tabular-nums">
+                    <td
+                      className={`p-4 text-right font-bold tabular-nums ${
+                        isVoid ? 'line-through text-slate-400' : 'text-emerald-600'
+                      }`}
+                    >
                       <MoneyText value={item.amount} />
                     </td>
 
@@ -308,30 +322,30 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {can('SUBCON_PAY') && !isVoid && !isPaid && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAuditChecked(true);
-                                setReviewItem(item);
-                              }}
-                              className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-                            >
-                              <FileText size={13} /> Review &amp; Bayar
-                            </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAuditChecked(true);
+                              setReviewItem(item);
+                            }}
+                            className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                          >
+                            <FileText size={13} /> Review &amp; Bayar
+                          </button>
+                        )}
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setReason('');
-                                setActionModal({ type: 'VOID', item });
-                              }}
-                              className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
-                              title="Batalkan Pengajuan (Status menjadi VOID)"
-                            >
-                              <Ban size={13} /> Batal
-                            </button>
-                          </>
+                        {can('SUBCON_PAY') && !isVoid && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReason('');
+                              setActionModal({ type: 'VOID', item });
+                            }}
+                            className="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+                            title="Batalkan Transaksi & Sinkronkan Lintas Modul (VOID)"
+                          >
+                            <Ban size={13} /> {isPaid ? 'Void' : 'Batal'}
+                          </button>
                         )}
 
                         {can('SUBCON_PAY') && !isPaid && (
@@ -498,7 +512,7 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
                   className={actionModal.type === 'VOID' ? 'text-amber-600' : 'text-rose-600'}
                 />
                 {actionModal.type === 'VOID'
-                  ? 'Batalkan Pengajuan Pembayaran'
+                  ? 'Batalkan Pembayaran (Sync VOID Lintas Modul)'
                   : 'Hapus Pengajuan dari Antrean'}
               </h4>
               <button
@@ -519,7 +533,7 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
                 </strong>
                 <br />
                 {actionModal.type === 'VOID'
-                  ? 'Status dokumen akan diubah menjadi VOID dan tidak dapat dicairkan, namun tetap tampil pada riwayat pembayaran sebagai bukti pembatalan.'
+                  ? 'Status dokumen akan diubah menjadi VOID dan secara otomatis membalikkan pencatatan di Buku Subkon, Arus Kas (cash_flows), Realisasi Biaya (actual_costs), serta membuka kembali kunci BPUTK terkait.'
                   : 'Dokumen akan dihapus dari tampilan antrean (Soft Delete) dan tetap tersimpan pada log audit sistem.'}
               </p>
 
