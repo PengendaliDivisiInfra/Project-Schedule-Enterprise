@@ -44,6 +44,13 @@ export default function SPKPrintTemplate({ spk, templates, project, subcontracto
   const namaPihak2 = spk.signature_pihak_2 || subcontractor.contact_person || 'Nama Pihak 2';
   const jabatanPihak2 = spk.signature_pihak_2_title || 'Mandor';
 
+  // PERBAIKAN: Helper untuk label pajak di tabel BoQ
+  const getTaxLabel = (mode: string) => {
+    if (mode === 'EXCLUDE') return 'Exclude Pajak';
+    if (mode === 'INCLUDE') return 'Include Pajak';
+    return 'Non Pajak';
+  };
+
   const parseContent = (content: string) => {
     let parsed = content.replace(/\\n/g, '\n').replace(/\t/g, ' ');
 
@@ -396,7 +403,8 @@ export default function SPKPrintTemplate({ spk, templates, project, subcontracto
             <tr>
               <td colSpan={7} style={{ backgroundColor: '#fff' }}>
                 <strong>Catatan :</strong><br/>
-                <span style={{ fontStyle: 'italic' }}>Harga {spk.tax_mode === 'EXCLUDE' ? 'Exclude Pajak' : 'Include Pajak'}</span>
+                {/* PERBAIKAN: Menggunakan helper getTaxLabel */}
+                <span style={{ fontStyle: 'italic' }}>Harga {getTaxLabel(spk.tax_mode)}</span>
               </td>
             </tr>
           </tfoot>
