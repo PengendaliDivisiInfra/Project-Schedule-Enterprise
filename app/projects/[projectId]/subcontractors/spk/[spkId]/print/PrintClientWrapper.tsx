@@ -52,33 +52,33 @@ export default function PrintClientWrapper({
         </html>
       `;
 
-      // DESAIN PARAF & NOMOR (100% Murni Tabel Inline Style - RAPI)
+      // DESAIN PARAF & NOMOR (100% Murni Tabel Inline Style - Enterprise)
       const footerHtml = `
-        <div style="width: 100%; font-family: 'Arial Narrow', Arial, sans-serif; padding: 0 15mm; margin: 0; box-sizing: border-box; color: #000; font-size: 8pt;">
+        <div style="width: 100%; font-family: 'Arial', sans-serif; padding: 0 10mm; margin: 0; box-sizing: border-box; color: #000; font-size: 8pt;">
           <table style="width: 100%; border-collapse: collapse; border: none;">
             <tr>
               <!-- BAGIAN KIRI: NOMOR HALAMAN -->
-              <td style="width: 30%; vertical-align: bottom; padding: 0; text-align: left;">
+              <td style="width: 40%; vertical-align: bottom; padding: 0; text-align: left;">
                 Halaman <span class="pageNumber"></span> dari <span class="totalPages"></span>
               </td>
 
               <!-- BAGIAN KANAN: TABEL PARAF -->
-              <td style="width: 70%; text-align: right; padding: 0; vertical-align: bottom;">
+              <td style="width: 60%; text-align: right; padding: 0; vertical-align: bottom;">
                 <table style="width: 100%; border-collapse: collapse; text-align: center; margin-left: auto; background-color: #fff; table-layout: fixed;">
                   <thead>
                     <tr>
-                      <th style="border: 1px solid #000; padding: 3px 1px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Sub Kont.</th>
-                      <th style="border: 1px solid #000; padding: 3px 1px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Site Manager</th>
-                      <th style="border: 1px solid #000; padding: 3px 1px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Man. Proc.</th>
-                      <th style="border: 1px solid #000; padding: 3px 1px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Procurement</th>
+                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Sub Kont.</th>
+                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Site Manager</th>
+                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Man. Proc.</th>
+                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Procurement</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td style="border: 1px solid #000; height: 25px;"></td>
-                      <td style="border: 1px solid #000;"></td>
-                      <td style="border: 1px solid #000;"></td>
-                      <td style="border: 1px solid #000;"></td>
+                      <td style="border: 0.5px solid #000; height: 30px;"></td>
+                      <td style="border: 0.5px solid #000;"></td>
+                      <td style="border: 0.5px solid #000;"></td>
+                      <td style="border: 0.5px solid #000;"></td>
                     </tr>
                   </tbody>
                 </table>
