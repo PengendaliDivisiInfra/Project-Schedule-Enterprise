@@ -45,40 +45,47 @@ export default function PrintClientWrapper({
           <head>
             <meta charset="utf-8">
             <style>
-              body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; background: #fff; }
+              @page {
+                size: A4 portrait;
+                margin: 14mm 14mm 24mm 14mm;
+              }
+              html, body {
+                margin: 0;
+                padding: 0;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+                background: #fff;
+              }
             </style>
           </head>
           <body>${element.innerHTML}</body>
         </html>
       `;
 
-      // DESAIN PARAF & NOMOR (100% Murni Tabel Inline Style - Enterprise)
       const footerHtml = `
-        <div style="width: 100%; font-family: 'Arial', sans-serif; padding: 0 10mm; margin: 0; box-sizing: border-box; color: #000; font-size: 8pt;">
-          <table style="width: 100%; border-collapse: collapse; border: none;">
+        <div style="width: 100%; font-family: Arial, Helvetica, sans-serif; padding: 4px 14mm 0 14mm; margin: 0; box-sizing: border-box; color: #0f172a; font-size: 7.5pt; border-top: 0.5px solid #cbd5e1;">
+          <table style="width: 100%; border-collapse: collapse; border: none; margin: 0; padding: 0;">
             <tr>
-              <!-- BAGIAN KIRI: NOMOR HALAMAN -->
-              <td style="width: 40%; vertical-align: bottom; padding: 0; text-align: left;">
-                Halaman <span class="pageNumber"></span> dari <span class="totalPages"></span>
+              <td style="width: 44%; vertical-align: bottom; padding: 0 0 2px 0; text-align: left; color: #334155;">
+                <div style="font-weight: bold; color: #0f172a; font-size: 7.5pt;">${spk.spk_number || 'DOKUMEN SPK'}</div>
+                <div style="margin-top: 2px;">Halaman <span class="pageNumber"></span> dari <span class="totalPages"></span></div>
               </td>
-
-              <!-- BAGIAN KANAN: TABEL PARAF -->
-              <td style="width: 60%; text-align: right; padding: 0; vertical-align: bottom;">
-                <table style="width: 100%; border-collapse: collapse; text-align: center; margin-left: auto; background-color: #fff; table-layout: fixed;">
+              <td style="width: 56%; text-align: right; padding: 0; vertical-align: bottom;">
+                <table style="width: 100%; border-collapse: collapse; text-align: center; margin-left: auto; background-color: #ffffff; table-layout: fixed;">
                   <thead>
                     <tr>
-                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Sub Kont.</th>
-                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Site Manager</th>
-                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Man. Proc.</th>
-                      <th style="border: 0.5px solid #000; padding: 4px 2px; font-weight: bold; background-color: #fff; font-size: 7pt; width: 25%;">Procurement</th>
+                      <th style="border: 0.6px solid #334155; padding: 3px 2px; font-weight: bold; background-color: #f1f5f9; color: #0f172a; font-size: 6.8pt; width: 25%;">Sub Kont.</th>
+                      <th style="border: 0.6px solid #334155; padding: 3px 2px; font-weight: bold; background-color: #f1f5f9; color: #0f172a; font-size: 6.8pt; width: 25%;">Site Manager</th>
+                      <th style="border: 0.6px solid #334155; padding: 3px 2px; font-weight: bold; background-color: #f1f5f9; color: #0f172a; font-size: 6.8pt; width: 25%;">Man. Proc.</th>
+                      <th style="border: 0.6px solid #334155; padding: 3px 2px; font-weight: bold; background-color: #f1f5f9; color: #0f172a; font-size: 6.8pt; width: 25%;">Procurement</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td style="border: 0.5px solid #000; height: 30px;"></td>
-                      <td style="border: 0.5px solid #000;"></td>
-                      <td style="border: 0.5px solid #000;"></td>
-                      <td style="border: 0.5px solid #000;"></td>
+                      <td style="border: 0.6px solid #334155; height: 24px;"></td>
+                      <td style="border: 0.6px solid #334155; height: 24px;"></td>
+                      <td style="border: 0.6px solid #334155; height: 24px;"></td>
+                      <td style="border: 0.6px solid #334155; height: 24px;"></td>
                     </tr>
                   </tbody>
                 </table>
@@ -97,6 +104,12 @@ export default function PrintClientWrapper({
           isLandscape: false,
           scale: 1,
           footerTemplate: footerHtml,
+          margin: {
+            top: '14mm',
+            right: '14mm',
+            bottom: '24mm',
+            left: '14mm',
+          },
         }),
       });
 
@@ -121,7 +134,7 @@ export default function PrintClientWrapper({
     } finally {
       setIsGenerating(false);
     }
-  }, []);
+  }, [spk.spk_number]);
 
   useEffect(() => {
     if (hasFetched.current) return;
@@ -164,7 +177,9 @@ export default function PrintClientWrapper({
             </div>
             Dokumen SPK
           </h1>
-          <p className="text-sm text-slate-500 mt-2">Pratinjau PDF Per Halaman (A4).</p>
+          <p className="text-sm text-slate-500 mt-2">
+            Pratinjau PDF Per Halaman (A4 Enterprise).
+          </p>
         </div>
 
         <div className="p-6 flex-1 overflow-y-auto space-y-6">
@@ -175,7 +190,9 @@ export default function PrintClientWrapper({
             </h3>
             <div className="space-y-4 text-sm">
               <div>
-                <span className="block text-slate-500 text-xs mb-1">Nomor SPK</span>
+                <span className="block text-slate-500 text-xs mb-1">
+                  Nomor SPK
+                </span>
                 <span className="font-semibold text-slate-800 font-mono text-base">
                   {spk.spk_number}
                 </span>
@@ -185,7 +202,8 @@ export default function PrintClientWrapper({
                   Pihak Kedua (Mandor)
                 </span>
                 <span className="font-semibold text-slate-800">
-                  {subcontractor.company_name} ({subcontractor.contact_person || '-'})
+                  {subcontractor.company_name} (
+                  {subcontractor.contact_person || '-'})
                 </span>
               </div>
               <div>
@@ -196,14 +214,32 @@ export default function PrintClientWrapper({
                   Rp {Number(spk.contract_value || 0).toLocaleString('id-ID')}
                 </span>
               </div>
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                <div>
+                  <span className="block text-slate-500 text-xs mb-0.5">
+                    Status Pajak
+                  </span>
+                  <span className="font-semibold text-slate-700 text-xs">
+                    {spk.tax_mode || 'NON_PAJAK'}
+                  </span>
+                </div>
+                <div>
+                  <span className="block text-slate-500 text-xs mb-0.5">
+                    Item BoQ
+                  </span>
+                  <span className="font-semibold text-slate-700 text-xs">
+                    {Array.isArray(spk.bq_items) ? spk.bq_items.length : 0} Item
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-xs flex gap-3 shadow-sm">
             <ShieldCheck size={20} className="flex-shrink-0 text-emerald-600" />
             <p className="leading-relaxed">
-              Pratinjau di samping di-generate langsung oleh mesin PDF. Tampilan 100% sama
-              dengan hasil unduhan.
+              Pratinjau di samping di-generate langsung oleh mesin PDF.
+              Tampilan 100% sama dengan hasil unduhan.
             </p>
           </div>
 
@@ -230,7 +266,8 @@ export default function PrintClientWrapper({
           >
             {isGenerating ? (
               <span className="animate-pulse flex items-center gap-2">
-                <Loader2 size={20} className="animate-spin" /> Menyiapkan Dokumen...
+                <Loader2 size={20} className="animate-spin" /> Menyiapkan
+                Dokumen...
               </span>
             ) : (
               <>
@@ -268,7 +305,9 @@ export default function PrintClientWrapper({
             <div className="flex flex-col items-center justify-center h-full text-red-300 gap-3 px-6 text-center">
               <p className="font-bold text-base">Gagal memuat pratinjau PDF.</p>
               {error && (
-                <p className="text-xs max-w-lg text-red-200 break-words">{error}</p>
+                <p className="text-xs max-w-lg text-red-200 break-words">
+                  {error}
+                </p>
               )}
               <button
                 type="button"

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { html, scale, format, isLandscape, footerTemplate } = body;
+    const { html, scale, format, isLandscape, footerTemplate, margin } = body;
 
     if (!html) {
       return NextResponse.json(
@@ -22,7 +22,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Pastikan protokol https:// tersedia dan hapus trailing slash
     if (!PDF_SERVICE_URL.startsWith('http')) {
       PDF_SERVICE_URL = `https://${PDF_SERVICE_URL}`;
     }
@@ -37,18 +36,15 @@ export async function POST(req: Request) {
       isLandscape,
     };
 
-    // Teruskan footerTemplate (tabel paraf & nomor halaman SPK) jika dikirim oleh client
     if (footerTemplate) {
       payloadToRailway.footerTemplate = footerTemplate;
     }
 
-    console.log(`[Proxy PDF] Meneruskan request ke: ${PDF_SERVICE_URL}`);
-    console.log(
-      `[Proxy PDF] Ukuran HTML payload: ${(html.length / 1024 / 1024).toFixed(2)} MB`
-    );
+    if (margin) {
+      payloadToRailway.margin = margin;
+    }
 
     const controller = new AbortController();
-    // Vercel maxDuration 60s, batasi fetch 55s agar error tetap tertangkap rapi
     const timeoutId = setTimeout(() => controller.abort(), 55000);
 
     let response: Response;
