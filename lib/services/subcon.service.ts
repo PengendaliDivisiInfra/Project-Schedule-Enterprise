@@ -508,8 +508,6 @@ export async function saveOpnameProgress(contractId: string, opnameDate: string,
   return true;
 }
 
-=======// ===== KASBON & PEMBAYARAN =====
-
 export async function createKasbonRequest(payload: {
   project_id: string;
   contract_id: string;
@@ -629,8 +627,6 @@ export async function updatePaymentStatus(paymentId: string, status: 'Approved' 
   return data;
 }
 
-// BATAL (VOID): Mengubah status menjadi 'Void' dengan alasan pembatalan (tetap terlihat di riwayat pembayaran dengan badge VOID)
-
 export async function voidSubconPayment(paymentId: string, reason: string) {
   const { data, error } = await supabase
     .from('subcontractor_payments')
@@ -645,8 +641,6 @@ export async function voidSubconPayment(paymentId: string, reason: string) {
     throw new Error('Gagal membatalkan dokumen. Periksa izin RLS UPDATE pada tabel subcontractor_payments.');
   }
 }
-
-// HAPUS (SOFT DELETE): Mengisi voided_at sehingga langsung hilang dari daftar Kasbon maupun Antrean Pembayaran
 
 export async function softDeleteSubconPayment(paymentId: string, reason?: string) {
   const { data, error } = await supabase
@@ -682,15 +676,11 @@ export async function getReceiptHistory(projectId: string) {
 }
 
 export async function deleteReceipt(id: string) {
- feat/V35-I-pwa
   const { data, error } = await supabase
     .from('subcon_receipts')
     .update({ voided_at: new Date().toISOString() })
     .eq('id', id)
     .select();
-
-  const { error } = await supabase.from('subcon_receipts').update({ voided_at: new Date().toISOString() }).eq('id', id);
-
   if (error) throw new Error(error.message);
   if (!data || data.length === 0) throw new Error('Gagal menghapus. Periksa izin RLS UPDATE pada tabel subcon_receipts.');
 }
