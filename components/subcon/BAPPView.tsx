@@ -2,7 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { Printer, FileText, Loader2, Settings, Trash2, AlertTriangle } from 'lucide-react';
-import { getBAPPData, saveBAPPDocument, getBAPPHistory, deleteBAPPDocument, getUnbilledBPUTKs } from '@/lib/services/subcon.service';
+import { useRole } from '@/lib/hooks/useRole';
+import {
+  getBAPPData,
+  saveBAPPDocument,
+  getBAPPHistory,
+  deleteBAPPDocument,
+  getUnbilledBPUTKs,
+} from '@/lib/services/subcon.service';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { BAPPData, SignatureItem } from '@/lib/types/subcon';
 import { MoneyText } from '@/components/ui/MoneyText';
@@ -17,13 +24,20 @@ interface BAPPViewProps {
 }
 
 export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProps) {
+  const { can } = useRole(projectId);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [data, setData] = useState<BAPPData | null>(null);
   const [history, setHistory] = useState<any[]>([]);
-  
+
   const [availableBPUTKs, setAvailableBPUTKs] = useState<any[]>([]);
   const [selectedBputkId, setSelectedBputkId] = useState('');
+  const [activePeriod, setActivePeriod] = useState<{ start: string; end: string } | null>(null);
+  const [latestAddendum, setLatestAddendum] = useState<{
+    addendum_no: number;
+    created_at: string;
+  } | null>(null);
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,7 +45,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
   const [isReprint, setIsReprint] = useState(false);
 
   const currentMonthRoman = new Date().toLocaleString('id-ID', { month: 'long' });
-  
+
   const [form, setForm] = useState({
     contractId: '',
     nomorBAPP: `001/KL-BAPP/BKP/${currentMonthRoman.toUpperCase()}/${new Date().getFullYear()}`,
@@ -52,7 +66,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
   const loadHistory = async () => {
     try {
       const res = await getBAPPHistory(projectId);
-      setHistory(res);
+      setHistory(res || []);
     } catch (error) {
       console.error(error);
     }
@@ -62,16 +76,32 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     loadHistory();
   }, [projectId]);
 
+  const fetchLatestAddendum = async (contractId: string) => {
+    const { data: addData } = await supabase
+      .from('subcontractor_addendums')
+      .select('addendum_no, created_at')
+      .eq('contract_id', contractId)
+      .order('addendum_no', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    setLatestAddendum(addData || null);
+  };
+
   const handleSelectSPK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const contractId = e.target.value;
     setForm({ ...form, contractId });
     setSelectedBputkId('');
+    setActivePeriod(null);
+    setLatestAddendum(null);
     setData(null);
 
     if (contractId) {
       try {
         setLoading(true);
-        const bputks = await getUnbilledBPUTKs(contractId);
+        const [bputks] = await Promise.all([
+          getUnbilledBPUTKs(contractId),
+          fetchLatestAddendum(contractId),
+        ]);
         setAvailableBPUTKs(bputks);
       } catch (err: any) {
         showToast(err.message, 'error');
@@ -86,25 +116,38 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
   const handleSelectBPUTK = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const bputkId = e.target.value;
     setSelectedBputkId(bputkId);
-    
+
     if (!bputkId) {
       setData(null);
+      setActivePeriod(null);
       return;
     }
 
-    const selectedBputk = availableBPUTKs.find(b => b.id === bputkId);
+    const selectedBputk = availableBPUTKs.find((b) => b.id === bputkId);
     if (!selectedBputk) return;
 
     setIsReprint(false);
+    setReprintSnapshot(null);
+    setActivePeriod({
+      start: selectedBputk.period_start,
+      end: selectedBputk.period_end,
+    });
     setLoading(true);
     try {
-      const res = await getBAPPData(form.contractId, selectedBputk.period_start, selectedBputk.period_end);
+      const res = await getBAPPData(
+        form.contractId,
+        selectedBputk.period_start,
+        selectedBputk.period_end
+      );
       setData(res);
-      
+
       if (res.contract.subcontractors?.contact_person) {
-        setSignatures(prev => {
+        setSignatures((prev) => {
           const newSigs = [...prev];
-          newSigs[5].name = res.contract.subcontractors.contact_person.toUpperCase();
+          newSigs[5] = {
+            ...newSigs[5],
+            name: res.contract.subcontractors.contact_person.toUpperCase(),
+          };
           return newSigs;
         });
       }
@@ -122,14 +165,23 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       potonganKasbon: 0,
     });
     setSelectedBputkId(item.bputk_id || '');
+    setActivePeriod({
+      start: item.period_start,
+      end: item.period_end,
+    });
     setReprintSnapshot(item);
-    if (item.signatures) setSignatures(item.signatures);
-    
+    if (Array.isArray(item.signatures) && item.signatures.length > 0) {
+      setSignatures(item.signatures);
+    }
+
     setIsReprint(true);
     setLoading(true);
-    getBAPPData(item.contract_id, item.period_start, item.period_end)
-      .then(res => setData(res))
-      .catch(err => showToast(err.message, 'error'))
+    Promise.all([
+      getBAPPData(item.contract_id, item.period_start, item.period_end),
+      fetchLatestAddendum(item.contract_id),
+    ])
+      .then(([res]) => setData(res))
+      .catch((err) => showToast(err.message, 'error'))
       .finally(() => setLoading(false));
   };
 
@@ -139,10 +191,13 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
 
     try {
       setSaving(true);
-      
+
       if (!isReprint) {
-        const selectedBputk = availableBPUTKs.find(b => b.id === selectedBputkId);
-        
+        const selectedBputk = availableBPUTKs.find((b) => b.id === selectedBputkId);
+        if (!selectedBputk) {
+          throw new Error('Pilih dokumen BPUTK sumber data terlebih dahulu');
+        }
+
         await saveBAPPDocument({
           project_id: projectId,
           contract_id: form.contractId,
@@ -155,19 +210,23 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
           nilai_dpp: sakResult.C_dpp,
           nilai_ppn: sakResult.D_ppn,
           nilai_pph: sakResult.F_pph42,
-          signatures: signatures
+          signatures: signatures,
         });
 
-        await supabase.from('bputk_documents').update({ is_billed: true }).eq('id', selectedBputkId);
+        await supabase
+          .from('bputk_documents')
+          .update({ is_billed: true })
+          .eq('id', selectedBputkId);
 
         loadHistory();
         onSuccess();
-        setAvailableBPUTKs(prev => prev.filter(b => b.id !== selectedBputkId));
+        setAvailableBPUTKs((prev) => prev.filter((b) => b.id !== selectedBputkId));
         setSelectedBputkId('');
       }
 
       const htmlContent = printElement.innerHTML;
-      
+
+      // 100% Murni Tabel (Tanpa Flexbox/Grid) untuk mesin PDF
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -176,7 +235,6 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
             <style>
               @page { size: A4 landscape; margin: 8mm 12mm; }
               body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; font-family: 'Arial', sans-serif; font-size: 8pt; color: #000; }
-              .doc-container { width: 100%; display: flex; flex-direction: column; }
               .header-title { text-align: center; font-size: 11pt; font-weight: bold; color: #0f766e; text-decoration: underline; margin-bottom: 2px; margin-top: 0; }
               .header-subtitle { text-align: center; font-size: 8pt; font-weight: bold; margin-bottom: 10px; }
               .section-title { font-weight: bold; color: #0f766e; margin-bottom: 3px; margin-top: 8px; font-size: 8pt; }
@@ -186,14 +244,19 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
               .data-table td { padding: 1px 0; vertical-align: top; font-size: 7.5pt; }
               .list-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt; }
               .list-table td { padding: 3px 4px; border-bottom: 1px solid #e2e8f0; }
-              .bill-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 7.5pt; border: 1px solid #64748b; }
+              .bill-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt; border: 1px solid #64748b; }
               .bill-table th { background-color: #f1f5f9; border: 1px solid #64748b; padding: 4px; text-align: center; font-weight: bold; }
               .bill-table td { border: 1px solid #64748b; padding: 4px; vertical-align: middle; }
+              .summary-box-table { width: 100%; border-collapse: collapse; border: 1px solid #64748b; font-size: 7.5pt; margin-bottom: 6px; }
+              .summary-box-table td { padding: 4px 8px; }
               .bg-yellow { background-color: #fef08a !important; }
               .bg-green { background-color: #dcfce7 !important; }
               .bg-gray { background-color: #f1f5f9 !important; }
-              .text-right { text-align: right; } .text-center { text-align: center; } .font-bold { font-weight: bold; }
-              .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 15px; page-break-inside: avoid; }
+              .text-right { text-align: right; }
+              .text-left { text-align: left; }
+              .text-center { text-align: center; }
+              .font-bold { font-weight: bold; }
+              .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 12px; page-break-inside: avoid; }
               .sig-table td { width: 16.6%; vertical-align: bottom; padding: 0 5px; }
               .sig-space { height: 40px; }
               .sig-name { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 8pt; }
@@ -207,10 +270,13 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       const res = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ html: fullHtml, format: 'A4', isLandscape: true })
+        body: JSON.stringify({ html: fullHtml, format: 'A4', isLandscape: true }),
       });
-      
-      if (!res.ok) throw new Error('Gagal generate PDF dari server');
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => null);
+        throw new Error(errData?.error || 'Gagal generate PDF dari server');
+      }
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -218,8 +284,11 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       a.download = `BAPP_${form.nomorBAPP.replace(/\//g, '_')}.pdf`;
       a.click();
       window.URL.revokeObjectURL(url);
-      
-      showToast(isReprint ? 'PDF berhasil diunduh' : 'BAPP berhasil disimpan & BPUTK dikunci', 'success');
+
+      showToast(
+        isReprint ? 'PDF berhasil diunduh' : 'BAPP berhasil disimpan & BPUTK dikunci',
+        'success'
+      );
     } catch (err: any) {
       showToast(err.message, 'error');
     } finally {
@@ -231,11 +300,14 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const dataToDelete = history.find(h => h.id === deleteTarget);
+      const dataToDelete = history.find((h) => h.id === deleteTarget);
       await deleteBAPPDocument(deleteTarget);
 
       if (dataToDelete?.bputk_id) {
-        await supabase.from('bputk_documents').update({ is_billed: false }).eq('id', dataToDelete.bputk_id);
+        await supabase
+          .from('bputk_documents')
+          .update({ is_billed: false })
+          .eq('id', dataToDelete.bputk_id);
       }
 
       showToast('Dokumen berhasil dihapus. BPUTK telah dibuka kembali.', 'success');
@@ -249,17 +321,64 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     }
   };
 
-  const sakResult = data ? (
-    isReprint && reprintSnapshot ? {
-      A_bruto: data.totalOpnameSdIni, B_potonganDP: data.nilaiDP, C_dpp: Number(reprintSnapshot.nilai_dpp || 0), D_ppn: Number(reprintSnapshot.nilai_ppn || 0), E_invoice: Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0), F_pph42: Number(reprintSnapshot.nilai_pph || 0), G_invoiceBersih: (Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0)) - Number(reprintSnapshot.nilai_pph || 0), R_retensi: 0, K_kasbon: form.potonganKasbon, Net_transfer: Number(reprintSnapshot.total_value || 0), persenProgres: data.contract.contract_value > 0 ? (data.totalOpnameSdIni / data.contract.contract_value) : 0, taxMode: reprintSnapshot.tax_mode || 'EXCLUDE', ppnPct: data.contract.ppn_pct || 11, pphPct: data.contract.pph_pct || 2, retPct: data.contract.retention_pct || 5
-    } : hitungSAK({
-      bruttoSd: data.totalOpnameSdIni, nilaiKontrak: data.contract.contract_value, nilaiDP: data.nilaiDP, pphRate: data.contract.pph_pct || 2, ppnRate: data.contract.ppn_pct || 11, retensiRate: data.contract.retention_pct || 5, kasbonDeduct: form.potonganKasbon, taxMode: data.contract.tax_mode || 'EXCLUDE'
-    })
-  ) : null;
+  const selectedSpkMeta = spks.find((s) => s.id === form.contractId);
+  const effectiveContractValue = Number(
+    selectedSpkMeta?.final_contract_value || data?.contract?.contract_value || 0
+  );
+  const contractCreatedDate = selectedSpkMeta?.created_at || data?.contract?.created_at;
+
+  const sakResult = data
+    ? isReprint && reprintSnapshot
+      ? {
+          A_bruto: data.totalOpnameSdIni,
+          B_potonganDP: data.nilaiDP,
+          C_dpp: Number(reprintSnapshot.nilai_dpp || 0),
+          D_ppn: Number(reprintSnapshot.nilai_ppn || 0),
+          E_invoice:
+            Number(reprintSnapshot.nilai_dpp || 0) + Number(reprintSnapshot.nilai_ppn || 0),
+          F_pph42: Number(reprintSnapshot.nilai_pph || 0),
+          G_invoiceBersih:
+            Number(reprintSnapshot.nilai_dpp || 0) +
+            Number(reprintSnapshot.nilai_ppn || 0) -
+            Number(reprintSnapshot.nilai_pph || 0),
+          R_retensi: 0,
+          K_kasbon: form.potonganKasbon,
+          Net_transfer: Number(reprintSnapshot.total_value || 0),
+          persenProgres:
+            effectiveContractValue > 0 ? data.totalOpnameSdIni / effectiveContractValue : 0,
+          taxMode: reprintSnapshot.tax_mode || 'EXCLUDE',
+          ppnPct: data.contract.ppn_pct || 11,
+          pphPct: data.contract.pph_pct || 2,
+          retPct: data.contract.retention_pct || 5,
+        }
+      : hitungSAK({
+          bruttoSd: data.totalOpnameSdIni,
+          nilaiKontrak: effectiveContractValue,
+          nilaiDP: data.nilaiDP,
+          pphRate: data.contract.pph_pct || 2,
+          ppnRate: data.contract.ppn_pct || 11,
+          retensiRate: data.contract.retention_pct || 5,
+          kasbonDeduct: form.potonganKasbon,
+          taxMode: data.contract.tax_mode || 'EXCLUDE',
+        })
+    : null;
 
   const formatRp = (val: number) => {
     if (!val) return 'Rp 0';
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val).replace('Rp', 'Rp ');
+    return new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    })
+      .format(val)
+      .replace('Rp', 'Rp ');
+  };
+
+  const formatIndoDate = (dateStr?: string, options?: Intl.DateTimeFormatOptions) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString('id-ID', options);
   };
 
   const webStyles = `
@@ -273,14 +392,19 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     .bapp-preview .data-table td { padding: 1px 0; vertical-align: top; font-size: 7.5pt; }
     .bapp-preview .list-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt; }
     .bapp-preview .list-table td { padding: 3px 4px; border-bottom: 1px solid #e2e8f0; }
-    .bapp-preview .bill-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 7.5pt; border: 1px solid #64748b; }
+    .bapp-preview .bill-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 7.5pt; border: 1px solid #64748b; }
     .bapp-preview .bill-table th { background-color: #f1f5f9; border: 1px solid #64748b; padding: 4px; text-align: center; font-weight: bold; }
     .bapp-preview .bill-table td { border: 1px solid #64748b; padding: 4px; vertical-align: middle; }
+    .bapp-preview .summary-box-table { width: 100%; border-collapse: collapse; border: 1px solid #64748b; font-size: 7.5pt; margin-bottom: 6px; }
+    .bapp-preview .summary-box-table td { padding: 4px 8px; }
     .bapp-preview .bg-yellow { background-color: #fef08a !important; }
     .bapp-preview .bg-green { background-color: #dcfce7 !important; }
     .bapp-preview .bg-gray { background-color: #f1f5f9 !important; }
-    .bapp-preview .text-right { text-align: right; } .bapp-preview .text-center { text-align: center; } .bapp-preview .font-bold { font-weight: bold; }
-    .bapp-preview .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 15px; page-break-inside: avoid; }
+    .bapp-preview .text-right { text-align: right; }
+    .bapp-preview .text-left { text-align: left; }
+    .bapp-preview .text-center { text-align: center; }
+    .bapp-preview .font-bold { font-weight: bold; }
+    .bapp-preview .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 12px; page-break-inside: avoid; }
     .bapp-preview .sig-table td { width: 16.6%; vertical-align: bottom; padding: 0 5px; }
     .bapp-preview .sig-space { height: 40px; }
     .bapp-preview .sig-name { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 8pt; }
@@ -289,155 +413,415 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
 
   return (
     <div className="space-y-6">
-      <style dangerouslySetInnerHTML={{__html: webStyles}} />
+      <style dangerouslySetInnerHTML={{ __html: webStyles }} />
 
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 print:hidden">
         <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-3">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
             <FileText className="text-teal-600" /> Form BAPP (Berdasarkan BPUTK)
           </h3>
-          <button onClick={() => setShowSigSettings(!showSigSettings)} className="text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setShowSigSettings(!showSigSettings)}
+            className="text-sm font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors border border-slate-200"
+          >
             <Settings size={16} /> Pengaturan TTD
           </button>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih Mandor / SPK</label>
-            <select value={form.contractId} onChange={handleSelectSPK} disabled={isReprint} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-medium">
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Pilih Mandor / SPK
+            </label>
+            <select
+              value={form.contractId}
+              onChange={handleSelectSPK}
+              disabled={isReprint}
+              className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-medium"
+            >
               <option value="">-- Pilih Mandor --</option>
-              {spks.map(s => <option key={s.id} value={s.id}>{s.subcontractor_name} - {s.spk_number}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Pilih BPUTK (Sumber Data)</label>
-            <select value={selectedBputkId} onChange={handleSelectBPUTK} disabled={isReprint || availableBPUTKs.length === 0} className="w-full border border-teal-300 bg-teal-50 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-bold text-teal-800">
-              <option value="">-- Pilih BPUTK yang belum ditagih --</option>
-              {availableBPUTKs.map(b => (
-                <option key={b.id} value={b.id}>
-                  {b.bputk_number} ({new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')})
+              {spks.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.subcontractor_name} - {s.spk_number}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Nomor BAPP</label>
-            <input type="text" value={form.nomorBAPP} onChange={(e) => setForm({...form, nomorBAPP: e.target.value})} disabled={isReprint} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-mono" />
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Pilih BPUTK (Sumber Data)
+            </label>
+            <select
+              value={selectedBputkId}
+              onChange={handleSelectBPUTK}
+              disabled={isReprint || availableBPUTKs.length === 0}
+              className="w-full border border-teal-300 bg-teal-50 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-bold text-teal-800"
+            >
+              <option value="">-- Pilih BPUTK yang belum ditagih --</option>
+              {availableBPUTKs.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.bputk_number} ({formatIndoDate(b.period_start)} -{' '}
+                  {formatIndoDate(b.period_end)})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Nomor BAPP
+            </label>
+            <input
+              type="text"
+              value={form.nomorBAPP}
+              onChange={(e) => setForm({ ...form, nomorBAPP: e.target.value })}
+              disabled={isReprint}
+              className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all font-mono"
+            />
           </div>
           <div className="md:col-span-1">
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Mode Harga</label>
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Mode Harga
+            </label>
             <div className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-100 font-bold text-slate-700 shadow-sm">
               {data ? data.contract.tax_mode : 'Pilih BPUTK'}
             </div>
           </div>
           <div className="md:col-span-2">
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">Potongan Kasbon Periode Ini - Rp</label>
-            <input type="number" value={form.potonganKasbon} onChange={(e) => setForm({...form, potonganKasbon: Number(e.target.value)})} className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all tabular-nums" />
-            {data && form.potonganKasbon > (data.totalKasbon - data.totalPotongan) && (
-              <p className="text-rose-500 text-xs font-bold mt-1.5 flex items-center gap-1"><AlertTriangle size={12}/> Melebihi Sisa Kasbon ({formatRp(data.totalKasbon - data.totalPotongan)})</p>
+            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wider">
+              Potongan Kasbon Periode Ini - Rp
+            </label>
+            <input
+              type="number"
+              value={form.potonganKasbon}
+              onChange={(e) =>
+                setForm({ ...form, potonganKasbon: Number(e.target.value) })
+              }
+              className="w-full border border-slate-300 rounded-xl p-2.5 text-sm focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 outline-none transition-all tabular-nums"
+            />
+            {data && form.potonganKasbon > data.totalKasbon - data.totalPotongan && (
+              <p className="text-rose-500 text-xs font-bold mt-1.5 flex items-center gap-1">
+                <AlertTriangle size={12} /> Melebihi Sisa Kasbon (
+                {formatRp(data.totalKasbon - data.totalPotongan)})
+              </p>
             )}
           </div>
         </div>
 
         {showSigSettings && (
-          <SignatureSettings signatures={signatures} onChange={setSignatures} colorTheme="teal" />
+          <SignatureSettings
+            signatures={signatures}
+            onChange={setSignatures}
+            colorTheme="teal"
+          />
         )}
       </div>
 
       {data && sakResult && (
         <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-2xl print:hidden">
           <div id="bapp-print-area" className="bapp-preview">
-            <div style={{ height: '100%', position: 'relative' }}>
-              
-              <div className="header-title">BERITA ACARA PEMBAYARAN PRESTASI (BAPP)</div>
+            <div style={{ position: 'relative' }}>
+              <div className="header-title">
+                BERITA ACARA PEMBAYARAN PRESTASI (BAPP)
+              </div>
               <div className="header-subtitle">NO. {form.nomorBAPP}</div>
 
               <table className="table-layout">
                 <tbody>
                   <tr>
                     <td style={{ width: '50%', paddingRight: '15px' }}>
-                      
                       <div className="section-title">DATA - DATA</div>
                       <table className="data-table">
                         <tbody>
-                          <tr><td style={{ width: '80px' }}>Pekerjaan</td><td>: {data.contract.work_description}</td></tr>
-                          <tr><td>Nama Proyek</td><td>: {data.contract.projects?.name}</td></tr>
+                          <tr>
+                            <td style={{ width: '95px' }}>Pekerjaan</td>
+                            <td>: {data.contract.work_description}</td>
+                          </tr>
+                          <tr>
+                            <td>Nama Proyek</td>
+                            <td>: {data.contract.projects?.name}</td>
+                          </tr>
                         </tbody>
                       </table>
 
                       <div className="section-title">KONTRAK</div>
                       <table className="data-table">
                         <tbody>
-                          <tr><td style={{ width: '80px' }}>Tanggal</td><td>: {new Date(data.contract.created_at).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}</td></tr>
-                          <tr><td>Nilai</td><td>: {formatRp(data.contract.contract_value)}</td></tr>
-                          <tr><td>Periode Kontrak</td><td>: -</td></tr>
-                          <tr><td>No. Addendum</td><td>: -</td></tr>
-                          <tr><td>Tanggal Addendum</td><td>: -</td></tr>
+                          <tr>
+                            <td style={{ width: '95px' }}>No. SPK</td>
+                            <td>: {data.contract.spk_number || '-'}</td>
+                          </tr>
+                          <tr>
+                            <td>Tanggal</td>
+                            <td>
+                              :{' '}
+                              {formatIndoDate(contractCreatedDate, {
+                                day: '2-digit',
+                                month: 'long',
+                                year: 'numeric',
+                              })}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Nilai Kontrak</td>
+                            <td>: {formatRp(effectiveContractValue)}</td>
+                          </tr>
+                          <tr>
+                            <td>No. Addendum</td>
+                            <td>
+                              :{' '}
+                              {latestAddendum
+                                ? `Addendum Ke-${latestAddendum.addendum_no}`
+                                : '-'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Tgl. Addendum</td>
+                            <td>
+                              :{' '}
+                              {latestAddendum
+                                ? formatIndoDate(latestAddendum.created_at, {
+                                    day: '2-digit',
+                                    month: 'long',
+                                    year: 'numeric',
+                                  })
+                                : '-'}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
 
                       <div className="section-title">PIHAK I</div>
                       <table className="data-table">
                         <tbody>
-                          <tr><td style={{ width: '80px' }}>Nama</td><td>: {data.contract.projects?.contractor_pic_name || '-'}</td></tr>
-                          <tr><td>Jabatan</td><td>: {data.contract.projects?.contractor_pic_title || '-'}</td></tr>
-                          <tr><td>Atas Nama</td><td>: {data.contract.projects?.company_name || '-'}</td></tr>
+                          <tr>
+                            <td style={{ width: '95px' }}>Nama</td>
+                            <td>
+                              : {data.contract.projects?.contractor_pic_name || '-'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Jabatan</td>
+                            <td>
+                              : {data.contract.projects?.contractor_pic_title || '-'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Atas Nama</td>
+                            <td>: {data.contract.projects?.company_name || '-'}</td>
+                          </tr>
                         </tbody>
                       </table>
 
                       <div className="section-title">PIHAK II</div>
                       <table className="data-table">
                         <tbody>
-                          <tr><td style={{ width: '80px' }}>Nama</td><td>: {data.contract.subcontractors?.contact_person || '-'}</td></tr>
-                          <tr><td>Jabatan</td><td>: Mandor / Direktur</td></tr>
-                          <tr><td>Atas Nama</td><td>: {data.contract.subcontractors?.company_name || '-'}</td></tr>
-                          <tr><td>Alamat</td><td>: {data.contract.subcontractors?.address || '-'}</td></tr>
+                          <tr>
+                            <td style={{ width: '95px' }}>Nama</td>
+                            <td>
+                              : {data.contract.subcontractors?.contact_person || '-'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Jabatan</td>
+                            <td>: Mandor / Direktur</td>
+                          </tr>
+                          <tr>
+                            <td>Atas Nama</td>
+                            <td>
+                              : {data.contract.subcontractors?.company_name || '-'}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Alamat</td>
+                            <td>
+                              : {data.contract.subcontractors?.address || '-'}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
 
                       <div className="section-title">BAP</div>
                       <table className="data-table">
                         <tbody>
-                          <tr><td style={{ width: '80px' }}>Tanggal</td><td>: {new Date(data.contract.period_end).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}</td></tr>
-                          <tr><td>Hari</td><td>: {new Date(data.contract.period_end).toLocaleDateString('id-ID', {weekday:'long'})}</td></tr>
-                          <tr><td>No. BAOP</td><td>: {data.baop_number || '-'}</td></tr>
-                          <tr><td>No. BAPP</td><td>: {form.nomorBAPP}</td></tr>
-                          <tr><td>Periode</td><td>: {new Date(data.contract.period_start).toLocaleDateString('id-ID')} s/d {new Date(data.contract.period_end).toLocaleDateString('id-ID')}</td></tr>
+                          <tr>
+                            <td style={{ width: '95px' }}>Tanggal</td>
+                            <td>
+                              :{' '}
+                              {formatIndoDate(activePeriod?.end, {
+                                day: '2-digit',
+                                month: 'long',
+                                year: 'numeric',
+                              })}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>Hari</td>
+                            <td>
+                              :{' '}
+                              {formatIndoDate(activePeriod?.end, {
+                                weekday: 'long',
+                              })}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>No. BAOP</td>
+                            <td>: {data.baop_number || '-'}</td>
+                          </tr>
+                          <tr>
+                            <td>No. BAPP</td>
+                            <td>: {form.nomorBAPP}</td>
+                          </tr>
+                          <tr>
+                            <td>Periode</td>
+                            <td>
+                              : {formatIndoDate(activePeriod?.start)} s/d{' '}
+                              {formatIndoDate(activePeriod?.end)}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
-
                     </td>
                     <td style={{ width: '50%' }}>
-                      
-                      <div className="section-title">RINCIAN PEMBAYARAN — REKONSILIASI BILLING (A → C)</div>
+                      <div className="section-title">
+                        RINCIAN PEMBAYARAN — REKONSILIASI BILLING (A → C)
+                      </div>
                       <table className="list-table">
                         <tbody>
-                          <tr><td style={{ width: '70%' }}>1. Nilai Prestasi s/d Periode Lalu (Bruto)</td><td className="text-right">: {formatRp(data.totalOpnameSdIni - data.opnames.reduce((sum, o) => sum + Number(o.total), 0))}</td></tr>
-                          <tr><td>2. Nilai Prestasi Periode Ini (Bruto)</td><td className="text-right">: {formatRp(data.opnames.reduce((sum, o) => sum + Number(o.total), 0))}</td></tr>
-                          <tr><td>3. Total Prestasi s/d Saat Ini (Bruto) [A]</td><td className="text-right font-bold">: {formatRp(sakResult.A_bruto)}</td></tr>
-                          <tr><td>4. (-) Potongan Pengembalian DP [B]</td><td className="text-right">: ({formatRp(sakResult.B_potonganDP)})</td></tr>
-                          <tr className="bg-yellow"><td className="font-bold">5. Dasar Pengenaan Pajak (DPP) [C = A - B]</td><td className="text-right font-bold">: {formatRp(sakResult.C_dpp)}</td></tr>
-                          <tr><td>6. (+) Pajak Pertambahan Nilai (PPN {data.contract.ppn_pct || 11}%) [D]</td><td className="text-right">: {formatRp(sakResult.D_ppn)}</td></tr>
-                          <tr className="bg-green"><td className="font-bold">7. Total Nilai Invoice / Piutang [E = C + D]</td><td className="text-right font-bold">: {formatRp(sakResult.E_invoice)}</td></tr>
-                          <tr><td>8. (-) Pajak Penghasilan PPh Pasal 4(2) [{data.contract.pph_pct || 2}%] [F]</td><td className="text-right">: ({formatRp(sakResult.F_pph42)})</td></tr>
-                          <tr><td>9. (-) Retensi Proyek ({data.contract.retention_pct || 5}%) [R]</td><td className="text-right">: ({formatRp(sakResult.R_retensi)})</td></tr>
-                          <tr><td>10. (-) Potongan Kasbon & Pembayaran Lainnya [K]</td><td className="text-right">: ({formatRp(sakResult.K_kasbon)})</td></tr>
-                          <tr><td className="font-bold pt-2">TOTAL DIBAYARKAN (NETTO) PERIODE INI [E - F - R - K]</td><td className="text-right font-bold pt-2 text-teal-700">: {formatRp(sakResult.Net_transfer)}</td></tr>
-                          <tr><td className="font-bold">Akumulasi Pembayaran (Netto) s/d Saat Ini</td><td className="text-right font-bold">: {formatRp(sakResult.Net_transfer)}</td></tr>
+                          <tr>
+                            <td style={{ width: '70%' }}>
+                              1. Nilai Prestasi s/d Periode Lalu (Bruto)
+                            </td>
+                            <td className="text-right">
+                              :{' '}
+                              {formatRp(
+                                data.totalOpnameSdIni -
+                                  data.opnames.reduce(
+                                    (sum, o) => sum + Number(o.total),
+                                    0
+                                  )
+                              )}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>2. Nilai Prestasi Periode Ini (Bruto)</td>
+                            <td className="text-right">
+                              :{' '}
+                              {formatRp(
+                                data.opnames.reduce(
+                                  (sum, o) => sum + Number(o.total),
+                                  0
+                                )
+                              )}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>3. Total Prestasi s/d Saat Ini (Bruto) [A]</td>
+                            <td className="text-right font-bold">
+                              : {formatRp(sakResult.A_bruto)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>4. (-) Potongan Pengembalian DP [B]</td>
+                            <td className="text-right">
+                              : ({formatRp(sakResult.B_potonganDP)})
+                            </td>
+                          </tr>
+                          <tr className="bg-yellow">
+                            <td className="font-bold">
+                              5. Dasar Pengenaan Pajak (DPP) [C = A - B]
+                            </td>
+                            <td className="text-right font-bold">
+                              : {formatRp(sakResult.C_dpp)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>
+                              6. (+) Pajak Pertambahan Nilai (PPN{' '}
+                              {data.contract.ppn_pct || 11}%) [D]
+                            </td>
+                            <td className="text-right">
+                              : {formatRp(sakResult.D_ppn)}
+                            </td>
+                          </tr>
+                          <tr className="bg-green">
+                            <td className="font-bold">
+                              7. Total Nilai Invoice / Piutang [E = C + D]
+                            </td>
+                            <td className="text-right font-bold">
+                              : {formatRp(sakResult.E_invoice)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>
+                              8. (-) Pajak Penghasilan PPh Pasal 4(2) [
+                              {data.contract.pph_pct || 2}%] [F]
+                            </td>
+                            <td className="text-right">
+                              : ({formatRp(sakResult.F_pph42)})
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>
+                              9. (-) Retensi Proyek (
+                              {data.contract.retention_pct || 5}%) [R]
+                            </td>
+                            <td className="text-right">
+                              : ({formatRp(sakResult.R_retensi)})
+                            </td>
+                          </tr>
+                          <tr>
+                            <td>
+                              10. (-) Potongan Kasbon &amp; Pembayaran Lainnya [K]
+                            </td>
+                            <td className="text-right">
+                              : ({formatRp(sakResult.K_kasbon)})
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="font-bold pt-2">
+                              TOTAL DIBAYARKAN (NETTO) PERIODE INI [E - F - R - K]
+                            </td>
+                            <td className="text-right font-bold pt-2 text-teal-700">
+                              : {formatRp(sakResult.Net_transfer)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="font-bold">
+                              Akumulasi Pembayaran (Netto) s/d Saat Ini
+                            </td>
+                            <td className="text-right font-bold">
+                              : {formatRp(sakResult.Net_transfer)}
+                            </td>
+                          </tr>
                         </tbody>
                       </table>
-
                     </td>
                   </tr>
                 </tbody>
               </table>
 
-              <div className="section-title" style={{ textAlign: 'center', marginTop: '15px', borderTop: '2px solid #0f766e', paddingTop: '10px' }}>
+              <div
+                className="section-title"
+                style={{
+                  textAlign: 'center',
+                  marginTop: '12px',
+                  borderTop: '2px solid #0f766e',
+                  paddingTop: '8px',
+                }}
+              >
                 BILLING STATEMENT — RINGKASAN PERHITUNGAN PENAGIHAN TERMIN
               </div>
-              
-              <div style={{ textAlign: 'right', fontSize: '7.5pt', marginBottom: '5px' }}>
-                MODE HARGA: <span className="font-bold">{data.contract.tax_mode}</span>
+
+              <div
+                style={{
+                  textAlign: 'right',
+                  fontSize: '7.5pt',
+                  marginBottom: '5px',
+                }}
+              >
+                MODE HARGA:{' '}
+                <span className="font-bold">{data.contract.tax_mode}</span>
               </div>
 
               <table className="bill-table">
@@ -449,71 +833,174 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td className="text-center font-bold">A</td><td>Nilai Progres Bruto (s/d periode ini)</td><td className="text-right">{formatRp(sakResult.A_bruto)}</td></tr>
-                  <tr><td className="text-center font-bold">B</td><td>Potongan Pengembalian DP</td><td className="text-right">({formatRp(sakResult.B_potonganDP)})</td></tr>
-                  <tr className="bg-yellow"><td className="text-center font-bold">C</td><td>Dasar Pengenaan Pajak (DPP) (C = A - B)</td><td className="text-right">{formatRp(sakResult.C_dpp)}</td></tr>
-                  <tr><td className="text-center font-bold">D</td><td>PPN {data.contract.ppn_pct || 11}% (D = C × {data.contract.ppn_pct || 11}%)</td><td className="text-right">{formatRp(sakResult.D_ppn)}</td></tr>
-                  <tr className="bg-green"><td className="text-center font-bold">E</td><td>Total Nilai Invoice / Piutang (E = C + D)</td><td className="text-right font-bold">{formatRp(sakResult.E_invoice)}</td></tr>
-                  <tr><td className="text-center font-bold">F</td><td>Potongan PPh Pasal 4 ayat 2 (Jasa Konstruksi) (F = C × Tarif PPh)</td><td className="text-right">({formatRp(sakResult.F_pph42)})</td></tr>
-                  <tr><td className="text-center font-bold">G</td><td>Sisa Kas yang Diterima (Net Transfer) (G = E - F)</td><td className="text-right font-bold">{formatRp(sakResult.G_invoiceBersih)}</td></tr>
+                  <tr>
+                    <td className="text-center font-bold">A</td>
+                    <td>Nilai Progres Bruto (s/d periode ini)</td>
+                    <td className="text-right">{formatRp(sakResult.A_bruto)}</td>
+                  </tr>
+                  <tr>
+                    <td className="text-center font-bold">B</td>
+                    <td>Potongan Pengembalian DP</td>
+                    <td className="text-right">
+                      ({formatRp(sakResult.B_potonganDP)})
+                    </td>
+                  </tr>
+                  <tr className="bg-yellow">
+                    <td className="text-center font-bold">C</td>
+                    <td>Dasar Pengenaan Pajak (DPP) (C = A - B)</td>
+                    <td className="text-right">{formatRp(sakResult.C_dpp)}</td>
+                  </tr>
+                  <tr>
+                    <td className="text-center font-bold">D</td>
+                    <td>
+                      PPN {data.contract.ppn_pct || 11}% (D = C ×{' '}
+                      {data.contract.ppn_pct || 11}%)
+                    </td>
+                    <td className="text-right">{formatRp(sakResult.D_ppn)}</td>
+                  </tr>
+                  <tr className="bg-green">
+                    <td className="text-center font-bold">E</td>
+                    <td>Total Nilai Invoice / Piutang (E = C + D)</td>
+                    <td className="text-right font-bold">
+                      {formatRp(sakResult.E_invoice)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="text-center font-bold">F</td>
+                    <td>
+                      Potongan PPh Pasal 4 ayat 2 (Jasa Konstruksi) (F = C ×
+                      Tarif PPh)
+                    </td>
+                    <td className="text-right">
+                      ({formatRp(sakResult.F_pph42)})
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="text-center font-bold">G</td>
+                    <td>Sisa Kas yang Diterima (Net Transfer) (G = E - F)</td>
+                    <td className="text-right font-bold">
+                      {formatRp(sakResult.G_invoiceBersih)}
+                    </td>
+                  </tr>
                 </tbody>
               </table>
 
+              {/* 100% TABEL MURNI (Pengganti Flexbox 4 Kotak Ringkasan) */}
               <table className="table-layout">
                 <tbody>
                   <tr>
                     <td style={{ width: '50%', paddingRight: '10px' }}>
-                      <div className="bill-table bg-gray" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">Nilai Kontrak:</span><span className="font-bold">{formatRp(data.contract.contract_value)}</span>
-                      </div>
+                      <table className="summary-box-table bg-gray">
+                        <tbody>
+                          <tr>
+                            <td className="text-left font-bold">
+                              Nilai Kontrak:
+                            </td>
+                            <td className="text-right font-bold">
+                              {formatRp(effectiveContractValue)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </td>
                     <td style={{ width: '50%' }}>
-                      <div className="bill-table bg-gray" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">% Progress Opname:</span><span className="font-bold">{sakResult.persenProgres > 0 ? (sakResult.persenProgres * 100).toFixed(2) : 0}%</span>
-                      </div>
+                      <table className="summary-box-table bg-gray">
+                        <tbody>
+                          <tr>
+                            <td className="text-left font-bold">
+                              % Progress Opname:
+                            </td>
+                            <td className="text-right font-bold">
+                              {sakResult.persenProgres > 0
+                                ? (sakResult.persenProgres * 100).toFixed(2)
+                                : 0}
+                              %
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </td>
                   </tr>
                   <tr>
                     <td style={{ paddingRight: '10px' }}>
-                      <div className="bill-table bg-yellow" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">Nilai DP Awal:</span><span className="font-bold">{formatRp(data.nilaiDP)}</span>
-                      </div>
+                      <table className="summary-box-table bg-yellow">
+                        <tbody>
+                          <tr>
+                            <td className="text-left font-bold">
+                              Nilai DP Awal:
+                            </td>
+                            <td className="text-right font-bold">
+                              {formatRp(data.nilaiDP)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </td>
                     <td>
-                      <div className="bill-table bg-green" style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px' }}>
-                        <span className="font-bold">Retensi ({data.contract.retention_pct || 5}%):</span><span className="font-bold">{formatRp(sakResult.R_retensi)}</span>
-                      </div>
+                      <table className="summary-box-table bg-green">
+                        <tbody>
+                          <tr>
+                            <td className="text-left font-bold">
+                              Retensi ({data.contract.retention_pct || 5}%):
+                            </td>
+                            <td className="text-right font-bold">
+                              {formatRp(sakResult.R_retensi)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
                     </td>
                   </tr>
                 </tbody>
               </table>
 
-              <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '8pt', fontWeight: 'bold' }}>
-                Di opname bersama | Tanggal : {new Date(data.contract.period_end).toLocaleDateString('id-ID', {day:'2-digit', month:'long', year:'numeric'})}
+              <div
+                style={{
+                  textAlign: 'center',
+                  marginTop: '8px',
+                  fontSize: '8pt',
+                  fontWeight: 'bold',
+                }}
+              >
+                Di opname bersama | Tanggal :{' '}
+                {formatIndoDate(activePeriod?.end, {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric',
+                })}
               </div>
 
-              <div className="sig-table">
-                <table className="sig-table">
-                  <tbody>
-                    <tr>
-                      {signatures.map((sig, idx) => (
-                        <td key={idx}>
-                          <div className="sig-space"></div>
-                          <div className="sig-name">{sig.name}</div>
-                          <div className="sig-title">{sig.title}</div>
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <table className="sig-table">
+                <tbody>
+                  <tr>
+                    {signatures.map((sig, idx) => (
+                      <td key={idx}>
+                        <div className="sig-space"></div>
+                        <div className="sig-name">{sig.name}</div>
+                        <div className="sig-title">{sig.title}</div>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-          
+
           <div className="mt-6 flex justify-end w-full max-w-[297mm] print:hidden">
-             <button onClick={handlePrint} disabled={saving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-md transition-colors">
-              {saving ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} {isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BAPP'}
-             </button>
+            {can('SUBCON_CREATE') && (
+              <button
+                onClick={handlePrint}
+                disabled={saving}
+                className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-md transition-colors"
+              >
+                {saving ? (
+                  <Loader2 className="animate-spin" size={20} />
+                ) : (
+                  <Printer size={20} />
+                )}{' '}
+                {isReprint ? 'Cetak Ulang PDF' : 'Cetak & Simpan BAPP'}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -526,37 +1013,83 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
           <table className="w-full text-left text-sm min-w-[900px]">
             <thead className="bg-slate-50 border-b border-slate-300">
               <tr className="text-slate-600 text-xs uppercase tracking-wider">
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">No. BAPP</th>
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Tanggal Dibuat</th>
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Vendor / SPK</th>
-                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">Periode</th>
-                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Nilai Netto</th>
-                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">Aksi</th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">
+                  No. BAPP
+                </th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">
+                  Tanggal Dibuat
+                </th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">
+                  Vendor / SPK
+                </th>
+                <th className="p-4 font-bold border-b border-slate-300 sticky top-0 bg-slate-50 z-10">
+                  Periode
+                </th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">
+                  Nilai Netto
+                </th>
+                <th className="p-4 font-bold border-b border-slate-300 text-right sticky top-0 bg-slate-50 z-10">
+                  Aksi
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {history.length === 0 ? (
-                <tr><td colSpan={6} className="p-16 text-center text-slate-400 font-medium italic">Belum ada riwayat BAPP.</td></tr>
-              ) : history.map((b) => (
-                <tr key={b.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="p-4 font-bold font-mono text-teal-700">{b.bapp_number}</td>
-                  <td className="p-4 font-medium text-slate-600">{new Date(b.created_at).toLocaleDateString('id-ID')}</td>
-                  <td className="p-4">
-                    <span className="font-bold text-slate-800">{b.subcontractor_contracts?.subcontractors?.company_name}</span>
-                    <span className="block text-xs text-slate-500 font-mono mt-0.5">{b.subcontractor_contracts?.spk_number}</span>
-                  </td>
-                  <td className="p-4 text-slate-600">{new Date(b.period_start).toLocaleDateString('id-ID')} - {new Date(b.period_end).toLocaleDateString('id-ID')}</td>
-                  <td className="p-4 text-right tabular-nums font-bold text-emerald-600"><MoneyText value={b.total_value} /></td>
-                  <td className="p-4 text-right flex justify-end items-center gap-2">
-                    <button onClick={() => handleReprint(b)} className="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors">
-                      Cetak Ulang
-                    </button>
-                    <button onClick={() => setDeleteTarget(b.id)} className="text-rose-500 hover:text-rose-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors" title="Hapus Riwayat">
-                      <Trash2 size={14} />
-                    </button>
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-16 text-center text-slate-400 font-medium italic"
+                  >
+                    Belum ada riwayat BAPP.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                history.map((b) => (
+                  <tr
+                    key={b.id}
+                    className="hover:bg-slate-50/80 transition-colors"
+                  >
+                    <td className="p-4 font-bold font-mono text-teal-700">
+                      {b.bapp_number}
+                    </td>
+                    <td className="p-4 font-medium text-slate-600">
+                      {formatIndoDate(b.created_at)}
+                    </td>
+                    <td className="p-4">
+                      <span className="font-bold text-slate-800">
+                        {b.subcontractor_contracts?.subcontractors?.company_name}
+                      </span>
+                      <span className="block text-xs text-slate-500 font-mono mt-0.5">
+                        {b.subcontractor_contracts?.spk_number}
+                      </span>
+                    </td>
+                    <td className="p-4 text-slate-600">
+                      {formatIndoDate(b.period_start)} -{' '}
+                      {formatIndoDate(b.period_end)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums font-bold text-emerald-600">
+                      <MoneyText value={b.total_value} />
+                    </td>
+                    <td className="p-4 text-right flex justify-end items-center gap-2">
+                      <button
+                        onClick={() => handleReprint(b)}
+                        className="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors"
+                      >
+                        Cetak Ulang
+                      </button>
+                      {can('SUBCON_CREATE') && (
+                        <button
+                          onClick={() => setDeleteTarget(b.id)}
+                          className="text-rose-500 hover:text-rose-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 transition-colors"
+                          title="Hapus Riwayat"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -569,15 +1102,33 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
               <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-rose-100 mb-4 border border-rose-200">
                 <AlertTriangle className="h-8 w-8 text-rose-600" />
               </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">Hapus Riwayat BAPP</h3>
+              <h3 className="text-xl font-bold text-slate-800 mb-2">
+                Hapus Riwayat BAPP
+              </h3>
               <p className="text-sm text-slate-500 font-medium">
-                Apakah Anda yakin ingin menghapus data riwayat ini? Tindakan ini tidak dapat dibatalkan dan akan menghapus data secara permanen.
+                Apakah Anda yakin ingin menghapus data riwayat ini? BPUTK terkait
+                akan dibuka kembali agar dapat dibuatkan BAPP baru.
               </p>
             </div>
             <div className="bg-slate-50 px-6 py-4 flex gap-3 justify-end border-t border-slate-100">
-              <button onClick={() => setDeleteTarget(null)} disabled={isDeleting} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Batal</button>
-              <button onClick={handleDeleteConfirm} disabled={isDeleting} className="px-6 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 flex items-center gap-2 transition-all">
-                {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />} Ya, Hapus
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="px-6 py-2.5 text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md shadow-rose-500/20 flex items-center gap-2 transition-all"
+              >
+                {isDeleting ? (
+                  <Loader2 className="animate-spin" size={16} />
+                ) : (
+                  <Trash2 size={16} />
+                )}{' '}
+                Ya, Hapus
               </button>
             </div>
           </div>
