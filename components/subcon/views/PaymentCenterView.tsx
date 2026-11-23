@@ -104,9 +104,13 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
     setIsSubmittingAction(true);
     try {
       if (actionModal.type === 'VOID') {
-        await voidSubconPayment(actionModal.item.id, reason.trim());
+        const res = await voidSubconPayment(actionModal.item.id, reason.trim());
+        const counts = res?.voided_counts;
+        const summary = counts
+          ? ` (Cash Flow: ${counts.cash_flows}, Log Subkon: ${counts.subcon_financial_logs}, Actual Cost: ${counts.actual_costs}, Jurnal: ${counts.journal_entries})`
+          : '';
         showToast(
-          `Dokumen ${actionModal.item.payment_number} berhasil di-VOID dan disinkronkan lintas modul keuangan`,
+          `Dokumen ${actionModal.item.payment_number} berhasil di-VOID${summary}`,
           'success'
         );
       } else {

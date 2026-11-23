@@ -627,7 +627,22 @@ export async function updatePaymentStatus(paymentId: string, status: 'Approved' 
   return data;
 }
 
-export async function voidSubconPayment(paymentId: string, reason?: string) {
+export interface VoidSubconPaymentResult {
+  success: boolean;
+  payment_id: string;
+  soft_deleted?: boolean;
+  voided_counts?: {
+    subcon_financial_logs: number;
+    cash_flows: number;
+    actual_costs: number;
+    journal_entries: number;
+  };
+}
+
+export async function voidSubconPayment(
+  paymentId: string,
+  reason?: string
+): Promise<VoidSubconPaymentResult> {
   const { data, error } = await supabase.rpc('rpc_sync_void_subcon_payment', {
     p_payment_id: paymentId,
     p_reason: reason?.trim() || 'Dibatalkan oleh pengguna',
@@ -637,10 +652,13 @@ export async function voidSubconPayment(paymentId: string, reason?: string) {
   if (error) {
     throw new Error(error.message || 'Gagal membatalkan dokumen pembayaran (Sync VOID).');
   }
-  return data;
+  return data as VoidSubconPaymentResult;
 }
 
-export async function softDeleteSubconPayment(paymentId: string, reason?: string) {
+export async function softDeleteSubconPayment(
+  paymentId: string,
+  reason?: string
+): Promise<VoidSubconPaymentResult> {
   const { data, error } = await supabase.rpc('rpc_sync_void_subcon_payment', {
     p_payment_id: paymentId,
     p_reason: reason?.trim() || 'Dihapus dari daftar',
@@ -650,7 +668,7 @@ export async function softDeleteSubconPayment(paymentId: string, reason?: string
   if (error) {
     throw new Error(error.message || 'Gagal menghapus dokumen pembayaran (Soft Delete).');
   }
-  return data;
+  return data as VoidSubconPaymentResult;
 }
 
 export async function saveReceipt(payload: SubconReceipt) {
