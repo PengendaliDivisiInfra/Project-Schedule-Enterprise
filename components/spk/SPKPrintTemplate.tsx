@@ -169,7 +169,7 @@ export default function SPKPrintTemplate({
       .replace(/^(\d+)\.\s+(\d+\.)/gm, '$1.$2')
       .replace(/([.;:])\s+(\d+\.\d+\.)\s+/g, '$1\n$2 ')
       .replace(
-        /^(Berita Acara Prestasi Pekerjaan|Berita acara pembayaran|Invoice\/kwitansi|Copy Kontrak)/gim,
+        /^\s*(Berita Acara Prestasi Pekerjaan|Berita acara pembayaran|Invoice\/kwitansi|Copy Kontrak)/gim,
         '• $1'
       );
 
@@ -989,7 +989,7 @@ export default function SPKPrintTemplate({
       {templates.map((pasal, index) => (
         <div key={index} className="pasal-block">
           <div className="pasal-header">
-            {pasal.pasal_number} — {pasal.title}
+            {String(pasal.pasal_number || '').replace(/\s+/g, ' ').trim()} — {String(pasal.title || '').replace(/\s+/g, ' ').trim()}
           </div>
           <div style={{ fontSize: '10pt' }}>{parseContent(pasal.content)}</div>
         </div>
@@ -1730,8 +1730,9 @@ export default function SPKPrintTemplate({
                     src={spk.ktp_url}
                     alt="KTP Pihak Kedua"
                     style={{
-                      maxHeight: '320px',
-                      maxWidth: '92%',
+                      width: '340px',
+                      maxHeight: '220px',
+                      maxWidth: '88%',
                       objectFit: 'contain',
                       border: '1px solid #94a3b8',
                       padding: '6px',
