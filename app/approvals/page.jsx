@@ -16,7 +16,7 @@ export default function ApprovalsPage() {
 
   const fetchPending = async () => {
     setLoading(true);
-    const { data } = await supabase.from('cash_flows').select('*').eq('approval_status', 'Pending').order('transaction_date', { ascending: false });
+    const { data } = await supabase.from('cash_flows').select('*').eq('approval_status', 'Pending').eq('is_deleted', false).is('voided_at', null).order('transaction_date', { ascending: false });
     if (data) setPendingFlows(data);
     setLoading(false);
   };
@@ -42,7 +42,7 @@ export default function ApprovalsPage() {
   };
 
   const confirmReject = () => {
-    if (!rejectReason.trim()) return alert("Alasan penolakan wajib diisi!");
+    if (!rejectReason.trim()) return showToast('danger', 'Alasan penolakan wajib diisi!');
     handleAction(rejectId, 'Rejected', rejectReason);
   };
 

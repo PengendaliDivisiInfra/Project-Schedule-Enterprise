@@ -9,6 +9,7 @@ import {
   softDeleteSubconPayment,
 } from '@/lib/services/subcon.service';
 import { MoneyText } from '@/components/ui/MoneyText';
+import { invalidateCache } from '@/lib/utils/cache';
 import {
   Wallet,
   Search,
@@ -79,6 +80,7 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
     setIsProcessingPay(true);
     try {
       await updatePaymentStatus(reviewItem.id, targetStatus);
+      invalidateCache(`finances_${projectId}`);
       showToast(
         targetStatus === 'Approved'
           ? `Dokumen ${reviewItem.payment_number} berhasil disetujui (APPROVED)`
@@ -130,6 +132,7 @@ export function PaymentCenterView({ projectId, showToast }: PaymentCenterViewPro
         );
       }
 
+      invalidateCache(`finances_${projectId}`);
       setActionModal(null);
       setReason('');
       await loadPayments();

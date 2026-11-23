@@ -26,6 +26,7 @@ export default function GeneralLedgerView({ projectId }: { projectId: string }) 
         .from('journal_entries')
         .select('*')
         .eq('project_id', projectId)
+        .neq('status', 'Void')
         .order('created_at', { ascending: true });
 
       if (error) throw error;

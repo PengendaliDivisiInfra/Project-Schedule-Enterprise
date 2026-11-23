@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 // TYPES & INTERFACES
 // ============================================================================
 
-export type CashFlowType = 'INFLOW' | 'OUTFLOW';
+export type CashFlowType = 'IN' | 'OUT';
 
 export type CostCategory =
   | 'MATERIAL'
@@ -348,7 +348,7 @@ export async function getProjectFinancialSummary(
     }
     const bucket = monthlyMap.get(monthKey)!;
 
-    if (cf.type === 'INFLOW') {
+    if (cf.type === 'IN') {
       totalInflow += amount;
       bucket.inflow += amount;
     } else {

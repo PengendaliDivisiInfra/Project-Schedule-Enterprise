@@ -9,6 +9,7 @@ import {
   softDeleteSubconPayment,
 } from '@/lib/services/subcon.service';
 import { MoneyText } from '@/components/ui/MoneyText';
+import { invalidateCache } from '@/lib/utils/cache';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
 import { SignatureItem } from '@/lib/types/subcon';
 import {
@@ -220,6 +221,7 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
         showToast('Pengajuan kasbon berhasil disimpan ke antrean pembayaran', 'success');
       }
 
+      invalidateCache(`finances_${projectId}`);
       resetForm();
       await loadHistory();
     } catch (err: any) {
@@ -241,6 +243,7 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
       setHistory((prev) => prev.filter((row) => row.id !== deleteTarget.id));
       if (editingId === deleteTarget.id) resetForm();
 
+      invalidateCache(`finances_${projectId}`);
       showToast('Riwayat kasbon berhasil dihapus', 'success');
       setDeleteTarget(null);
       await loadHistory();

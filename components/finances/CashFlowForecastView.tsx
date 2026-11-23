@@ -11,6 +11,12 @@ export default function CashFlowForecastView({ projectId }: { projectId: string 
   const [projectData, setProjectData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3500);
+  };
 
   // STATE UNTUK PENGATURAN TTD
   const [showSigSettings, setShowSigSettings] = useState(false);
@@ -274,8 +280,7 @@ export default function CashFlowForecastView({ projectId }: { projectId: string 
 
     } catch (err: any) {
       console.error(err);
-      // Sesuaikan alert ini dengan Custom Toast Anda jika ada
-      alert("Gagal mencetak PDF: " + err.message); 
+      showToast('error', 'Gagal mencetak PDF: ' + (err?.message || 'Terjadi kesalahan'));
     } finally {
       setIsPrinting(false);
     }
@@ -285,7 +290,12 @@ export default function CashFlowForecastView({ projectId }: { projectId: string 
   if (!data) return <div className="p-6 text-red-600 font-bold">Gagal memuat data forecast.</div>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
+      {toast && (
+        <div className={`fixed top-6 right-6 z-[9999] px-5 py-3 rounded-xl shadow-xl text-white text-sm font-bold flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+          <CheckCircle2 size={16} /> {toast.message}
+        </div>
+      )}
       {/* HEADER & ACTIONS */}
       <div className="flex justify-between items-center bg-white p-4 rounded-xl border shadow-sm">
         <div>

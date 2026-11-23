@@ -109,6 +109,7 @@ export default function CashFlowPage() {
         .from('cash_flows')
         .select('*')
         .eq('project_id', projectId)
+        .eq('is_deleted', false)
         .order('transaction_date', { ascending: false });
       if (flowData) setFlows(flowData);
 
@@ -157,6 +158,8 @@ export default function CashFlowPage() {
         .from('subcontractor_payments')
         .select(`*, subcontractor_contracts ( subcontractors ( company_name ) )`)
         .eq('project_id', projectId)
+        .eq('is_deleted', false)
+        .is('voided_at', null)
         .in('status', ['Pending', 'Approved'])
         .order('payment_date', { ascending: true });
 

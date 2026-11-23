@@ -1,14 +1,16 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { Store, Plus, X, Edit, PowerOff, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Store, Plus, X, Edit, PowerOff, CheckCircle } from 'lucide-react';
 import { getVendors, createVendor, updateVendor, deactivateVendor } from '@/lib/services/vendor-service';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Vendor } from '@/types/purchase-order';
 
 export function VendorManager({ projectId }: { projectId: string }) {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // State Modal
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // State Modal Form
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [formData, setFormData] = useState({
@@ -21,6 +23,15 @@ export function VendorManager({ projectId }: { projectId: string }) {
     bank_account_name: ''
   });
 
+  // State Modal Konfirmasi Nonaktifkan
+  const [deactivateTarget, setDeactivateTarget] = useState<{ id: string; name: string } | null>(null);
+  const [isDeactivating, setIsDeactivating] = useState(false);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 3500);
+  };
+
   const loadData = async () => {
     if (!projectId) return;
     setLoading(true);
@@ -28,7 +39,7 @@ export function VendorManager({ projectId }: { projectId: string }) {
       const data = await getVendors(projectId);
       setVendors(data);
     } catch (e: any) {
-      alert(e.message);
+      showToast('error', e?.message || 'Gagal memuat data vendor');
     } finally {
       setLoading(false);
     }
@@ -57,34 +68,46 @@ export function VendorManager({ projectId }: { projectId: string }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) return alert("Nama Vendor wajib diisi!");
+    if (!formData.name.trim()) return showToast('error', 'Nama Vendor wajib diisi!');
 
     try {
       if (editingVendor) {
         await updateVendor(editingVendor.id, formData);
+        showToast('success', 'Data vendor berhasil diperbarui');
       } else {
         await createVendor({ ...formData, project_id: projectId, is_active: true });
+        showToast('success', 'Vendor baru berhasil ditambahkan');
       }
       setIsModalOpen(false);
       loadData();
     } catch (err: any) {
-      alert(err.message);
+      showToast('error', err?.message || 'Gagal menyimpan data vendor');
     }
   };
 
-  const handleDeactivate = async (id: string, name: string) => {
-    if (confirm(`Nonaktifkan vendor "${name}"? Data historis PO tetap aman.`)) {
-      try {
-        await deactivateVendor(id);
-        loadData();
-      } catch (err: any) {
-        alert(err.message);
-      }
+  const confirmDeactivate = async () => {
+    if (!deactivateTarget) return;
+    setIsDeactivating(true);
+    try {
+      await deactivateVendor(deactivateTarget.id);
+      showToast('success', `Vendor "${deactivateTarget.name}" berhasil dinonaktifkan`);
+      setDeactivateTarget(null);
+      loadData();
+    } catch (err: any) {
+      showToast('error', err?.message || 'Gagal menonaktifkan vendor');
+    } finally {
+      setIsDeactivating(false);
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {toast && (
+        <div className={`fixed top-6 right-6 z-[9999] px-5 py-3 rounded-xl shadow-xl text-white text-sm font-bold flex items-center gap-2 ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+          <CheckCircle size={16} /> {toast.message}
+        </div>
+      )}
+
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -130,7 +153,7 @@ export function VendorManager({ projectId }: { projectId: string }) {
                       <button onClick={() => handleOpenModal(v)} className="text-blue-600 hover:bg-blue-50 p-1.5 rounded transition-colors" title="Edit">
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDeactivate(v.id, v.name)} className="text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors" title="Nonaktifkan">
+                      <button onClick={() => setDeactivateTarget({ id: v.id, name: v.name })} className="text-red-600 hover:bg-red-50 p-1.5 rounded transition-colors" title="Nonaktifkan">
                         <PowerOff className="w-4 h-4" />
                       </button>
                     </div>
@@ -199,6 +222,15 @@ export function VendorManager({ projectId }: { projectId: string }) {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deactivateTarget}
+        onClose={() => setDeactivateTarget(null)}
+        onConfirm={confirmDeactivate}
+        title="Nonaktifkan Vendor"
+        message={`Nonaktifkan vendor "${deactivateTarget?.name || ''}"? Data historis PO tetap aman.`}
+        isLoading={isDeactivating}
+      />
     </div>
   );
 }
