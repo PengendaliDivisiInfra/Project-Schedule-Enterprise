@@ -45,3 +45,9 @@ yarn-debug.log*
 yarn-error.log*
 .vercel
 .env*
+
+# Build Cache & Heavy Artifacts
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+*.bak
+public/chromium-pack.tar
