@@ -151,7 +151,7 @@ export default function Dashboard({ projectId, userEmail }) {
       {/* HEADER DENGAN LOGO */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <div className="flex items-center gap-4">
-          <img src="/logo-infrastruktur.jpeg" alt="Divisi Infrastruktur" className="brand-logo" />
+          <img src="/logo-divisi-infrastruktur.png" alt="Divisi Infrastruktur" className="brand-logo" />
           <div>
             <h1 className="text-2xl font-bold text-slate-900">{project?.name || 'Project Dashboard'}</h1>
             <p className="text-sm text-slate-500">Status Date: {new Date(project?.status_date).toLocaleDateString('id-ID')} | User: {userEmail}</p>
