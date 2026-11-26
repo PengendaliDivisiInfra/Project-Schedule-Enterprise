@@ -59,7 +59,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     { title: 'KA. Divisi Infra', name: 'MEI SUNARKO' },
     { title: 'Ass. Divisi Infra', name: 'ARIF DARMAWAN' },
     { title: 'Ka. Pembelian', name: 'M. MAULIDIN' },
-    { title: 'Site Engineer', name: 'SAIFUDDIN FAMI' },
+    { title: 'Site Engineer', name: 'SAIFUDDIN FAHMI' },
     { title: 'Mandor / Direktur', name: 'HAERUL' },
   ]);
 

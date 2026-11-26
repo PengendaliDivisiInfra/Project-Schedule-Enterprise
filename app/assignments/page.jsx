@@ -1,10 +1,12 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { useProject } from '../../context/ProjectContext';
 import { CheckCircle2, AlertTriangle, Loader2, Link as LinkIcon, Users } from 'lucide-react';
 
 export default function AssignmentsPage() {
+  const { activeProjectId } = useProject();
   const [tasks, setTasks] = useState([]);
   const [ahspList, setAhspList] = useState([]);
   const [assignments, setAssignments] = useState([]);
@@ -18,6 +20,12 @@ export default function AssignmentsPage() {
   };
 
   const fetchData = async () => {
+    if (!activeProjectId) {
+      setTasks([]);
+      setAssignments([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       // 1. Fetch AHSP Templates
@@ -28,23 +36,30 @@ export default function AssignmentsPage() {
       if (ahspError) throw ahspError;
       setAhspList(ahspData || []);
 
-      // 2. Fetch WBS Tasks
+      // 2. Fetch WBS Tasks khusus proyek aktif
       const { data: taskData, error: taskError } = await supabase
         .from('wbs_tasks')
         .select('id, wbs_code, name, volume, ahsp_template_id, summary')
+        .eq('project_id', activeProjectId)
         .order('wbs_code');
       if (taskError) throw taskError;
-      
-      const uniqueTasks = Array.from(new Map(taskData.map(item => [item.wbs_code, item])).values());
+
+      const safeTasks = taskData || [];
+      const uniqueTasks = Array.from(new Map(safeTasks.map(item => [item.wbs_code, item])).values());
       setTasks(uniqueTasks);
 
-      // 3. Fetch Task Assignments (Untuk melihat resource otomatis dari DB Trigger)
-      const { data: assignData, error: assignError } = await supabase
-        .from('task_assignments')
-        .select('task_id, project_resources(name, role)');
-        
-      if (!assignError && assignData) {
-        setAssignments(assignData);
+      // 3. Fetch Task Assignments khusus task pada proyek aktif
+      const taskIds = uniqueTasks.map(t => t.id);
+      if (taskIds.length > 0) {
+        const { data: assignData, error: assignError } = await supabase
+          .from('task_assignments')
+          .select('task_id, project_resources(name, role)')
+          .in('task_id', taskIds);
+        if (!assignError && assignData) {
+          setAssignments(assignData);
+        }
+      } else {
+        setAssignments([]);
       }
 
     } catch (error) {
@@ -57,7 +72,7 @@ export default function AssignmentsPage() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [activeProjectId]);
 
   const handleAssignAhsp = async (taskId, ahspId) => {
     setSavingId(taskId);
@@ -75,11 +90,15 @@ export default function AssignmentsPage() {
       fetchData(); // Rollback
     } else {
       showToast('success', "AHSP berhasil di-assign!");
-      // Tarik ulang data assignment karena DB Trigger baru saja bekerja di latar belakang
-      const { data: assignData } = await supabase
-        .from('task_assignments')
-        .select('task_id, project_resources(name, role)');
-      if (assignData) setAssignments(assignData);
+      // Tarik ulang data assignment khusus proyek aktif karena DB Trigger baru saja bekerja
+      const currentTaskIds = tasks.map(t => t.id);
+      if (currentTaskIds.length > 0) {
+        const { data: assignData } = await supabase
+          .from('task_assignments')
+          .select('task_id, project_resources(name, role)')
+          .in('task_id', currentTaskIds);
+        if (assignData) setAssignments(assignData);
+      }
     }
     
     setSavingId(null);

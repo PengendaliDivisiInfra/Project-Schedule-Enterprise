@@ -38,7 +38,8 @@ export async function getPurchaseOrders(projectId: string): Promise<PurchaseOrde
       *,
       vendor:vendors(name),
       items:purchase_order_items(
-        id, 
+        id,
+        hsd_id,
         ordered_qty, 
         received_qty, 
         unit_price,
@@ -46,6 +47,7 @@ export async function getPurchaseOrders(projectId: string): Promise<PurchaseOrde
       )
     `)
     .eq('project_id', projectId)
+    .neq('status', 'Void')
     .order('created_at', { ascending: false });
   
   if (error) throw new Error(error.message);
@@ -103,6 +105,21 @@ export async function createPurchaseOrder(poHeader: Partial<PurchaseOrder>, item
 }
 
 export async function updatePurchaseOrder(poId: string, poHeader: Partial<PurchaseOrder>, items: POItem[]) {
+  // Enterprise Guard: cegah penghapusan/reset received_qty jika PO sudah memiliki penerimaan barang (GRN)
+  const { data: existingItems, error: fetchErr } = await supabase
+    .from('purchase_order_items')
+    .select('id, hsd_id, received_qty')
+    .eq('po_id', poId);
+
+  if (fetchErr) throw new Error(fetchErr.message);
+
+  const hasGoodsReceipt = (existingItems || []).some((it: any) => Number(it.received_qty || 0) > 0);
+  if (hasGoodsReceipt) {
+    throw new Error(
+      'PO ini sudah memiliki penerimaan barang (GRN). Untuk menjaga keakuratan Neraca & jejak audit, item PO tidak dapat ditimpa ulang. Buat PO tambahan untuk kebutuhan baru.'
+    );
+  }
+
   const { error: poError } = await supabase
     .from('purchase_orders')
     .update(poHeader)
@@ -114,7 +131,7 @@ export async function updatePurchaseOrder(poId: string, poHeader: Partial<Purcha
     .from('purchase_order_items')
     .delete()
     .eq('po_id', poId);
-    
+
   if (deleteError) throw new Error(deleteError.message);
 
   const processedItems: any[] = [];
@@ -124,7 +141,7 @@ export async function updatePurchaseOrder(poId: string, poHeader: Partial<Purcha
       po_id: poId,
       hsd_id: validHsdId,
       ordered_qty: item.ordered_qty,
-      received_qty: 0,
+      received_qty: Number(item.received_qty) || 0,
       unit_price: item.unit_price,
       total_price: item.total_price
     });
@@ -138,11 +155,29 @@ export async function updatePurchaseOrder(poId: string, poHeader: Partial<Purcha
 }
 
 export async function deletePurchaseOrder(poId: string) {
+  // ABSOLUTE RULE #2: Soft Void (dilarang Hard Delete) + proteksi terhadap PO yang sudah dibayar / diterima
+  const [{ data: po, error: poErr }, { data: poItems, error: itemsErr }] = await Promise.all([
+    supabase.from('purchase_orders').select('id, paid_amount, status').eq('id', poId).single(),
+    supabase.from('purchase_order_items').select('received_qty').eq('po_id', poId),
+  ]);
+
+  if (poErr || !po) throw new Error(poErr?.message || 'PO tidak ditemukan.');
+  if (itemsErr) throw new Error(itemsErr.message);
+
+  if (Number(po.paid_amount || 0) > 0) {
+    throw new Error('PO yang sudah dibayar tidak dapat dibatalkan langsung. Batalkan (VOID) pembayaran PO terlebih dahulu.');
+  }
+
+  const hasReceipt = (poItems || []).some((it: any) => Number(it.received_qty || 0) > 0);
+  if (hasReceipt) {
+    throw new Error('PO yang sudah memiliki penerimaan barang (GRN) tidak dapat dibatalkan.');
+  }
+
   const { error } = await supabase
     .from('purchase_orders')
-    .delete()
+    .update({ status: 'Void' })
     .eq('id', poId);
-    
+
   if (error) throw new Error(error.message);
 }
 
@@ -292,6 +327,8 @@ export async function recordPOPayment(
 export async function voidPOPayment(poId: string, projectId: string, totalPaidAmount: number, poNumber: string) {
   if (totalPaidAmount <= 0) throw new Error("Tidak ada nominal pembayaran yang bisa dibatalkan.");
 
+  const now = new Date().toISOString();
+
   const { error: updateError } = await supabase
     .from('purchase_orders')
     .update({ 
@@ -303,19 +340,20 @@ export async function voidPOPayment(poId: string, projectId: string, totalPaidAm
 
   if (updateError) throw new Error(updateError.message);
 
+  // Batalkan (VOID) catatan kas keluar (OUT) asli agar KPI Total Kas Masuk tidak menggelembung semu
   const { error: cashError } = await supabase
     .from('cash_flows')
-    .insert({
-      project_id: projectId,
-      transaction_date: new Date().toISOString().split('T')[0],
-      type: 'IN', 
-      category: 'Material',
-      amount: totalPaidAmount,
-      description: `[PEMBATALAN] Pembayaran PO: ${poNumber}`,
-      reference_id: poId,
-      vendor_or_ref: 'Void PO',
-      approval_status: 'Approved'
-    });
+    .update({
+      is_deleted: true,
+      is_void: true,
+      voided_at: now,
+      void_reason: `[PEMBATALAN] Pembayaran PO: ${poNumber}`,
+    })
+    .eq('project_id', projectId)
+    .eq('reference_id', poId)
+    .eq('vendor_or_ref', 'Purchase Order')
+    .eq('type', 'OUT')
+    .is('voided_at', null);
 
-  if (cashError) throw new Error(`Gagal mencatat pembatalan arus kas: ${cashError.message}`);
+  if (cashError) throw new Error(`Gagal membatalkan arus kas PO: ${cashError.message}`);
 }

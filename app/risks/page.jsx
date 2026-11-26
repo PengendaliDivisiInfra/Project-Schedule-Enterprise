@@ -1,10 +1,13 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { useProject } from '../../context/ProjectContext';
 import { AlertTriangle, CheckCircle2, ShieldAlert, Plus, Edit, Trash2, X, Loader2, Save } from 'lucide-react';
 
 export default function RisksPage() {
+  const { activeProjectId } = useProject();
+  const [hasProjectColumn, setHasProjectColumn] = useState(true);
   const [risks, setRisks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -24,13 +27,30 @@ export default function RisksPage() {
   };
 
   const fetchRisks = async () => {
+    if (!activeProjectId) {
+      setRisks([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    const { data } = await supabase.from('project_risks').select('*').order('risk_score', { ascending: false });
-    if (data) setRisks(data);
+    let res = await supabase
+      .from('project_risks')
+      .select('*')
+      .eq('project_id', activeProjectId)
+      .order('risk_score', { ascending: false });
+
+    if (res.error && (res.error.code === '42703' || String(res.error.message || '').includes('project_id'))) {
+      setHasProjectColumn(false);
+      res = await supabase.from('project_risks').select('*').order('risk_score', { ascending: false });
+    } else {
+      setHasProjectColumn(true);
+    }
+
+    setRisks(res.data || []);
     setLoading(false);
   };
 
-  useEffect(() => { fetchRisks(); }, []);
+  useEffect(() => { fetchRisks(); }, [activeProjectId]);
 
   const handleOpenAdd = () => {
     setEditingRisk(null);
@@ -63,7 +83,8 @@ export default function RisksPage() {
       const { error } = await supabase.from('project_risks').update(payload).eq('id', editingRisk.id);
       if (error) errorMsg = error.message;
     } else {
-      const { error } = await supabase.from('project_risks').insert([payload]);
+      const insertPayload = hasProjectColumn && activeProjectId ? { ...payload, project_id: activeProjectId } : payload;
+      const { error } = await supabase.from('project_risks').insert([insertPayload]);
       if (error) errorMsg = error.message;
     }
 

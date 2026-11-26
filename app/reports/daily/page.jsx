@@ -1,24 +1,33 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useProject } from '../../../context/ProjectContext';
 
 export default function DailyReportPage() {
+  const { activeProjectId } = useProject();
   const [projectInfo, setProjectInfo] = useState({});
   const [loading, setLoading] = useState(true);
   const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     const fetchProjectData = async () => {
-      // Mengambil data dari tabel projects (asumsi 1 proyek aktif per database)
-      const { data, error } = await supabase.from('projects').select('*').limit(1).maybeSingle();
-      if (data) {
-        setProjectInfo(data);
+      if (!activeProjectId) {
+        setProjectInfo({});
+        setLoading(false);
+        return;
       }
+      setLoading(true);
+      const { data } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', activeProjectId)
+        .maybeSingle();
+      setProjectInfo(data || {});
       setLoading(false);
     };
     fetchProjectData();
-  }, []);
+  }, [activeProjectId]);
 
   if (loading) return <LoadingSpinner text="Memuat data proyek..." />;
 

@@ -1,9 +1,11 @@
-﻿'use client';
+'use client';
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
+import { useProject } from '../../../context/ProjectContext';
 
 export default function WeeklyReportPage() {
+  const { activeProjectId } = useProject();
   const [tasks, setTasks] = useState([]);
   const [records, setRecords] = useState([]);
   const [projectInfo, setProjectInfo] = useState({});
@@ -19,10 +21,17 @@ export default function WeeklyReportPage() {
   const [prevDateEnd, setPrevDateEnd] = useState(lastWeek.toISOString().split('T')[0]);
 
   const fetchData = async () => {
+    if (!activeProjectId) {
+      setProjectInfo({});
+      setTasks([]);
+      setRecords([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     
-    // Ambil Data Proyek
-    const { data: pData } = await supabase.from('projects').select('*').limit(1).maybeSingle();
+    // Ambil Data Proyek Aktif
+    const { data: pData } = await supabase.from('projects').select('*').eq('id', activeProjectId).maybeSingle();
     if (pData) {
       setProjectInfo(pData);
       if (pData.contract_start) {
@@ -40,7 +49,7 @@ export default function WeeklyReportPage() {
     }
 
     // Ambil Data Tasks
-    const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, mata_varian, ahsp_templates(unit)`).order('wbs_code');
+    const { data: tData } = await supabase.from('wbs_tasks').select(`id, name, wbs_code, summary, volume, cost, mata_varian, ahsp_templates(unit)`).eq('project_id', activeProjectId).order('wbs_code');
     if (tData) {
       const uniqueTasks = Array.from(new Map(tData.map(item => [item.wbs_code, item])).values());
       
@@ -58,12 +67,17 @@ export default function WeeklyReportPage() {
       setTasks(processedTasks);
     }
     
-    const { data: rData } = await supabase.from('daily_progress').select('*');
-    setRecords(rData || []);
+    const projectTaskIds = (tData || []).map(t => t.id);
+    if (projectTaskIds.length > 0) {
+      const { data: rData } = await supabase.from('daily_progress').select('*').in('task_id', projectTaskIds);
+      setRecords(rData || []);
+    } else {
+      setRecords([]);
+    }
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [activeProjectId]);
 
   const weekNumber = useMemo(() => {
     if (!projectInfo.contract_start) return 'Minggu Ke-1';

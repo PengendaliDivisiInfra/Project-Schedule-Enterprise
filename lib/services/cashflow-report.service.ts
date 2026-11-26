@@ -19,6 +19,7 @@ export async function getCashFlowStatement(projectId: string, startDate: string,
     .select('type, amount')
     .eq('project_id', projectId)
     .eq('approval_status', 'Approved')
+    .eq('is_deleted', false)
     .is('voided_at', null)
     .lt('transaction_date', startDate);
 
@@ -36,6 +37,7 @@ export async function getCashFlowStatement(projectId: string, startDate: string,
     .select('*')
     .eq('project_id', projectId)
     .eq('approval_status', 'Approved')
+    .eq('is_deleted', false)
     .is('voided_at', null)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)

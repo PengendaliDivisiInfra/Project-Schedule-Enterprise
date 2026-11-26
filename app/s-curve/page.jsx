@@ -13,12 +13,21 @@ export default function SCurvePage() {
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: viewData } = await supabase.from('v_s_curve_data').select('*').eq('project_id', activeProjectId);
-      if (viewData) setData(viewData);
+      if (!activeProjectId) {
+        setData([]);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      const { data: viewData } = await supabase
+        .from('v_s_curve_data')
+        .select('*')
+        .eq('project_id', activeProjectId);
+      setData(viewData || []);
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [activeProjectId]);
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
   const formatYAxis = (val) => `Rp ${(val / 1000000).toFixed(0)} Jt`;

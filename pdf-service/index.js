@@ -1,20 +1,121 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { pathToFileURL } = require('url');
+const net = require('net');
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+
+// CORS hardening: batasi origin jika ALLOWED_ORIGINS diset di Railway
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error('Origin tidak diizinkan oleh kebijakan CORS.'));
+    },
+  })
+);
+app.use(express.json({ limit: '20mb' }));
+
+/**
+ * Memeriksa apakah hostname/IP termasuk jaringan privat, loopback, atau cloud metadata (anti-SSRF).
+ */
+function isBlockedHost(hostname) {
+  const h = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return true;
+
+  if (
+    h === 'localhost' ||
+    h === '0.0.0.0' ||
+    h === '::1' ||
+    h === '::' ||
+    h.endsWith('.local') ||
+    h.endsWith('.internal') ||
+    h.endsWith('.localhost') ||
+    h === 'metadata.google.internal'
+  ) {
+    return true;
+  }
+
+  if (net.isIPv4(h)) {
+    const parts = h.split('.').map(Number);
+    const [a, b] = parts;
+    if (a === 127) return true; // 127.0.0.0/8 loopback
+    if (a === 10) return true; // 10.0.0.0/8 private
+    if (a === 0) return true; // 0.0.0.0/8
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16 cloud metadata / link-local
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16 private
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 CGNAT
+  }
+
+  if (net.isIPv6(h)) {
+    if (
+      h === '::1' ||
+      h.startsWith('fc') ||
+      h.startsWith('fd') ||
+      h.startsWith('fe80') ||
+      h.startsWith('::ffff:127.') ||
+      h.startsWith('::ffff:10.') ||
+      h.startsWith('::ffff:169.254.') ||
+      h.startsWith('::ffff:192.168.')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Validasi URL request subresource dari halaman PDF (anti-LFI file:// & anti-SSRF).
+ */
+function isAllowedRequestUrl(rawUrl) {
+  if (!rawUrl) return false;
+  if (rawUrl === 'about:blank' || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) {
+    return true;
+  }
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false; // Blokir file://, javascript:, ftp://, chrome://, dll.
+    }
+    if (isBlockedHost(parsed.hostname)) {
+      return false; // Blokir localhost, metadata AWS/GCP/Railway, & IP privat
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hapus tag <script> agar HTML mentah tidak dapat mengeksekusi JS berbahaya di Chromium.
+ */
+function stripScripts(html) {
+  return String(html).replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+}
 
 app.get('/healthz', (req, res) => {
   res.status(200).send('OK');
 });
 
 app.post('/generate-pdf', async (req, res) => {
+  // Verifikasi shared secret dari Vercel jika PDF_SERVICE_SECRET dikonfigurasi di Railway
+  const expectedSecret = process.env.PDF_SERVICE_SECRET;
+  if (expectedSecret) {
+    const providedSecret = req.headers['x-pdf-secret'];
+    if (providedSecret !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized PDF service request' });
+    }
+  }
+
   const {
     html,
     scale,
@@ -29,13 +130,9 @@ app.post('/generate-pdf', async (req, res) => {
   }
 
   let browser = null;
-  const tempFilePath = path.join(
-    os.tmpdir(),
-    `pdf-${Date.now()}-${Math.random().toString(36).substring(2, 9)}.html`
-  );
 
   try {
-    fs.writeFileSync(tempFilePath, html, 'utf-8');
+    const safeHtml = stripScripts(html);
 
     browser = await puppeteer.launch({
       headless: 'new',
@@ -52,7 +149,20 @@ app.post('/generate-pdf', async (req, res) => {
 
     const page = await browser.newPage();
 
-    await page.goto(pathToFileURL(tempFilePath).href, {
+    // Aktifkan Request Interception: blokir LFI (file://) & SSRF (IP privat/metadata)
+    await page.setRequestInterception(true);
+    page.on('request', (interceptedReq) => {
+      const reqUrl = interceptedReq.url();
+      if (isAllowedRequestUrl(reqUrl)) {
+        interceptedReq.continue();
+      } else {
+        console.warn(`[PDF Security] Blocked disallowed URL: ${reqUrl.slice(0, 120)}`);
+        interceptedReq.abort('blockedbyclient');
+      }
+    });
+
+    // Gunakan setContent langsung di memori (TANPA menulis temp file / navigasi file://)
+    await page.setContent(safeHtml, {
       waitUntil: 'networkidle0',
       timeout: 60000,
     });
@@ -78,7 +188,7 @@ app.post('/generate-pdf', async (req, res) => {
       );
     });
 
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 300));
 
     const hasFooter = Boolean(footerTemplate && footerTemplate.trim());
     const pdfMargin = {
@@ -97,7 +207,7 @@ app.post('/generate-pdf', async (req, res) => {
       margin: pdfMargin,
       displayHeaderFooter: hasFooter,
       headerTemplate: '<div style="font-size:0;margin:0;padding:0;"></div>',
-      footerTemplate: hasFooter ? footerTemplate : '',
+      footerTemplate: hasFooter ? stripScripts(footerTemplate) : '',
       timeout: 60000,
     });
 
@@ -115,13 +225,6 @@ app.post('/generate-pdf', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: error.message || 'Failed to generate PDF' });
   } finally {
-    if (tempFilePath && fs.existsSync(tempFilePath)) {
-      try {
-        fs.unlinkSync(tempFilePath);
-      } catch (e) {
-        console.error('Gagal hapus temp file:', e);
-      }
-    }
     if (browser) {
       try {
         await browser.close();

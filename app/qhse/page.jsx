@@ -1,10 +1,13 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
+import { useProject } from '../../context/ProjectContext';
 import { ShieldCheck, HardHat, CheckCircle2, AlertTriangle, Plus, Edit, X, Loader2, Save, Image as ImageIcon, UploadCloud } from 'lucide-react';
 
 export default function QhsePage() {
+  const { activeProjectId } = useProject();
+  const [hasProjectColumn, setHasProjectColumn] = useState({ qc: true, hse: true });
   const [activeTab, setActiveTab] = useState('qc'); // 'qc' | 'hse'
   const [qcData, setQcData] = useState([]);
   const [hseData, setHseData] = useState([]);
@@ -35,18 +38,51 @@ export default function QhsePage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchData = async () => {
-    setLoading(true);
-    const { data: qc } = await supabase.from('qc_inspections').select('*').order('created_at', { ascending: false });
-    if (qc) setQcData(qc);
+  const isMissingProjectColError = (err) =>
+    Boolean(err && (err.code === '42703' || String(err.message || '').includes('project_id')));
 
-    const { data: hse } = await supabase.from('hse_logs').select('*').order('created_at', { ascending: false });
-    if (hse) setHseData(hse);
-    
+  const fetchData = async () => {
+    if (!activeProjectId) {
+      setQcData([]);
+      setHseData([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+
+    // Query QA/QC khusus proyek aktif (dengan fallback aman bila kolom project_id belum dimigrasi)
+    let qcRes = await supabase
+      .from('qc_inspections')
+      .select('*')
+      .eq('project_id', activeProjectId)
+      .order('created_at', { ascending: false });
+
+    let qcHasCol = true;
+    if (isMissingProjectColError(qcRes.error)) {
+      qcHasCol = false;
+      qcRes = await supabase.from('qc_inspections').select('*').order('created_at', { ascending: false });
+    }
+    setQcData(qcRes.data || []);
+
+    // Query HSE khusus proyek aktif (dengan fallback aman bila kolom project_id belum dimigrasi)
+    let hseRes = await supabase
+      .from('hse_logs')
+      .select('*')
+      .eq('project_id', activeProjectId)
+      .order('created_at', { ascending: false });
+
+    let hseHasCol = true;
+    if (isMissingProjectColError(hseRes.error)) {
+      hseHasCol = false;
+      hseRes = await supabase.from('hse_logs').select('*').order('created_at', { ascending: false });
+    }
+    setHseData(hseRes.data || []);
+    setHasProjectColumn({ qc: qcHasCol, hse: hseHasCol });
+
     setLoading(false);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(); }, [activeProjectId]);
 
   const handleSaveQc = async (e) => {
     e.preventDefault();
@@ -76,7 +112,7 @@ export default function QhsePage() {
       }
 
       // 3. SIMPAN DATA KE DATABASE
-      const payload = { ...qcForm, evidence_url: finalEvidenceUrl, inspection_date: new Date().toISOString() };
+      const payload = { ...qcForm, ...(hasProjectColumn.qc && activeProjectId ? { project_id: activeProjectId } : {}), evidence_url: finalEvidenceUrl, inspection_date: new Date().toISOString() };
       const { error } = await supabase.from('qc_inspections').insert([payload]);
       
       if (error) throw error;
@@ -98,7 +134,7 @@ export default function QhsePage() {
   const handleSaveHse = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    const payload = { ...hseForm, log_date: new Date().toISOString() };
+    const payload = { ...hseForm, ...(hasProjectColumn.hse && activeProjectId ? { project_id: activeProjectId } : {}), log_date: new Date().toISOString() };
     const { error } = await supabase.from('hse_logs').insert([payload]);
     
     if (error) showToast('danger', error.message || 'Gagal menyimpan laporan HSE.');

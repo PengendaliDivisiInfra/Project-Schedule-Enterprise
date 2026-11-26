@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase'; 
@@ -53,17 +53,24 @@ export default function ProgressHarianPage() {
       const { data: tasks, error: taskErr } = await supabase
         .from('wbs_tasks')
         .select('id, wbs_code, name, volume, satuan_hsd, summary')
+        .eq('project_id', activeProjectId)
         .eq('summary', 'No');
       
       if (taskErr) throw taskErr;
-      
-      const { data: progress, error: progErr } = await supabase
-        .from('daily_progress')
-        .select('*');
-      
-      if (progErr) throw progErr;
 
-      const merged = tasks.map(t => {
+      const safeTasks = tasks || [];
+      const taskIds = safeTasks.map(t => t.id);
+      let progress = [];
+      if (taskIds.length > 0) {
+        const { data: progData, error: progErr } = await supabase
+          .from('daily_progress')
+          .select('*')
+          .in('task_id', taskIds);
+        if (progErr) throw progErr;
+        progress = progData || [];
+      }
+
+      const merged = safeTasks.map(t => {
         const taskProgress = progress ? progress.filter(p => p.task_id === t.id) : [];
         
         const todayData = taskProgress.find(p => p.record_date === today);
@@ -90,10 +97,10 @@ export default function ProgressHarianPage() {
       filtered.sort((a, b) => a.wbs_code.localeCompare(b.wbs_code, undefined, { numeric: true }));
       
       setData(filtered);
-      setRawTasks(tasks || []);
+      setRawTasks(safeTasks);
 
       // 4. Simpan ke Cache
-      saveToCache(cacheKey, { data: filtered, rawTasks: tasks || [] });
+      saveToCache(cacheKey, { data: filtered, rawTasks: safeTasks });
 
     } catch (err) {
       console.error(err);
