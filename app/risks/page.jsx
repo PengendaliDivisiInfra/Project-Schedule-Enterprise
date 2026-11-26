@@ -68,7 +68,7 @@ export default function RisksPage() {
     }
 
     if (errorMsg) {
-      alert("Gagal menyimpan: " + errorMsg);
+      showToast('danger', 'Gagal menyimpan: ' + errorMsg);
     } else {
       setIsModalOpen(false);
       showToast('success', 'Data risiko berhasil disimpan!');
@@ -82,7 +82,7 @@ export default function RisksPage() {
     setIsDeleting(true);
     const { error } = await supabase.from('project_risks').delete().eq('id', deleteTarget.id);
     if (error) {
-      alert("Gagal menghapus: " + error.message);
+      showToast('danger', 'Gagal menghapus: ' + error.message);
     } else {
       showToast('danger', 'Risiko berhasil dihapus.');
       fetchRisks();

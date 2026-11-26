@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) {
   const [activeTab, setActiveTab] = useState('existing');
@@ -24,6 +24,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
   // Fetch Master HSD setiap modal dibuka
   useEffect(() => {
     if (isOpen) {
+      setErrorMsg(null);
       const fetchHsd = async () => {
         const { data } = await supabase.from('master_hsd').select('*').order('nama_item');
         if (data) setHsdList(data);
@@ -35,9 +36,10 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
   const handleSave = async (e) => {
     e.preventDefault();
     if (!ahspId) {
-      alert("Error: ID AHSP tidak ditemukan. Pastikan Anda memilih AHSP terlebih dahulu.");
+      setErrorMsg("ID AHSP tidak ditemukan. Pastikan Anda memilih AHSP terlebih dahulu.");
       return;
     }
+    setErrorMsg(null);
     setIsSaving(true);
 
     try {
@@ -185,7 +187,7 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
 
           {errorMsg && (
               <div className="bg-red-50 border border-red-200 text-red-600 text-sm p-3 rounded-lg flex items-start gap-2 mb-4">
-                <span>??</span>
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
                 <span>{errorMsg}</span>
               </div>
             )}
@@ -200,6 +202,3 @@ export default function AssignmentModal({ isOpen, onClose, ahspId, onRefresh }) 
     </div>
   );
 }
-
-
-
