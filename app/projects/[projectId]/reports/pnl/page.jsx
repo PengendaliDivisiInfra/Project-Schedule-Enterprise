@@ -115,8 +115,15 @@ export default function ProfitLossPage() {
           else poMaterial += amt;
         });
 
-        // B. Subcon (Opname Akrual)
-        const { data: subconData } = await supabase.from('subcontractor_payments').select('amount, payment_type, status').eq('project_id', projectId).in('status', ['Approved', 'Paid']);
+        // B. Subcon (Opname Akrual - filter ketat non-deleted & non-void)
+        const { data: subconData } = await supabase
+          .from('subcontractor_payments')
+          .select('amount, payment_type, status')
+          .eq('project_id', projectId)
+          .eq('is_deleted', false)
+          .is('voided_at', null)
+          .in('status', ['Approved', 'Paid']);
+
         let totalSubconOpname = 0, unearnedKasbon = 0;
         (subconData || []).forEach(s => {
           const amt = Number(s.amount || 0);
@@ -127,28 +134,60 @@ export default function ProfitLossPage() {
           }
         });
 
-        // C. Upah & Alat (Dari Jurnal Akrual `actual_costs` + Kas Keluar)
-        const { data: actualCostsData } = await supabase.from('actual_costs').select('cost_amount, resource_type').eq('project_id', projectId);
+        // C. Upah, Alat & Operasional (Anti Double Counting: Akrual + Kas Keluar Non-Akrual)
+        const { data: actualCostsData } = await supabase
+          .from('actual_costs')
+          .select('cost_amount, resource_type, reference_type')
+          .eq('project_id', projectId)
+          .eq('is_deleted', false)
+          .is('voided_at', null);
+
+        const SUBCON_AC_REFS = new Set(['subcontractor_payment', 'subcon_payment', 'payment']);
         let accrualUpah = 0, accrualAlat = 0, accrualOperasional = 0;
         (actualCostsData || []).forEach(ac => {
+          // Kecualikan subcon payment dari actual_costs karena sudah dihitung di bagian B (subcontractor_payments)
+          const refType = String(ac.reference_type || '').toLowerCase().trim();
+          if (SUBCON_AC_REFS.has(refType)) return;
+
           const amt = Number(ac.cost_amount || 0);
           if (ac.resource_type === 'Labor' || ac.resource_type === 'Upah') accrualUpah += amt;
           else if (ac.resource_type === 'Equipment' || ac.resource_type === 'Alat') accrualAlat += amt;
           else if (ac.resource_type === 'Overhead' || ac.resource_type === 'Operasional') accrualOperasional += amt;
         });
 
-        const { data: cfData } = await supabase.from('cash_flows').select('amount, category').eq('project_id', projectId).eq('type', 'OUT').eq('approval_status', 'Approved').is('voided_at', null);
+        const { data: cfData } = await supabase
+          .from('cash_flows')
+          .select('amount, category, reference_type, vendor_or_ref')
+          .eq('project_id', projectId)
+          .in('type', ['OUT', 'Expense'])
+          .eq('approval_status', 'Approved')
+          .eq('is_deleted', false)
+          .is('voided_at', null);
+
+        // Kecualikan cash_flows yang sudah memiliki pasangan jurnal akrual (Payroll, BAR, Fuel PO, PO Material, Subkon)
+        const ACCRUAL_BACKED_CF_REFS = new Set([
+          'subcontractor_payment', 'subcon_payment', 'payment',
+          'bar_payment', 'bar_payment_reversal', 'fuel_po', 'payroll', 'po_payment'
+        ]);
+        const ACCRUAL_BACKED_CF_VENDORS = new Set(['payroll', 'purchase order', 'void po']);
+
         let cfUpah = 0, cfAlat = 0, cfOperasional = 0;
         (cfData || []).forEach(cf => {
+          const refType = String(cf.reference_type || '').toLowerCase().trim();
+          const vendorRef = String(cf.vendor_or_ref || '').toLowerCase().trim();
+          if (ACCRUAL_BACKED_CF_REFS.has(refType) || ACCRUAL_BACKED_CF_VENDORS.has(vendorRef)) {
+            return;
+          }
+
           const amt = Number(cf.amount || 0);
           if (cf.category === 'Upah') cfUpah += amt;
           else if (cf.category === 'Alat') cfAlat += amt;
           else if (cf.category === 'Operasional' || cf.category === 'Lainnya') cfOperasional += amt;
         });
 
-        const totalUpah = accrualUpah + cfUpah;
-        const totalAlat = accrualAlat + cfAlat;
-        const totalOperasional = accrualOperasional + cfOperasional;
+        const totalUpah = Math.max(0, accrualUpah + cfUpah);
+        const totalAlat = Math.max(0, accrualAlat + cfAlat);
+        const totalOperasional = Math.max(0, accrualOperasional + cfOperasional);
 
         // 4. Nilai Stok Gudang
         const { data: invData } = await supabase.from('inventory_materials').select('stok_on_hand, hsd_id, master_hsd(harga_dasar)').eq('project_id', projectId);

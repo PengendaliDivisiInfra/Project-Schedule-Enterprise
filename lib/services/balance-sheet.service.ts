@@ -64,7 +64,15 @@ export async function generateProjectBalanceSheet(projectId: string, startDate: 
     if (poData?.kategori_akun === 'Alat') poAlat += amt; else poMaterial += amt;
   });
 
-  const { data: subconData } = await supabase.from('subcontractor_payments').select('amount, payment_type, status, payment_date').eq('project_id', safeProjectId).in('status', ['Approved', 'Paid']).lte('payment_date', endDate);
+  const { data: subconData } = await supabase
+    .from('subcontractor_payments')
+    .select('amount, retention_amount, payment_type, status, payment_date')
+    .eq('project_id', safeProjectId)
+    .eq('is_deleted', false)
+    .is('voided_at', null)
+    .in('status', ['Approved', 'Paid'])
+    .lte('payment_date', endDate);
+
   let totalSubconOpname = 0, unearnedKasbon = 0;
   (subconData || []).forEach((s: any) => {
     const amt = Number(s.amount || 0);
@@ -72,42 +80,79 @@ export async function generateProjectBalanceSheet(projectId: string, startDate: 
     else totalSubconOpname += amt;
   });
 
-  const { data: actualCostsData } = await supabase.from('actual_costs').select('cost_amount, resource_type, recorded_at').eq('project_id', safeProjectId).lte('recorded_at', `${endDate}T23:59:59Z`);
+  const { data: actualCostsData } = await supabase
+    .from('actual_costs')
+    .select('cost_amount, resource_type, recorded_at, reference_type')
+    .eq('project_id', safeProjectId)
+    .eq('is_deleted', false)
+    .is('voided_at', null)
+    .lte('recorded_at', `${endDate}T23:59:59Z`);
+
+  const SUBCON_AC_REFS = new Set(['subcontractor_payment', 'subcon_payment', 'payment']);
   let accrualUpah = 0, accrualAlat = 0, accrualOperasional = 0;
   (actualCostsData || []).forEach((ac: any) => {
+    const refType = String(ac.reference_type || '').toLowerCase().trim();
+    if (SUBCON_AC_REFS.has(refType)) return;
+
     const amt = Number(ac.cost_amount || 0);
     if (['Labor', 'Upah'].includes(ac.resource_type)) accrualUpah += amt;
     else if (['Equipment', 'Alat'].includes(ac.resource_type)) accrualAlat += amt;
     else accrualOperasional += amt;
   });
 
-  const { data: cfData } = await supabase.from('cash_flows').select('amount, category, type, transaction_date').eq('project_id', safeProjectId).eq('approval_status', 'Approved').is('voided_at', null).lte('transaction_date', endDate);
-  
+  const { data: cfData } = await supabase
+    .from('cash_flows')
+    .select('amount, category, type, transaction_date, reference_type, vendor_or_ref')
+    .eq('project_id', safeProjectId)
+    .eq('approval_status', 'Approved')
+    .eq('is_deleted', false)
+    .is('voided_at', null)
+    .lte('transaction_date', endDate);
+
+  const ACCRUAL_BACKED_CF_REFS = new Set([
+    'subcontractor_payment', 'subcon_payment', 'payment',
+    'bar_payment', 'bar_payment_reversal', 'fuel_po', 'payroll', 'po_payment'
+  ]);
+  const ACCRUAL_BACKED_CF_VENDORS = new Set(['payroll', 'purchase order', 'void po']);
+
   let cfUpah = 0, cfAlat = 0, cfOperasional = 0, cfDropingIn = 0, cfDropingOut = 0;
   let cfKasAwal = 0, cfKasAkhir = 0, cfOperationalIn = 0;
   let cfDropingInAwal = 0, cfDropingOutAwal = 0;
-  
+  let totalPaidAccrualCashOut = 0;
+
   (cfData || []).forEach((cf: any) => {
     const amt = Number(cf.amount || 0);
     const isIn = ['IN', 'Income'].includes(cf.type);
     const isFinancing = ['Droping', 'Pinjaman', 'Modal', 'Transfer Internal'].includes(cf.category);
     const isBeforePeriod = cf.transaction_date < startDate;
-    
+    const refType = String(cf.reference_type || '').toLowerCase().trim();
+    const vendorRef = String(cf.vendor_or_ref || '').toLowerCase().trim();
+    const isAccrualBacked =
+      ACCRUAL_BACKED_CF_REFS.has(refType) || ACCRUAL_BACKED_CF_VENDORS.has(vendorRef);
+
+    // Saldo Kas & Bank SELALU menghitung seluruh aliran kas fisik (Approved & non-void)
     const val = isIn ? amt : -amt;
     if (isBeforePeriod) cfKasAwal += val;
     cfKasAkhir += val;
-    
+
     if (isIn) {
       if (isFinancing) {
         if (isBeforePeriod) cfDropingInAwal += amt;
         cfDropingIn += amt;
       } else {
-        cfOperationalIn += amt; 
+        cfOperationalIn += amt;
       }
     } else {
-      if (['Upah'].includes(cf.category)) cfUpah += amt;
-      else if (['Alat'].includes(cf.category)) cfAlat += amt;
-      else if (['Operasional', 'Lainnya'].includes(cf.category)) cfOperasional += amt;
+      if (['bar_payment', 'fuel_po', 'payroll'].includes(refType) || vendorRef === 'payroll') {
+        totalPaidAccrualCashOut += amt;
+      }
+
+      // Hanya akumulasi biaya berbasis kas jika transaksi BELUM dicatat di actual_costs/GRN/Subkon
+      if (!isAccrualBacked) {
+        if (['Upah'].includes(cf.category)) cfUpah += amt;
+        else if (['Alat'].includes(cf.category)) cfAlat += amt;
+        else if (['Operasional', 'Lainnya'].includes(cf.category)) cfOperasional += amt;
+      }
 
       if (isFinancing) {
         if (isBeforePeriod) cfDropingOutAwal += amt;
@@ -211,9 +256,10 @@ export async function generateProjectBalanceSheet(projectId: string, startDate: 
   let totalSubconPaidOpname = 0, utangRetensiSubkon = 0;
   let totalSubconPaidOpnameAwal = 0, utangRetensiSubkonAwal = 0;
   (subconData || []).forEach((p: any) => {
-    if (p.payment_type === 'Opname') {
-      totalSubconPaidOpname += Number(p.amount);
-      if (p.payment_date < startDate) totalSubconPaidOpnameAwal += Number(p.amount);
+    const isOpname = p.payment_type !== 'Kasbon' && p.payment_type !== 'DP';
+    if (isOpname && p.status === 'Paid') {
+      totalSubconPaidOpname += Number(p.amount || 0);
+      if (p.payment_date < startDate) totalSubconPaidOpnameAwal += Number(p.amount || 0);
     }
     utangRetensiSubkon += Number(p.retention_amount || 0);
     if (p.payment_date < startDate) utangRetensiSubkonAwal += Number(p.retention_amount || 0);
@@ -221,7 +267,8 @@ export async function generateProjectBalanceSheet(projectId: string, startDate: 
   const utangSubkon = Math.max(0, totalSubconOpname - totalSubconPaidOpname);
   const utangSubkonAwal = Math.max(0, totalSubconOpname - totalSubconPaidOpnameAwal);
 
-  const biayaAkrual = accrualUpah + accrualAlat + accrualOperasional;
+  // Biaya akrual yang belum dilunasi kasnya (Accrued Expense Payable)
+  const biayaAkrual = Math.max(0, (accrualUpah + accrualAlat + accrualOperasional) - totalPaidAccrualCashOut);
   const rkPusat = cfDropingIn - cfDropingOut;
   const rkPusatAwal = cfDropingInAwal - cfDropingOutAwal;
   const labaBerjalan = netProfit;
