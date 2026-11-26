@@ -24,7 +24,7 @@ export function FuelReceiptModal({
   useEffect(() => {
     const fetchSolarId = async () => {
       // Mencari ID Material Solar/Bahan Bakar di master_hsd
-      const { data } = await supabase.from('master_hsd').select('id').ilike('nama_item', '%Solar%').limit(1).maybeSingle();
+      const { data } = await supabase.from('master_hsd').select('id').or('nama_item.ilike.%Solar%,nama_item.ilike.%BBM%').limit(1).maybeSingle();
       if (data) setSolarHsdId(data.id);
     };
     if (isOpen) fetchSolarId();
@@ -32,7 +32,11 @@ export function FuelReceiptModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!solarHsdId) return alert("Master Material 'Solar' tidak ditemukan di database. Harap tambahkan di menu HSD.");
+    if (!solarHsdId) {
+      setToast({ show: true, msg: "Master Material 'Solar' / 'BBM' tidak ditemukan di database. Harap tambahkan di menu HSD.", type: 'error' });
+      setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 4000);
+      return;
+    }
     
     setLoading(true);
     try {
@@ -48,7 +52,8 @@ export function FuelReceiptModal({
         setToast({ show: false, msg: '', type: 'success' });
       }, 1500);
     } catch (err: any) {
-      setToast({ show: true, msg: err.message, type: 'error' });
+      setToast({ show: true, msg: err?.message || 'Gagal mencatat penerimaan BBM.', type: 'error' });
+      setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 4000);
     } finally {
       setLoading(false);
     }

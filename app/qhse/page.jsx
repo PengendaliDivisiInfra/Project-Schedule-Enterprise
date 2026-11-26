@@ -88,7 +88,7 @@ export default function QhsePage() {
       fetchData();
 
     } catch (error) {
-      alert(error.message);
+      showToast('danger', error?.message || 'Gagal menyimpan data inspeksi QA/QC.');
     } finally {
       setIsSaving(false);
       setIsUploading(false);
@@ -101,7 +101,7 @@ export default function QhsePage() {
     const payload = { ...hseForm, log_date: new Date().toISOString() };
     const { error } = await supabase.from('hse_logs').insert([payload]);
     
-    if (error) alert(error.message);
+    if (error) showToast('danger', error.message || 'Gagal menyimpan laporan HSE.');
     else {
       setIsHseModalOpen(false);
       showToast('success', 'Laporan HSE berhasil disimpan!');
@@ -308,4 +308,3 @@ export default function QhsePage() {
     </div>
   );
 }
-
