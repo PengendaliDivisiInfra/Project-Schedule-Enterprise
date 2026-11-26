@@ -12,7 +12,7 @@ env:
 
 jobs:
   test:
-    name: Test & Lint
+    name: Test, Typecheck & Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -20,11 +20,17 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      # FIXED: Menambahkan --ignore-scripts untuk mencegah error 504 saat download binary supabase
+      # Menambahkan --ignore-scripts untuk mencegah error 504 saat download binary supabase
       - run: npm ci --ignore-scripts
-      - run: npm run lint
+      - name: TypeScript Type Check
+        run: npx tsc --noEmit
+      - name: Run Automated Jest Unit Tests
+        run: npm test -- --ci
+      - name: ESLint Check
+        run: npm run lint
         continue-on-error: true
-      - run: npm run build
+      - name: Production Build Verification
+        run: npm run build
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}

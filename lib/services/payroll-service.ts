@@ -1,5 +1,6 @@
 import { supabase } from '../supabase';
 import type { Employee } from '@/types/payroll';
+import { calcDailyOvertimePointsPP35, calcHourlyRatePP35 } from '@/lib/utils/overtime-pp35';
 
 // ==========================================
 // 1. SERVICE MASTER KARYAWAN
@@ -195,11 +196,7 @@ export async function generatePayroll(projectId: string, startDate: string, endD
       }
       const dailyOt = Math.max(0, Number(a.overtime_hours) || 0);
       totalOvertime += dailyOt;
-      if (dailyOt > 0) {
-        const firstHour = Math.min(1, dailyOt);
-        const subsequentHours = Math.max(0, dailyOt - 1);
-        totalOvertimeWeightedPP35 += (firstHour * 1.5) + (subsequentHours * 2.0);
-      }
+      totalOvertimeWeightedPP35 += calcDailyOvertimePointsPP35(dailyOt);
     });
 
     if (daysPresent === 0 && daysAbsent === 0) return null;
@@ -243,7 +240,7 @@ export async function generatePayroll(projectId: string, startDate: string, endD
         basePay = (baseSalary + tunjangan) * prorata;
         
         // PP 35/2021: Upah lembur per jam = 1/173 x upah sebulan; Jam ke-1 = 1.5x, Jam ke-2+ = 2.0x
-        const hourlyRate = (baseSalary + tunjangan) / 173;
+        const hourlyRate = calcHourlyRatePP35(baseSalary, tunjangan);
         overtimePay = Math.round(totalOvertimeWeightedPP35 * hourlyRate);
       } else {
         basePay = (daysPresent * dailyRate) + tunjangan;
