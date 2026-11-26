@@ -26,6 +26,7 @@ export async function getCashFlowForecast(projectId: string): Promise<CashFlowFo
     .select('type, amount')
     .eq('project_id', projectId)
     .eq('approval_status', 'Approved')
+    .eq('is_deleted', false)
     .is('voided_at', null);
 
   let currentBalance = 0;
@@ -66,6 +67,8 @@ export async function getCashFlowForecast(projectId: string): Promise<CashFlowFo
     .from('subcontractor_payments')
     .select(`amount, payment_date, payment_number, subcontractor_contracts ( subcontractors ( company_name ) )`)
     .eq('project_id', projectId)
+    .eq('is_deleted', false)
+    .is('voided_at', null)
     .in('status', ['Pending', 'Approved']);
 
   // FIX: Cast to any[] untuk menghindari error type inference pada nested relation Supabase

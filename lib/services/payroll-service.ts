@@ -182,6 +182,7 @@ export async function generatePayroll(projectId: string, startDate: string, endD
     let daysAbsent = 0;
     let daysForMeal = 0; // Khusus Uang Makan (Hanya jika benar-benar hadir)
     let totalOvertime = 0;
+    let totalOvertimeWeightedPP35 = 0; // Poin lembur bertingkat PP 35/2021 (Jam ke-1 = 1.5x, Jam ke-2 dst = 2.0x)
 
     empAtt.forEach(a => {
       if (a.status === 'Present') {
@@ -192,7 +193,13 @@ export async function generatePayroll(projectId: string, startDate: string, endD
       } else if (a.status === 'Absent') {
         daysAbsent++;
       }
-      totalOvertime += Number(a.overtime_hours) || 0;
+      const dailyOt = Math.max(0, Number(a.overtime_hours) || 0);
+      totalOvertime += dailyOt;
+      if (dailyOt > 0) {
+        const firstHour = Math.min(1, dailyOt);
+        const subsequentHours = Math.max(0, dailyOt - 1);
+        totalOvertimeWeightedPP35 += (firstHour * 1.5) + (subsequentHours * 2.0);
+      }
     });
 
     if (daysPresent === 0 && daysAbsent === 0) return null;
@@ -235,8 +242,9 @@ export async function generatePayroll(projectId: string, startDate: string, endD
         
         basePay = (baseSalary + tunjangan) * prorata;
         
+        // PP 35/2021: Upah lembur per jam = 1/173 x upah sebulan; Jam ke-1 = 1.5x, Jam ke-2+ = 2.0x
         const hourlyRate = (baseSalary + tunjangan) / 173;
-        overtimePay = totalOvertime * hourlyRate;
+        overtimePay = Math.round(totalOvertimeWeightedPP35 * hourlyRate);
       } else {
         basePay = (daysPresent * dailyRate) + tunjangan;
         overtimePay = totalOvertime * manualOvertimeRate; // Lembur dipisah
@@ -350,6 +358,8 @@ export async function voidPayroll(payrollId: string, projectId: string, totalAmo
     const { error: costError } = await supabase
       .from('actual_costs')
       .update({ 
+        is_deleted: true,
+        is_void: true,
         voided_at: now, 
         void_reason: `Payroll dibatalkan: ${description}` 
       })
@@ -363,6 +373,8 @@ export async function voidPayroll(payrollId: string, projectId: string, totalAmo
     const { error: cashError } = await supabase
       .from('cash_flows')
       .update({ 
+        is_deleted: true,
+        is_void: true,
         voided_at: now, 
         void_reason: `Payroll dibatalkan: ${description}` 
       })

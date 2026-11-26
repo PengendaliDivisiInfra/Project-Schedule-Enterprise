@@ -139,7 +139,18 @@ export async function voidTransaction(transactionId: string, inventoryId: string
   }
 
   if (type === 'OUT') {
-    await supabase.from('actual_costs').delete().eq('source_id', transactionId);
+    // ABSOLUTE RULE #2: Soft Delete + Audit Trail (bukan Hard Delete)
+    const now = new Date().toISOString();
+    await supabase
+      .from('actual_costs')
+      .update({
+        is_deleted: true,
+        is_void: true,
+        voided_at: now,
+        void_reason: 'Transaksi pengeluaran material dibatalkan (VOID)',
+      })
+      .eq('source_id', transactionId)
+      .is('voided_at', null);
   }
 }
 

@@ -36,8 +36,10 @@ export function hitungSAK(params: {
   // A = Nilai Progres Bruto
   const A_bruto = params.bruttoSd;
   
-  // B = Potongan Pengembalian DP (Proporsional)
-  const persenProgres = params.nilaiKontrak > 0 ? (A_bruto / params.nilaiKontrak) : 0;
+  // B = Potongan Pengembalian DP (Proporsional, dibatasi maks. 100% agar tidak over-deduct saat over-volume/addendum)
+  const persenProgres = params.nilaiKontrak > 0
+    ? Math.min(1, Math.max(0, A_bruto / params.nilaiKontrak))
+    : 0;
   const B_potonganDP = persenProgres * params.nilaiDP;
   
   // C = DPP (Dasar Pengenaan Pajak)

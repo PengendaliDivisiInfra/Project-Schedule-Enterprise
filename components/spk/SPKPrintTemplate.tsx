@@ -1,5 +1,6 @@
 import React from 'react';
 import { terbilang } from '@/lib/utils/spk-helper';
+import { terbilang as terbilangAngka } from '@/lib/utils/terbilang';
 
 interface SPKPrintProps {
   spk: any;
@@ -8,47 +9,6 @@ interface SPKPrintProps {
   subcontractor: any;
 }
 
-const terbilangAngka = (n: number): string => {
-  const angka = [
-    '',
-    'Satu',
-    'Dua',
-    'Tiga',
-    'Empat',
-    'Lima',
-    'Enam',
-    'Tujuh',
-    'Delapan',
-    'Sembilan',
-    'Sepuluh',
-    'Sebelas',
-  ];
-  if (n < 12) return angka[n];
-  if (n < 20) return terbilangAngka(n - 10) + ' Belas';
-  if (n < 100)
-    return (
-      terbilangAngka(Math.floor(n / 10)) +
-      ' Puluh' +
-      (n % 10 !== 0 ? ' ' + terbilangAngka(n % 10) : '')
-    );
-  if (n < 200)
-    return 'Seratus' + (n - 100 !== 0 ? ' ' + terbilangAngka(n - 100) : '');
-  if (n < 1000)
-    return (
-      terbilangAngka(Math.floor(n / 100)) +
-      ' Ratus' +
-      (n % 100 !== 0 ? ' ' + terbilangAngka(n % 100) : '')
-    );
-  if (n < 2000)
-    return 'Seribu' + (n - 1000 !== 0 ? ' ' + terbilangAngka(n - 1000) : '');
-  if (n < 1000000)
-    return (
-      terbilangAngka(Math.floor(n / 1000)) +
-      ' Ribu' +
-      (n % 1000 !== 0 ? ' ' + terbilangAngka(n % 1000) : '')
-    );
-  return '';
-};
 
 export default function SPKPrintTemplate({
   spk,

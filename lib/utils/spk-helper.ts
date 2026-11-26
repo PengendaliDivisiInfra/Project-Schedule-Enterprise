@@ -1,4 +1,5 @@
 // lib/utils/spk-helper.ts
+import { terbilangRupiah } from '@/lib/utils/terbilang';
 
 // 1. Konversi Bulan ke Romawi
 export const monthToRoman = (month: number): string => {
@@ -29,19 +30,7 @@ export const formatRupiah = (val: number): string => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(val);
 };
 
-// 5. Terbilang (Simple implementation)
+// 5. Terbilang Rupiah (Terpusat — mendukung hingga Triliunan & bebas bug "Nol")
 export const terbilang = (nilai: number): string => {
-  const angka = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
-  const hitung = (n: number): string => {
-    if (n < 12) return angka[n];
-    if (n < 20) return hitung(n - 10) + " Belas";
-    if (n < 100) return hitung(Math.floor(n / 10)) + " Puluh " + hitung(n % 10);
-    if (n < 200) return "Seratus " + hitung(n - 100);
-    if (n < 1000) return hitung(Math.floor(n / 100)) + " Ratus " + hitung(n % 100);
-    if (n < 2000) return "Seribu " + hitung(n - 1000);
-    if (n < 1000000) return hitung(Math.floor(n / 1000)) + " Ribu " + hitung(n % 1000);
-    if (n < 1000000000) return hitung(Math.floor(n / 1000000)) + " Juta " + hitung(n % 1000000);
-    return "";
-  };
-  return hitung(nilai).trim() + " Rupiah";
+  return terbilangRupiah(nilai);
 };

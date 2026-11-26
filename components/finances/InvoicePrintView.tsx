@@ -5,24 +5,8 @@ import { Printer, FileText, Settings, Loader2 } from 'lucide-react';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
 import { supabase } from '@/lib/supabase';
+import { terbilang } from '@/lib/utils/terbilang';
 
-// --- FUNGSI TERBILANG (Standard V34) ---
-function terbilang(angka: number): string {
-  if (angka === 0) return "Nol";
-  const huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
-  const helper = (n: number): string => {
-    if (n < 12) return huruf[n];
-    if (n < 20) return helper(n - 10) + " Belas";
-    if (n < 100) return helper(Math.floor(n / 10)) + " Puluh " + helper(n % 10);
-    if (n < 200) return "Seratus " + helper(n - 100);
-    if (n < 1000) return helper(Math.floor(n / 100)) + " Ratus " + helper(n % 100);
-    if (n < 2000) return "Seribu " + helper(n - 1000);
-    if (n < 1000000) return helper(Math.floor(n / 1000)) + " Ribu " + helper(n % 1000);
-    if (n < 1000000000) return helper(Math.floor(n / 1000000)) + " Juta " + helper(n % 1000000);
-    return "";
-  };
-  return helper(Math.abs(angka)).replace(/\s+/g, ' ').trim();
-}
 
 interface InvoicePrintViewProps {
   projectId: string;

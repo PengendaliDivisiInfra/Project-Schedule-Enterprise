@@ -47,7 +47,7 @@ export async function listSPK(projectId: string) {
     .select(`
       *,
       subcontractors ( company_name, contact_person, bank_name, bank_account ),
-      subcontractor_payments ( amount, payment_type, status, voided_at ),
+      subcontractor_payments ( amount, payment_type, status, voided_at, is_deleted ),
       subcontractor_addendums ( amount )
     `)
     .eq('project_id', projectId)
@@ -58,7 +58,7 @@ export async function listSPK(projectId: string) {
   
   return data.map((d: any) => {
     const activePayments = (d.subcontractor_payments || []).filter(
-      (p: any) => !p.voided_at && (p.status || '').toLowerCase() !== 'void'
+      (p: any) => !p.is_deleted && !p.voided_at && (p.status || '').toLowerCase() !== 'void'
     );
 
     const total_paid = activePayments
@@ -217,6 +217,7 @@ export async function getBAPPData(contractId: string, startDate: string, endDate
     .from('subcontractor_payments')
     .select('amount')
     .eq('contract_id', contractId)
+    .eq('is_deleted', false)
     .is('voided_at', null)
     .neq('status', 'Void')
     .or('payment_type.eq.DP,description.ilike.%uang muka%,description.ilike.%dp%')
@@ -244,6 +245,9 @@ export async function getBAPPData(contractId: string, startDate: string, endDate
     .from('subcon_financial_logs')
     .select('*')
     .eq('contract_id', contractId)
+    .eq('is_deleted', false)
+    .eq('is_void', false)
+    .is('voided_at', null)
     .lte('log_date', endDate);
 
   const kasbons = financialLogs?.filter(f => f.type === 'KASBON') || [];
@@ -399,6 +403,9 @@ export async function getBPUTKData(contractId: string, startDate: string, endDat
     .from('subcon_financial_logs')
     .select('type, amount')
     .eq('contract_id', contractId)
+    .eq('is_deleted', false)
+    .eq('is_void', false)
+    .is('voided_at', null)
     .lte('log_date', endDate);
 
   const kasbons = financialLogs?.filter(f => f.type === 'KASBON') || [];
@@ -574,6 +581,7 @@ export async function getAllKasbonHistory(projectId: string) {
     `)
     .eq('project_id', projectId)
     .eq('payment_type', 'Kasbon')
+    .eq('is_deleted', false)
     .is('voided_at', null)
     .neq('status', 'Void')
     .order('created_at', { ascending: false });
@@ -598,7 +606,7 @@ export async function listAllProjectPayments(projectId: string) {
       )
     `)
     .eq('project_id', projectId)
-    .is('voided_at', null)
+    .eq('is_deleted', false)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return data || [];
@@ -610,6 +618,7 @@ export async function getPendingPayments(projectId: string) {
     .select(`*, subcontractor_contracts ( spk_number, subcontractors ( company_name, contact_person ) )`)
     .eq('project_id', projectId)
     .eq('status', 'Pending')
+    .eq('is_deleted', false)
     .is('voided_at', null)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);

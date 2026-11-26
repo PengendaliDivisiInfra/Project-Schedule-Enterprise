@@ -7,24 +7,8 @@ import { getBAPPData } from '@/lib/services/subcon.service';
 import { useCOA } from '@/lib/hooks/useCOA';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { supabase } from '@/lib/supabase';
+import { terbilang } from '@/lib/utils/terbilang';
 
-function terbilang(angka: number): string {
-  if (angka === 0) return "Nol";
-  const huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
-  const helper = (n: number): string => {
-    if (n < 12) return huruf[n];
-    if (n < 20) return helper(n - 10) + " Belas";
-    if (n < 100) return helper(Math.floor(n / 10)) + " Puluh " + helper(n % 10);
-    if (n < 200) return "Seratus " + helper(n - 100);
-    if (n < 1000) return helper(Math.floor(n / 100)) + " Ratus " + helper(n % 100);
-    if (n < 2000) return "Seribu " + helper(n - 1000);
-    if (n < 1000000) return helper(Math.floor(n / 1000)) + " Ribu " + helper(n % 1000);
-    if (n < 1000000000) return helper(Math.floor(n / 1000000)) + " Juta " + helper(n % 1000000);
-    if (n < 1000000000000) return helper(Math.floor(n / 1000000000)) + " Milyar " + helper(n % 1000000000);
-    return "";
-  };
-  return helper(Math.abs(angka)).replace(/\s+/g, ' ').trim();
-}
 
 interface CoaItem {
   code: string;
@@ -57,7 +41,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
 
   const fetchHistory = async () => {
     try {
-      const { data, error } = await supabase.from('subcon_receipts').select(`*, subcontractor_contracts ( spk_number, subcontractors (company_name) )`).eq('project_id', projectId).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('subcon_receipts').select(`*, subcontractor_contracts ( spk_number, subcontractors (company_name) )`).eq('project_id', projectId).is('voided_at', null).order('created_at', { ascending: false });
       if (error) throw error;
       setHistory(data || []);
     } catch (err: any) {
@@ -183,7 +167,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('subcon_receipts').update({ status: 'VOID' }).eq('id', deleteTarget);
+      const { error } = await supabase.from('subcon_receipts').update({ status: 'VOID', voided_at: new Date().toISOString() }).eq('id', deleteTarget);
       if (error) throw error;
       showToast('Kwitansi dibatalkan (VOID). Data hilang dari Antrean Persetujuan.', 'success');
       fetchHistory(); setDeleteTarget(null);

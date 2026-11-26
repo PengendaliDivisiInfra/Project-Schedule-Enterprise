@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { terbilang as angkaTerbilang } from '@/lib/utils/terbilang';
 import { ArrowLeft, Printer, Loader2, Settings, X, CheckCircle2, FileText, Lock } from 'lucide-react';
 
 type PayrollPrintPageProps = {
@@ -107,26 +108,6 @@ export default function PayrollPrintPage({ params }: PayrollPrintPageProps) {
     return { displayGajiPokok, displayTunjangan };
   };
 
-  const angkaTerbilang = (angka: number): string => {
-    const n = Number(angka);
-    if (!n || isNaN(n) || n === 0) return "Nol";
-    
-    const bilangan = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
-    let hasil = "";
-    
-    if (n < 12) hasil = bilangan[n];
-    else if (n < 20) hasil = angkaTerbilang(n - 10) + " Belas";
-    else if (n < 100) hasil = angkaTerbilang(Math.floor(n / 10)) + " Puluh " + angkaTerbilang(n % 10);
-    else if (n < 200) hasil = "Seratus " + angkaTerbilang(n - 100);
-    else if (n < 1000) hasil = angkaTerbilang(Math.floor(n / 100)) + " Ratus " + angkaTerbilang(n % 100);
-    else if (n < 2000) hasil = "Seribu " + angkaTerbilang(n - 1000);
-    else if (n < 1000000) hasil = angkaTerbilang(Math.floor(n / 1000)) + " Ribu " + angkaTerbilang(n % 1000);
-    else if (n < 1000000000) hasil = angkaTerbilang(Math.floor(n / 1000000)) + " Juta " + angkaTerbilang(n % 1000000);
-    else if (n < 1000000000000) hasil = angkaTerbilang(Math.floor(n / 1000000000)) + " Milyar " + angkaTerbilang(n % 1000000000);
-    else hasil = "Angka Terlalu Besar";
-    
-    return (hasil || "").trim();
-  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#0b1120]"><Loader2 className="animate-spin text-indigo-500 w-10 h-10" /></div>;
   if (!payroll || !project) return <div className="p-10 text-center font-bold text-white bg-[#0b1120] min-h-screen">Data tidak ditemukan.</div>;

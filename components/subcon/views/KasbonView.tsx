@@ -10,6 +10,7 @@ import {
 } from '@/lib/services/subcon.service';
 import { MoneyText } from '@/components/ui/MoneyText';
 import { invalidateCache } from '@/lib/utils/cache';
+import { terbilang } from '@/lib/utils/terbilang';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
 import { SignatureItem } from '@/lib/types/subcon';
 import {
@@ -32,41 +33,6 @@ interface KasbonViewProps {
   showToast: (msg: string, type: 'success' | 'error') => void;
 }
 
-function terbilang(angka: number): string {
-  if (!angka || angka === 0) return 'Nol';
-  angka = Math.floor(Math.abs(angka));
-  const huruf = [
-    '',
-    'Satu',
-    'Dua',
-    'Tiga',
-    'Empat',
-    'Lima',
-    'Enam',
-    'Tujuh',
-    'Delapan',
-    'Sembilan',
-    'Sepuluh',
-    'Sebelas',
-  ];
-  let hasil = '';
-  if (angka < 12) hasil = huruf[angka];
-  else if (angka < 20) hasil = terbilang(angka - 10) + ' Belas';
-  else if (angka < 100)
-    hasil = terbilang(Math.floor(angka / 10)) + ' Puluh ' + terbilang(angka % 10);
-  else if (angka < 200) hasil = 'Seratus ' + terbilang(angka - 100);
-  else if (angka < 1000)
-    hasil = terbilang(Math.floor(angka / 100)) + ' Ratus ' + terbilang(angka % 100);
-  else if (angka < 2000) hasil = 'Seribu ' + terbilang(angka - 1000);
-  else if (angka < 1000000)
-    hasil = terbilang(Math.floor(angka / 1000)) + ' Ribu ' + terbilang(angka % 1000);
-  else if (angka < 1000000000)
-    hasil = terbilang(Math.floor(angka / 1000000)) + ' Juta ' + terbilang(angka % 1000000);
-  else if (angka < 1000000000000)
-    hasil =
-      terbilang(Math.floor(angka / 1000000000)) + ' Milyar ' + terbilang(angka % 1000000000);
-  return hasil.replace(/\s+/g, ' ').trim();
-}
 
 export function KasbonView({ projectId, projectData, spks, showToast }: KasbonViewProps) {
   const { can } = useRole(projectId);
@@ -98,7 +64,7 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
   const [showSigSettings, setShowSigSettings] = useState(false);
   const [signatures, setSignatures] = useState<SignatureItem[]>([
     { title: 'Pemohon (Mandor)', name: 'MANDOR LAPANGAN' },
-    { title: 'Diperiksa (Site Engineer)', name: 'SAIFUDDIN FAMI' },
+    { title: 'Diperiksa (Site Engineer)', name: 'SAIFUDDIN FAHMI' },
     { title: 'Disetujui (Project Manager)', name: 'MEI SUNARKO' },
     { title: 'Keuangan / Kasir', name: 'ADMIN KEUANGAN' },
   ]);
