@@ -329,11 +329,9 @@ export default function SecuritySettingsPage() {
         isOpen={Boolean(disableTargetId)}
         title="Nonaktifkan 2FA TOTP?"
         message="Menonaktifkan 2FA akan menurunkan level keamanan akun Anda ke AAL1. Approver disarankan tetap mengaktifkan 2FA."
-        confirmText="Ya, Nonaktifkan"
-        variant="danger"
-        loading={disabling}
+        isLoading={disabling}
         onConfirm={handleConfirmDisable}
-        onCancel={() => setDisableTargetId(null)}
+        onClose={() => setDisableTargetId(null)}
       />
     </div>
   );

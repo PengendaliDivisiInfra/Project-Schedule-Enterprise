@@ -1,3 +1,5 @@
+jest.mock('@/lib/supabase', () => ({ supabase: { storage: { from: jest.fn() } } }));
+
 import {
   checkPermission,
   isApproverRole,
