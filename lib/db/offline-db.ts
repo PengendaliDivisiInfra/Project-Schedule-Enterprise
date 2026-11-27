@@ -13,8 +13,28 @@ export interface SyncQueueItem {
   last_error?: string | null;
 }
 
+export interface OfflinePhotoItem {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  daily_progress_id?: string | null;
+  bucket: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  data_url: string;
+  original_size: number;
+  compressed_size: number;
+  caption?: string;
+  created_at: number;
+  status: SyncQueueStatus;
+  retry_count: number;
+  last_error?: string | null;
+}
+
 class InfraControlDB extends Dexie {
   syncQueue!: Table<SyncQueueItem, string>;
+  offlinePhotos!: Table<OfflinePhotoItem, string>;
 
   constructor() {
     super('InfraControlOfflineDB');
@@ -35,6 +55,10 @@ class InfraControlDB extends Dexie {
             if (item.last_error === undefined) item.last_error = null;
           });
       });
+    this.version(3).stores({
+      syncQueue: 'id, table_name, action, status, created_at',
+      offlinePhotos: 'id, project_id, task_id, status, created_at',
+    });
   }
 }
 
