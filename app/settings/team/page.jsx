@@ -85,6 +85,9 @@ export default function TeamPage() {
     if (r === 'qc' || r === 'quality control (qc)') return 'Quality Control';
     if (r === 'hse' || r === 'hse (k3)') return 'HSE (K3)';
     if (r === 'site_admin' || r === 'site admin') return 'Site Admin';
+    if (r === 'site_engineer' || r === 'site engineer') return 'Site Engineer';
+    if (r === 'warehouse_site' || r === 'warehouse site') return 'Warehouse Site';
+    if (r === 'viewer') return 'Viewer (Read-Only)';
     return role;
   };
 
@@ -118,11 +121,14 @@ export default function TeamPage() {
               onChange={e => setInviteRole(e.target.value)} 
               className="border rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-medium"
             >
+              <option value="Project Manager">Project Manager</option>
+              <option value="Site Engineer">Site Engineer</option>
+              <option value="Site Admin">Site Admin</option>
               <option value="DCC/Logistic">DCC / Logistic</option>
+              <option value="Warehouse Site">Warehouse Site</option>
               <option value="Quality Control (QC)">Quality Control (QC)</option>
               <option value="HSE (K3)">HSE (K3)</option>
-              <option value="Site Admin">Site Admin</option>
-              <option value="Project Manager">Project Manager</option>
+              <option value="Viewer">Viewer (Read-Only)</option>
             </select>
             <button type="submit" disabled={isInviting} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-bold text-sm shadow-md flex items-center justify-center gap-2">
               {isInviting ? <Loader2 className="animate-spin" size={18} /> : <UserPlus size={18} />} Undang

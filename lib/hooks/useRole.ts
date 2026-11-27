@@ -1,67 +1,93 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
-import { checkPermission, PERMISSIONS } from '../config/permissions';
-import { getFromCache, saveToCache } from '../utils/cache'; // IMPORT CACHE
+import {
+  checkPermission,
+  isApproverRole,
+  normalizeRoleName,
+  type PermissionKey,
+} from '../config/permissions';
+import { getFromCache, saveToCache } from '../utils/cache';
+
+interface CachedRoleState {
+  role: string;
+  globalRole: string | null;
+  projectRole: string | null;
+}
 
 export function useRole(projectId?: string) {
   const [role, setRole] = useState<string | null>(null);
+  const [globalRole, setGlobalRole] = useState<string | null>(null);
+  const [projectRole, setProjectRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchRole = async (userId: string) => {
-      const cacheKey = `user_role_${userId}_${projectId || 'global'}`;
+      const cacheKey = `user_hybrid_role_${userId}_${projectId || 'global'}`;
 
       try {
-        let finalRole: string | null = null;
-
-        // 🟢 1. Cek Mode Offline Terlebih Dahulu
         if (typeof window !== 'undefined' && !navigator.onLine) {
-          const cachedRole = getFromCache(cacheKey);
-          if (cachedRole) {
-            setRole(cachedRole);
+          const cached = getFromCache(cacheKey) as CachedRoleState | null;
+          if (cached?.role) {
+            setRole(cached.role);
+            setGlobalRole(cached.globalRole);
+            setProjectRole(cached.projectRole);
             setLoading(false);
             return;
           }
         }
 
-        // 2. Cek Owner Global (Profile)
-        const { data: profile } = await supabase
+        // 1. Ambil Global Role dari profiles (mendukung kolom global_role baru & fallback kolom role lama)
+        let resolvedGlobal: string | null = null;
+        let profileRes = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, global_role')
           .eq('id', userId)
-          .single();
-          
-        if (profile?.role && profile.role.toLowerCase() === 'owner') {
-          finalRole = 'Owner';
-        } 
-        
-        // 3. Cek Role Proyek (Project Members)
-        if (!finalRole && projectId) {
+          .maybeSingle();
+
+        if (profileRes.error && String(profileRes.error.message || '').includes('global_role')) {
+          profileRes = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .maybeSingle();
+        }
+
+        const rawGlobal = (profileRes.data as any)?.global_role || (profileRes.data as any)?.role || null;
+        if (rawGlobal && normalizeRoleName(rawGlobal) !== 'user') {
+          resolvedGlobal = rawGlobal;
+        }
+
+        // 2. Ambil Project Role dari project_members
+        let resolvedProject: string | null = null;
+        if (projectId) {
           const { data: member } = await supabase
             .from('project_members')
             .select('role')
             .eq('project_id', projectId)
             .eq('user_id', userId)
             .maybeSingle();
-          
+
           if (member?.role) {
-            finalRole = member.role;
+            resolvedProject = member.role;
           }
         }
 
-        // 4. JIKA TIDAK PUNYA AKSES, JADIKAN 'Guest'
-        if (!finalRole) {
-          finalRole = 'Guest'; 
-        }
-        
-        setRole(finalRole);
-        saveToCache(cacheKey, finalRole); // Simpan Role ke Cache
-        
+        const effectiveRole = resolvedGlobal || resolvedProject || 'Guest';
+
+        setRole(effectiveRole);
+        setGlobalRole(resolvedGlobal);
+        setProjectRole(resolvedProject);
+        saveToCache(cacheKey, {
+          role: effectiveRole,
+          globalRole: resolvedGlobal,
+          projectRole: resolvedProject,
+        });
       } catch (err) {
-        console.error("Error mengambil role:", err);
-        // 🟢 Fallback ke Cache jika Fetch Gagal
-        const cachedRole = getFromCache(cacheKey);
-        setRole(cachedRole || 'Guest');
+        console.error('Error mengambil Hybrid RBAC role:', err);
+        const cached = getFromCache(cacheKey) as CachedRoleState | null;
+        setRole(cached?.role || 'Guest');
+        setGlobalRole(cached?.globalRole || null);
+        setProjectRole(cached?.projectRole || null);
       } finally {
         setLoading(false);
       }
@@ -74,16 +100,26 @@ export function useRole(projectId?: string) {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) fetchRole(session.user.id);
-      else { setRole(null); setLoading(false); }
+      else {
+        setRole(null);
+        setGlobalRole(null);
+        setProjectRole(null);
+        setLoading(false);
+      }
     });
 
-    return () => { authListener.subscription.unsubscribe(); };
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, [projectId]);
 
-  const can = (permissionKey: keyof typeof PERMISSIONS) => {
-    if (role === 'Guest') return false;
-    return checkPermission(role, permissionKey);
+  const can = (permissionKey: PermissionKey) => {
+    if (role === 'Guest' && !globalRole) return false;
+    return checkPermission(projectRole || role, permissionKey, globalRole);
   };
 
-  return { role, loading, can };
+  const isApprover = isApproverRole(globalRole, projectRole || role);
+  const isAuditor = normalizeRoleName(globalRole) === 'auditor';
+
+  return { role, globalRole, projectRole, loading, can, isApprover, isAuditor };
 }
