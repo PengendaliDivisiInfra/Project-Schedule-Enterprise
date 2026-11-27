@@ -6,7 +6,7 @@ import {
   Building2,
   LayoutDashboard, Calendar, ListTodo, FileText, Activity, AlertTriangle, 
   Database, FileSpreadsheet, Users, Package, Fuel, Coins, FileCheck, 
-  TrendingUp, Settings, ShieldCheck 
+  TrendingUp, Settings, ShieldCheck, KeyRound 
 } from 'lucide-react';
 
 export default function Sidebar({ activeProjectId, isCollapsed }) {
@@ -169,6 +169,10 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
             <Link href="/settings/team" title="Manajemen Tim" className={`${baseMenu} ${isActive('/settings/team') ? activeMenu : inactiveMenu}`}>
               <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Manajemen Tim</span>}
+            </Link>
+            <Link href="/settings/security" title="Keamanan & 2FA" className={`${baseMenu} ${isActive('/settings/security') ? activeMenu : inactiveMenu}`}>
+              <KeyRound size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Keamanan &amp; 2FA</span>}
             </Link>
             <Link href="/sop" title="SOP & Panduan" className={`${baseMenu} ${isActive('/sop') ? activeMenu : inactiveMenu}`}>
               <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 

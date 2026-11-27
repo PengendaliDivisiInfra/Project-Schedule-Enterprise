@@ -6,6 +6,7 @@ import { Subcontractor, SubcontractorContract } from '@/lib/types/subcon';
 import { supabase } from '@/lib/supabase';
 import { Plus, Trash2, FileSignature, UploadCloud, X, Info, Save, Loader2 } from 'lucide-react';
 import { generateSpkNumber, roundSPK_Thousands } from '@/lib/utils/spk-helper';
+import { getSignedFileUrl, SIGNED_URL_EXPIRY_SECONDS } from '@/lib/utils/secure-storage';
 
 interface Props {
   isOpen: boolean;
@@ -84,6 +85,20 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
   const grandTotalAsli = dpp + ppnNominal;
   const totalValueBulat = roundSPK_Thousands(grandTotalAsli);
 
+  const [ktpPreviewUrl, setKtpPreviewUrl] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    if (!form.ktp_url) {
+      setKtpPreviewUrl('');
+      return;
+    }
+    getSignedFileUrl('ktp_documents', form.ktp_url, SIGNED_URL_EXPIRY_SECONDS).then((url) => {
+      if (active) setKtpPreviewUrl(url);
+    });
+    return () => { active = false; };
+  }, [form.ktp_url]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -95,9 +110,9 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
       const filePath = `${projectId}/${fileName}`;
       const { error: uploadError } = await supabase.storage.from('ktp_documents').upload(filePath, file);
       if (uploadError) throw uploadError;
-      const { data: publicUrlData } = supabase.storage.from('ktp_documents').getPublicUrl(filePath);
-      setForm({ ...form, ktp_url: publicUrlData.publicUrl });
-      showToast('KTP berhasil diunggah', 'success');
+      // Simpan path relatif (private bucket); preview memakai Signed URL 10 menit
+      setForm({ ...form, ktp_url: filePath });
+      showToast('KTP berhasil diunggah (Private Signed URL)', 'success');
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -187,8 +202,18 @@ export function SPKModal({ isOpen, onClose, projectId, subcontractors, onSuccess
                 <label className="block text-xs font-bold text-slate-600 mb-1">Foto KTP Mandor (Maks 2MB)</label>
                 {form.ktp_url ? (
                   <div className="flex items-center gap-4 bg-white p-3 border border-slate-200 rounded-xl shadow-sm">
-                    <img src={form.ktp_url} alt="Preview KTP" className="h-16 w-24 object-cover rounded-lg border" />
-                    <div className="flex-1"><a href={form.ktp_url} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-indigo-600 hover:underline">Lihat File Penuh</a></div>
+                    {ktpPreviewUrl ? (
+                      <img src={ktpPreviewUrl} alt="Preview KTP" className="h-16 w-24 object-cover rounded-lg border" />
+                    ) : (
+                      <div className="h-16 w-24 rounded-lg border bg-slate-100 flex items-center justify-center text-[10px] text-slate-400">Signed URL...</div>
+                    )}
+                    <div className="flex-1">
+                      {ktpPreviewUrl ? (
+                        <a href={ktpPreviewUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-indigo-600 hover:underline">Lihat File Penuh (Berlaku 10 Menit)</a>
+                      ) : (
+                        <span className="text-xs text-slate-400">Menyiapkan tautan aman...</span>
+                      )}
+                    </div>
                     <button type="button" onClick={() => setForm({...form, ktp_url: ''})} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"><X size={18} /></button>
                   </div>
                 ) : (

@@ -1,25 +1,31 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useProject } from '../../context/ProjectContext';
 import { useRole } from '@/lib/hooks/useRole';
 import { invalidateCache } from '@/lib/utils/cache';
-import { ShieldCheck, X, CheckCircle2, AlertTriangle, Lock } from 'lucide-react';
+import { getMfaStatus, verifyTotpCode } from '@/lib/services/mfa.service';
+import { recordAuditEvent } from '@/lib/services/logs.service';
+import { ShieldCheck, X, CheckCircle2, AlertTriangle, Lock, KeyRound, Loader2 } from 'lucide-react';
 
 export default function ApprovalsPage() {
-  const { activeProjectId, userRole } = useProject();
-  const { role } = useRole(activeProjectId);
+  const { activeProjectId } = useProject();
+  const { can, isApprover } = useRole(activeProjectId);
 
-  const normalizedRole = (role || userRole || '').toLowerCase().trim();
-  const canApprove =
-    normalizedRole === 'owner' ||
-    normalizedRole === 'pm' ||
-    normalizedRole === 'project manager';
+  const canApprove = can('APPROVE_FINANCE');
 
   const [pendingFlows, setPendingFlows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  // State 2FA Approver
+  const [mfaStatus, setMfaStatus] = useState(null);
+  const [mfaModalOpen, setMfaModalOpen] = useState(false);
+  const [mfaOtp, setMfaOtp] = useState('');
+  const [verifyingMfa, setVerifyingMfa] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
 
   // State untuk Rejection Modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -52,19 +58,17 @@ export default function ApprovalsPage() {
 
   useEffect(() => {
     fetchPending();
+    getMfaStatus().then(setMfaStatus).catch(() => {});
   }, [activeProjectId]);
 
   const showToast = (type, msg) => {
     setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   };
 
-  const handleAction = async (id, status, reason = null) => {
-    if (!canApprove) {
-      return showToast('danger', 'Akses ditolak: Hanya Owner atau Project Manager yang dapat menyetujui/menolak.');
-    }
+  const executeApprovalUpdate = async (id, status, reason = null) => {
     if (!activeProjectId) return;
-
+    const prevRow = pendingFlows.find((f) => f.id === id) || null;
     const payload = { approval_status: status };
     if (reason) payload.rejection_reason = reason;
 
@@ -79,11 +83,60 @@ export default function ApprovalsPage() {
       return;
     }
 
+    // Rekam ke Immutable Audit Log (mencatat IP, User-Agent, & snapshot Role)
+    await recordAuditEvent({
+      projectId: activeProjectId,
+      tableName: 'cash_flows',
+      action: status === 'Approved' ? 'APPROVE' : 'REJECT',
+      recordId: id,
+      oldData: prevRow ? { approval_status: prevRow.approval_status, amount: prevRow.amount } : null,
+      newData: payload,
+    });
+
     invalidateCache(`finances_${activeProjectId}`);
     showToast('success', `Transaksi berhasil di-${status}!`);
     setIsRejectModalOpen(false);
     setRejectReason('');
     fetchPending();
+  };
+
+  const handleAction = async (id, status, reason = null) => {
+    if (!canApprove) {
+      return showToast(
+        'danger',
+        'Akses ditolak: Hanya Owner, Super Admin, Finance Manager, atau Project Manager yang dapat menyetujui.'
+      );
+    }
+
+    // Jika Approver telah mengaktifkan 2FA tetapi sesi masih AAL1, minta verifikasi OTP dulu
+    if (mfaStatus?.needsChallenge && mfaStatus.verifiedFactors[0]?.id) {
+      setPendingAction({ id, status, reason });
+      setMfaOtp('');
+      setMfaModalOpen(true);
+      return;
+    }
+
+    await executeApprovalUpdate(id, status, reason);
+  };
+
+  const handleVerifyMfaAndProceed = async (e) => {
+    e.preventDefault();
+    const factorId = mfaStatus?.verifiedFactors?.[0]?.id;
+    if (!factorId || !pendingAction) return;
+
+    setVerifyingMfa(true);
+    try {
+      await verifyTotpCode(factorId, mfaOtp);
+      const updated = await getMfaStatus();
+      setMfaStatus(updated);
+      setMfaModalOpen(false);
+      await executeApprovalUpdate(pendingAction.id, pendingAction.status, pendingAction.reason);
+      setPendingAction(null);
+    } catch (err) {
+      showToast('danger', err?.message || 'Verifikasi 2FA gagal.');
+    } finally {
+      setVerifyingMfa(false);
+    }
   };
 
   const confirmReject = () => {
@@ -116,18 +169,35 @@ export default function ApprovalsPage() {
         <div className="bg-white p-5 rounded-lg shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              <ShieldCheck className="text-indigo-600" /> Dasbor Persetujuan (Project Manager)
+              <ShieldCheck className="text-indigo-600" /> Dasbor Persetujuan (Approver)
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              Tinjau dan setujui pengajuan kas untuk proyek aktif.
+              Tinjau dan setujui pengajuan kas untuk proyek aktif (tercatat otomatis di Immutable Audit Log).
             </p>
           </div>
           {!canApprove && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-              <Lock size={14} /> Mode Lihat Saja (Khusus Owner / PM)
+              <Lock size={14} /> Mode Lihat Saja (Khusus Approver)
             </span>
           )}
         </div>
+
+        {isApprover && mfaStatus && !mfaStatus.hasTotp && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start gap-2.5 text-sm text-amber-900">
+              <KeyRound className="text-amber-600 shrink-0 mt-0.5" size={18} />
+              <span>
+                <strong>Keamanan Approver:</strong> Aktifkan <strong>2FA Authenticator (TOTP)</strong> untuk melindungi persetujuan keuangan sesuai standar Enterprise.
+              </span>
+            </div>
+            <Link
+              href="/settings/security"
+              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-xs font-bold text-center"
+            >
+              Aktifkan 2FA Sekarang
+            </Link>
+          </div>
+        )}
 
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
           <table className="w-full text-sm text-left">
@@ -191,7 +261,7 @@ export default function ApprovalsPage() {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">Hanya PM/Owner</span>
+                        <span className="text-xs text-slate-400 italic">Hanya Approver</span>
                       )}
                     </td>
                   </tr>
@@ -201,6 +271,53 @@ export default function ApprovalsPage() {
           </table>
         </div>
       </div>
+
+      {/* MODAL VERIFIKASI 2FA TOTP APPROVER */}
+      {mfaModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <form onSubmit={handleVerifyMfaAndProceed} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 space-y-4">
+            <div className="text-center">
+              <div className="w-12 h-12 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3">
+                <KeyRound size={22} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Verifikasi 2FA Approver</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Masukkan 6 digit kode dari aplikasi Authenticator untuk menandatangani persetujuan ini.
+              </p>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              required
+              autoFocus
+              value={mfaOtp}
+              onChange={(e) => setMfaOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              className="w-full border border-slate-300 rounded-xl py-3 text-center font-mono text-2xl tracking-[0.4em] focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMfaModalOpen(false);
+                  setPendingAction(null);
+                }}
+                className="flex-1 py-2.5 text-sm font-bold text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={verifyingMfa || mfaOtp.length !== 6}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {verifyingMfa ? <Loader2 className="animate-spin" size={16} /> : 'Verifikasi'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* MODAL ALASAN PENOLAKAN */}
       {isRejectModalOpen && (
@@ -219,8 +336,7 @@ export default function ApprovalsPage() {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-sm text-slate-600">
-                Silakan berikan alasan mengapa pengajuan kas ini ditolak agar tim lapangan dapat
-                memperbaikinya.
+                Silakan berikan alasan mengapa pengajuan kas ini ditolak agar tim lapangan dapat memperbaikinya.
               </p>
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">

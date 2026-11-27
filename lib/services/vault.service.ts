@@ -1,6 +1,7 @@
 // lib/services/vault.service.ts
 import { supabase } from '@/lib/supabase';
 import { ProjectDocument, ProjectPhoto } from '@/lib/types/vault';
+import { SIGNED_URL_EXPIRY_SECONDS, getSignedFileUrl } from '@/lib/utils/secure-storage';
 
 // ==========================================
 // UPLOAD FUNCTIONS
@@ -89,16 +90,12 @@ export async function getDocuments(projectId: string) {
   
   if (error) throw new Error(error.message);
 
-  // 2. Ubah path menjadi Signed URL yang berlaku 1 jam (3600 detik)
+  // 2. Ubah path menjadi Signed URL sementara yang berlaku 10 menit (600 detik)
   const docsWithUrls = await Promise.all(data.map(async (doc) => {
-    const { data: signedData } = await supabase.storage
-      .from('project-vault')
-      .createSignedUrl(doc.file_url, 3600);
-      
-    return { 
-      ...doc, 
-      // Jika signedData gagal, fallback ke string kosong agar UI tidak crash
-      file_url: signedData?.signedUrl || '' 
+    const signedUrl = await getSignedFileUrl('project-vault', doc.file_url, SIGNED_URL_EXPIRY_SECONDS);
+    return {
+      ...doc,
+      file_url: signedUrl,
     };
   }));
 
@@ -116,15 +113,12 @@ export async function getPhotos(projectId: string) {
   
   if (error) throw new Error(error.message);
 
-  // 2. Ubah path menjadi Signed URL yang berlaku 1 jam (3600 detik)
+  // 2. Ubah path menjadi Signed URL sementara yang berlaku 10 menit (600 detik)
   const photosWithUrls = await Promise.all(data.map(async (photo) => {
-    const { data: signedData } = await supabase.storage
-      .from('project-vault')
-      .createSignedUrl(photo.photo_url, 3600);
-      
-    return { 
-      ...photo, 
-      photo_url: signedData?.signedUrl || '' 
+    const signedUrl = await getSignedFileUrl('project-vault', photo.photo_url, SIGNED_URL_EXPIRY_SECONDS);
+    return {
+      ...photo,
+      photo_url: signedUrl,
     };
   }));
 

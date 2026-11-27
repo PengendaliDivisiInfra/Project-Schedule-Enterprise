@@ -273,11 +273,11 @@ export default function CashFlowPage() {
       if (file) {
         setIsUploading(true);
         const fileExt = file.name.split('.').pop();
-        const fileName = `fin_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const fileName = `${projectId}/fin_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('evidence').upload(fileName, file);
         if (uploadError) throw new Error("Gagal upload: " + uploadError.message);
-        const { data: urlData } = await supabase.storage.from('evidence').getPublicUrl(fileName);
-        finalAttachmentUrl = urlData.publicUrl;
+        // Simpan path relatif (private bucket); akses file memakai Signed URL 10 menit
+        finalAttachmentUrl = fileName;
       }
 
       const finalStatus = isOverbudget ? 'Pending Overbudget' : 'Pending';

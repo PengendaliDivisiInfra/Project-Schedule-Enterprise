@@ -95,7 +95,8 @@ export default function QhsePage() {
       if (qcFile) {
         setIsUploading(true);
         const fileExt = qcFile.name.split('.').pop();
-        const fileName = `qc_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const folderPrefix = activeProjectId || 'general';
+        const fileName = `${folderPrefix}/qc_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
         
         const { error: uploadError } = await supabase.storage
           .from('evidence')
@@ -103,12 +104,8 @@ export default function QhsePage() {
           
         if (uploadError) throw new Error("Gagal upload file: " + uploadError.message);
 
-        // 2. DAPATKAN LINK PUBLIC
-        const { data: urlData } = supabase.storage
-          .from('evidence')
-          .getPublicUrl(fileName);
-          
-        finalEvidenceUrl = urlData.publicUrl;
+        // Simpan path relatif (private bucket); akses file memakai Signed URL 10 menit
+        finalEvidenceUrl = fileName;
       }
 
       // 3. SIMPAN DATA KE DATABASE
