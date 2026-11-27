@@ -16,6 +16,9 @@ import { VoidReceiptModal } from '@/components/termin/VoidReceiptModal';
 import { RetentionReleaseModal } from '@/components/termin/RetentionReleaseModal';
 import { ContractFormModal } from '@/components/termin/ContractFormModal';
 import { InputPencairanModal } from '@/components/termin/InputPencairanModal';
+import { BankGuaranteeManager } from '@/components/termin/BankGuaranteeManager';
+import { listBankGuarantees } from '@/lib/services/contractor-controls.service';
+import { evaluateGuaranteeAndRetentionAlert } from '@/lib/utils/contractor-controls';
 import { Plus, FileText, CheckCircle, Landmark, Pencil, AlertTriangle } from 'lucide-react';
 
 export default function TerminPage() {
@@ -27,6 +30,7 @@ export default function TerminPage() {
   const [termins, setTermins] = useState<ProjectTermin[]>([]);
   const [receipts, setReceipts] = useState<ClientReceipt[]>([]);
   const [releases, setReleases] = useState<RetentionRelease[]>([]);
+  const [guarantees, setGuarantees] = useState<any[]>([]);
   
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('rencana'); 
@@ -54,14 +58,16 @@ export default function TerminPage() {
       const c = await getContractByProject(projectId);
       if (c) {
         setContract(c);
-        const [t, r, rel] = await Promise.all([
+        const [t, r, rel, bgs] = await Promise.all([
           listTermins(projectId),
           listReceipts(projectId),
-          listReleases(c.id)
+          listReleases(c.id),
+          listBankGuarantees(projectId).catch(() => []),
         ]);
         setTermins(t);
         setReceipts(r);
         setReleases(rel);
+        setGuarantees(bgs);
       } else {
         setContract(null);
       }
@@ -164,11 +170,33 @@ export default function TerminPage() {
             </div>
           </div>
 
+          {/* PENGINGAT JATUH TEMPO BANK GARANSI & RETENSI */}
+          {(() => {
+            const retAlert = evaluateGuaranteeAndRetentionAlert((contract as any)?.retention_due_date);
+            const urgentBgs = guarantees.filter((g) => g.status === 'Active' && evaluateGuaranteeAndRetentionAlert(g.expiry_date).requiresAction);
+            if (!retAlert.requiresAction && urgentBgs.length === 0) return null;
+            return (
+              <div className="bg-amber-50 border border-amber-300 text-amber-900 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+                <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+                <div className="text-xs space-y-1">
+                  <p className="font-bold text-sm">Peringatan Jatuh Tempo Jaminan &amp; Retensi</p>
+                  {retAlert.requiresAction && (
+                    <p>• Jatuh Tempo Pencairan Retensi Kontrak: <b>{retAlert.label}</b> ({(contract as any)?.retention_due_date}).</p>
+                  )}
+                  {urgentBgs.length > 0 && (
+                    <p>• Terdapat <b>{urgentBgs.length} Bank Garansi aktif</b> yang mendekati kedaluwarsa atau telah kedaluwarsa. Periksa tab <b>4. Bank Garansi &amp; Jatuh Tempo</b>.</p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* TABS */}
           <div className="flex gap-2 border-b border-slate-200 mt-6 overflow-x-auto pb-px">
             <button onClick={() => setActiveTab('rencana')} className={tabClass(activeTab === 'rencana')}>1. Rencana Termin & SP2D</button>
             <button onClick={() => setActiveTab('kas')} className={tabClass(activeTab === 'kas')}>2. Penerimaan Kas</button>
             <button onClick={() => setActiveTab('retensi')} className={tabClass(activeTab === 'retensi')}>3. Pencairan Retensi</button>
+            <button onClick={() => setActiveTab('garansi')} className={tabClass(activeTab === 'garansi')}>4. Bank Garansi &amp; Jatuh Tempo</button>
           </div>
 
           <div className="bg-white border rounded-2xl shadow-sm overflow-hidden flex flex-col">
@@ -317,6 +345,15 @@ export default function TerminPage() {
                 </div>
               </div>
             )}
+            {/* TAB 4: BANK GARANSI & JATUH TEMPO RETENSI */}
+            {activeTab === 'garansi' && (
+              <BankGuaranteeManager
+                projectId={projectId}
+                contract={contract}
+                onContractUpdated={loadData}
+                showToast={showToast}
+              />
+            )}
           </div>
         </>
       )}
@@ -324,7 +361,7 @@ export default function TerminPage() {
       {/* MODALS */}
       {contract && (
         <>
-          <TerminFormModal isOpen={isTerminModalOpen} onClose={() => setIsTerminModalOpen(false)} projectId={projectId} contractId={contract.id} onSuccess={loadData} showToast={showToast} />
+          <TerminFormModal isOpen={isTerminModalOpen} onClose={() => setIsTerminModalOpen(false)} projectId={projectId} contractId={contract.id} contractValue={Number(contract.contract_value || 0)} defaultRetentionPct={Number(contract.retention_pct || 5)} defaultPpnPct={Number(contract.ppn_pct || 11)} onSuccess={loadData} showToast={showToast} />
           <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} invoice={null} onSuccess={loadData} showToast={showToast} />
           <VoidReceiptModal isOpen={isVoidModalOpen} onClose={() => setIsVoidModalOpen(false)} receipt={selectedReceipt} onSuccess={loadData} showToast={showToast} />
           <RetentionReleaseModal isOpen={isReleaseModalOpen} onClose={() => setIsReleaseModalOpen(false)} contract={contract} onSuccess={loadData} showToast={showToast} />
