@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { ShoppingCart, Plus, X, Truck, CheckCircle, AlertTriangle, Info, Edit, Trash2, XCircle, EyeOff, Wallet, CreditCard, Undo2, Calculator, Keyboard } from 'lucide-react';
+import { ShoppingCart, Plus, X, Truck, CheckCircle, AlertTriangle, Info, Edit, Trash2, XCircle, EyeOff, Wallet, CreditCard, Undo2, Calculator, Keyboard, MapPin, UploadCloud, ShieldCheck } from 'lucide-react';
 import { 
   getPurchaseOrders, 
   createPurchaseOrder, 
@@ -15,6 +15,7 @@ import {
 import { useRole } from '@/lib/hooks/useRole';
 import type { PurchaseOrder, Vendor, POItem } from '@/types/purchase-order';
 import { getWbsBudget3Layer, type WbsBudget3LayerRow } from '@/lib/services/budget-control.service';
+import { uploadPrivateFile } from '@/lib/utils/secure-storage';
 
 export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   const { can } = useRole(projectId);
@@ -54,6 +55,9 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   const [receiptNotes, setReceiptNotes] = useState('');
   const [receiptQtys, setReceiptQtys] = useState<{ [itemId: string]: string }>({});
   const [isSavingReceipt, setIsSavingReceipt] = useState(false);
+  const [sjFile, setSjFile] = useState<File | null>(null);
+  const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number; accuracy: number; capturedAt: string } | null>(null);
+  const [capturingGps, setCapturingGps] = useState(false);
 
   // State Modal Pembayaran & Pembatalan
   const [confirmPay, setConfirmPay] = useState<{ show: boolean; po: PurchaseOrder | null } | null>(null);
@@ -249,11 +253,37 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     }
   };
 
+  const handleCaptureGps = () => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      return showToast('Browser tidak mendukung Geolocation GPS.', 'error');
+    }
+    setCapturingGps(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsCoords({
+          lat: Number(pos.coords.latitude.toFixed(6)),
+          lng: Number(pos.coords.longitude.toFixed(6)),
+          accuracy: Math.round(pos.coords.accuracy || 0),
+          capturedAt: new Date().toISOString(),
+        });
+        setCapturingGps(false);
+        showToast('Koordinat GPS & Timestamp berhasil direkam!');
+      },
+      (err) => {
+        setCapturingGps(false);
+        showToast(`Gagal mengambil GPS: ${err.message}`, 'error');
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const handleOpenReceiptModal = (po: PurchaseOrder) => {
     setSelectedPoForReceipt(po);
     setDoNumber('');
     setReceiptNotes('');
     setReceiptQtys({});
+    setSjFile(null);
+    setGpsCoords(null);
     setIsReceiptModalOpen(true);
   };
 
@@ -272,11 +302,26 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
 
     setIsSavingReceipt(true);
     try {
+      let suratJalanPath: string | null = null;
+      if (sjFile) {
+        const ext = sjFile.name.split('.').pop() || 'jpg';
+        const filePath = `${projectId}/sj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+        suratJalanPath = await uploadPrivateFile('evidence', filePath, sjFile);
+      }
+
+      const evidencePayload = {
+        suratJalanUrl: suratJalanPath,
+        gpsLatitude: gpsCoords?.lat ?? null,
+        gpsLongitude: gpsCoords?.lng ?? null,
+        gpsAccuracy: gpsCoords?.accuracy ?? null,
+        capturedAt: gpsCoords?.capturedAt || new Date().toISOString(),
+      };
+
       for (const itemId of itemsToReceive) {
         const qty = Number(receiptQtys[itemId]);
-        await receiveGoods(selectedPoForReceipt.id, itemId, qty, doNumber, receiptNotes, projectId);
+        await receiveGoods(selectedPoForReceipt.id, itemId, qty, doNumber, receiptNotes, projectId, evidencePayload);
       }
-      showToast('Penerimaan Barang Berhasil Dicatat!');
+      showToast('Penerimaan Barang + Bukti Surat Jalan & GPS Berhasil Dicatat!');
       setIsReceiptModalOpen(false);
       loadData();
     } catch (err: any) {
@@ -480,7 +525,20 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
                         )}
 
                         {po.payment_status !== 'Paid' && can('VIEW_PRICE') && (
-                          <button onClick={() => handleOpenPayModal(po)} className="text-emerald-600 hover:bg-emerald-50 px-3 py-1.5 rounded-md border border-emerald-200 text-xs font-semibold flex items-center gap-1 transition-colors" title="Catat Pembayaran">
+                          <button
+                            onClick={() => {
+                              if (!hasReceipt) {
+                                return showToast('Three-Way Matching Guard: Terima barang (GRN + Surat Jalan GPS) terlebih dahulu sebelum pembayaran!', 'error');
+                              }
+                              handleOpenPayModal(po);
+                            }}
+                            className={`px-3 py-1.5 rounded-md border text-xs font-semibold flex items-center gap-1 transition-colors ${
+                              hasReceipt
+                                ? 'text-emerald-600 hover:bg-emerald-50 border-emerald-200'
+                                : 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed'
+                            }`}
+                            title={hasReceipt ? 'Catat Pembayaran (GRN Terverifikasi)' : 'Terkunci: Wajib GRN (Three-Way Matching)'}
+                          >
                             <Wallet className="w-3 h-3" /> Bayar
                           </button>
                         )}
@@ -814,6 +872,39 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">Catatan</label>
                     <input type="text" value={receiptNotes} onChange={e => setReceiptNotes(e.target.value)} className="w-full border rounded-md p-2 text-sm focus:ring-1 focus:ring-blue-500" placeholder="Kondisi barang, dll" />
+                  </div>
+                </div>
+
+                {/* BUKTI FISIK DIGITAL: FOTO SURAT JALAN + GPS + TIMESTAMP */}
+                <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-bold text-indigo-800 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4" /> Bukti Fisik Digital (Syarat Three-Way Matching)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleCaptureGps}
+                      disabled={capturingGps}
+                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <MapPin className="w-3.5 h-3.5" /> {capturingGps ? 'Mengambil GPS...' : 'Rekam GPS & Timestamp'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                    <label className="cursor-pointer bg-white border border-indigo-200 hover:bg-indigo-50 px-3 py-2 rounded-lg text-xs font-bold text-indigo-700 flex items-center gap-2">
+                      <UploadCloud className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{sjFile ? sjFile.name : 'Unggah Foto / Scan Surat Jalan'}</span>
+                      <input type="file" accept="image/*,application/pdf" onChange={(e) => setSjFile(e.target.files?.[0] || null)} className="hidden" />
+                    </label>
+                    <div className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 font-mono text-slate-600">
+                      {gpsCoords ? (
+                        <span className="text-emerald-700 font-bold">
+                          GPS: {gpsCoords.lat}, {gpsCoords.lng} (±{gpsCoords.accuracy}m)
+                        </span>
+                      ) : (
+                        <span className="text-amber-600">Belum ada koordinat GPS</span>
+                      )}
+                    </div>
                   </div>
                 </div>
 

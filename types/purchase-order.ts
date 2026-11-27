@@ -57,6 +57,7 @@ export interface PurchaseOrder {
   grand_total: number;
   shipping_address: string | null;
   wbs_code?: string | null;
+  pr_id?: string | null;
   approval_chain?: string[];
   required_approval_steps?: number;
   notes: string | null;

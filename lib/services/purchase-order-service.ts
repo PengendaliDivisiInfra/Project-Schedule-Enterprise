@@ -207,21 +207,45 @@ export async function deletePurchaseOrder(poId: string) {
 // ==========================================
 // --- GOODS RECEIPT (PENERIMAAN BARANG) ---
 // ==========================================
+export interface GrnEvidencePayload {
+  suratJalanUrl?: string | null;
+  gpsLatitude?: number | null;
+  gpsLongitude?: number | null;
+  gpsAccuracy?: number | null;
+  capturedAt?: string | null;
+}
+
 export async function receiveGoods(
   poId: string, 
   poItemId: string, 
   receivedQty: number, 
   doNumber: string, 
   notes: string,
-  projectId: string
+  projectId: string,
+  evidence?: GrnEvidencePayload
 ) {
-  const { error: grError } = await supabase.from('goods_receipts').insert({
+  const baseGrn = {
     po_item_id: poItemId,
     received_qty: receivedQty,
     do_number: doNumber,
     notes: notes,
     received_date: new Date().toISOString().split('T')[0]
+  };
+
+  let { error: grError } = await supabase.from('goods_receipts').insert({
+    ...baseGrn,
+    surat_jalan_url: evidence?.suratJalanUrl || null,
+    gps_latitude: evidence?.gpsLatitude ?? null,
+    gps_longitude: evidence?.gpsLongitude ?? null,
+    gps_accuracy: evidence?.gpsAccuracy ?? null,
+    captured_at: evidence?.capturedAt || new Date().toISOString(),
   });
+
+  // Fallback aman bila migrasi SQL 05 belum dieksekusi
+  if (grError && grError.code === '42703') {
+    const retry = await supabase.from('goods_receipts').insert(baseGrn);
+    grError = retry.error;
+  }
   if (grError) throw new Error(grError.message);
 
   const { data: currentItem } = await supabase

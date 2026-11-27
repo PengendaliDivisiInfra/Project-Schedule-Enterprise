@@ -12,6 +12,9 @@ import { PurchaseOrderManager } from '@/components/purchase-order/PurchaseOrderM
 import { VendorManager } from '@/components/vendor/VendorManager';
 import { MaterialFlowGuide } from '@/components/material/MaterialFlowGuide';
 import { ReportManager } from '@/components/material/ReportManager';
+import { PurchaseRequestManager } from '@/components/procurement/PurchaseRequestManager';
+import { VendorInvoiceManager } from '@/components/procurement/VendorInvoiceManager';
+import { MultiWarehouseManager } from '@/components/warehouse/MultiWarehouseManager';
 import { SkeletonLoader } from '@/components/ui/SkeletonLoader';
 
 export default function MaterialsPage() {
@@ -147,8 +150,17 @@ export default function MaterialsPage() {
           <button onClick={() => { setActiveTab('inventory'); setSearchTerm(''); }} className={tabClass(activeTab === 'inventory')}>
             <Box className="w-4 h-4" /> Stok Gudang
           </button>
+          <button onClick={() => { setActiveTab('pr'); setSearchTerm(''); }} className={tabClass(activeTab === 'pr')}>
+            <FileSignature className="w-4 h-4" /> Purchase Request (PR)
+          </button>
           <button onClick={() => { setActiveTab('po'); setSearchTerm(''); }} className={tabClass(activeTab === 'po')}>
             <ShoppingCart className="w-4 h-4" /> Purchase Order
+          </button>
+          <button onClick={() => { setActiveTab('invoice'); setSearchTerm(''); }} className={tabClass(activeTab === 'invoice')}>
+            <CheckCircle2 className="w-4 h-4" /> Invoice &amp; 3-Way Match
+          </button>
+          <button onClick={() => { setActiveTab('warehouse'); setSearchTerm(''); }} className={tabClass(activeTab === 'warehouse')}>
+            <Truck className="w-4 h-4" /> Multi-Gudang &amp; Transfer
           </button>
           <button onClick={() => { setActiveTab('vendor'); setSearchTerm(''); }} className={tabClass(activeTab === 'vendor')}>
             <Store className="w-4 h-4" /> Master Vendor
@@ -242,7 +254,10 @@ export default function MaterialsPage() {
         )}
 
         {activeTab === 'inventory' && <div className="mt-2 animate-in fade-in"><InventoryManager projectId={activeProjectId} /></div>}
+        {activeTab === 'pr' && <div className="mt-2 animate-in fade-in"><PurchaseRequestManager projectId={activeProjectId} /></div>}
         {activeTab === 'po' && <div className="mt-2 animate-in fade-in"><PurchaseOrderManager projectId={activeProjectId} /></div>}
+        {activeTab === 'invoice' && <div className="mt-2 animate-in fade-in"><VendorInvoiceManager projectId={activeProjectId} /></div>}
+        {activeTab === 'warehouse' && <div className="mt-2 animate-in fade-in"><MultiWarehouseManager projectId={activeProjectId} /></div>}
         {activeTab === 'vendor' && <div className="mt-2 animate-in fade-in"><VendorManager projectId={activeProjectId} /></div>}
         {activeTab === 'reports' && <div className="mt-2 animate-in fade-in"><ReportManager projectId={activeProjectId} /></div>}
         
