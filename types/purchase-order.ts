@@ -56,6 +56,9 @@ export interface PurchaseOrder {
   pph_amount: number;
   grand_total: number;
   shipping_address: string | null;
+  wbs_code?: string | null;
+  approval_chain?: string[];
+  required_approval_steps?: number;
   notes: string | null;
   vendor?: Vendor;
   items?: POItem[];
