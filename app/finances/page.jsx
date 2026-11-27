@@ -18,6 +18,12 @@ import {
 } from '@/lib/services/budget-control.service';
 import { listApprovalRules } from '@/lib/services/approval-rules.service';
 import { resolveApprovalMatrix } from '@/lib/utils/budget-control';
+import {
+  getRingFencedCashflow,
+  listContractChangeOrders,
+  listUnapprovedVariationWork,
+} from '@/lib/services/contractor-controls.service';
+import { evaluateRingFencedCashflow } from '@/lib/utils/contractor-controls';
 
 export default function CashFlowPage() {
   const { userRole, activeProjectId } = useProject(); 
@@ -50,6 +56,9 @@ export default function CashFlowPage() {
   const [selectedWbsRow, setSelectedWbsRow] = useState(null);
   const [budgetSummary, setBudgetSummary] = useState(null);
   const [approvalRules, setApprovalRules] = useState([]);
+  const [ringFenced, setRingFenced] = useState(null);
+  const [ccoList, setCcoList] = useState([]);
+  const [unapprovedWork, setUnapprovedWork] = useState([]);
   
   // TABS
   const [activeTab, setActiveTab] = useState('ledger');
@@ -64,7 +73,7 @@ export default function CashFlowPage() {
     type: 'OUT', category: 'Material', description: '', amount: 0, 
     transaction_date: new Date().toISOString().split('T')[0],
     payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '',
-    approval_status: 'Pending', overbudget_reason: ''
+    approval_status: 'Pending', overbudget_reason: '', is_variation_work: false, cco_id: ''
   });
 
   const showToast = (type, message) => {
@@ -124,10 +133,13 @@ export default function CashFlowPage() {
       if (flowData) setFlows(flowData);
 
       // 2. Ambil data WBS 3-Lapisan Anggaran (Pagu RAB, Committed PO/SPK/Pending, Actual, Available)
-      const [wbs3Layer, projBudgetSum, rulesList] = await Promise.all([
+      const [wbs3Layer, projBudgetSum, rulesList, rfData, ccosData, unappData] = await Promise.all([
         getWbsBudget3Layer(projectId),
         getProjectBudgetSummary(projectId),
         listApprovalRules(projectId).catch(() => []),
+        getRingFencedCashflow(projectId).catch(() => null),
+        listContractChangeOrders(projectId).catch(() => []),
+        listUnapprovedVariationWork(projectId).catch(() => []),
       ]);
       const taskData = (wbs3Layer || []).map((item) => ({
         ...item,
@@ -139,6 +151,9 @@ export default function CashFlowPage() {
       setCostControlData(taskData);
       setBudgetSummary(projBudgetSum);
       setApprovalRules(rulesList || []);
+      setRingFenced(rfData);
+      setCcoList(ccosData || []);
+      setUnapprovedWork(unappData || []);
 
       // 3. Ambil Nilai Kontrak Proyek
       const { data: projData } = await supabase
@@ -278,7 +293,20 @@ export default function CashFlowPage() {
       : null;
   const hardStopEnabled = budgetSummary?.budget_hard_stop !== false;
   const isOverbudget = effectiveAvailableBudget !== null && Number(formData.amount) > effectiveAvailableBudget;
-  const isHardBlocked = hardStopEnabled && isOverbudget;
+  const ringFencedCheck =
+    formData.type === 'OUT' && ringFenced
+      ? evaluateRingFencedCashflow({
+          clientInflow: ringFenced.total_client_inflow,
+          hqDropping: ringFenced.total_hq_dropping,
+          actualOutflow: ringFenced.total_actual_outflow,
+          pendingOutflow: ringFenced.total_pending_outflow,
+          requestedOutflow: Number(formData.amount) || 0,
+          ringFencedEnabled: ringFenced.ring_fenced_cashflow,
+          hqDroppingLimit: ringFenced.hq_dropping_limit,
+        })
+      : null;
+  const isCashDeficitBlocked = Boolean(ringFencedCheck && !ringFencedCheck.allowed);
+  const isHardBlocked = (hardStopEnabled && isOverbudget) || isCashDeficitBlocked;
 
   const matchedApprovalPlan = resolveApprovalMatrix(approvalRules, {
     documentType: (formData.category || '').toLowerCase().includes('kasbon') ? 'KASBON' : 'CASH_OUT',
@@ -294,7 +322,10 @@ export default function CashFlowPage() {
 
     const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
     if (isUploadRequired && !file) return showToast('danger', "Wajib unggah bukti untuk Tunai/Petty Cash!");
-    if (isHardBlocked) {
+    if (isCashDeficitBlocked) {
+      return showToast('danger', ringFencedCheck?.message || "Ring-Fenced Cashflow: Saldo kas proyek tidak mencukupi (defisit).");
+    }
+    if (hardStopEnabled && isOverbudget) {
       return showToast('danger', "Hard-Stop Aktif: Nominal melebihi Available Budget (Pagu - Committed - Actual). Ajukan Addendum/CCO terlebih dahulu.");
     }
     if (isOverbudget && !formData.overbudget_reason) return showToast('danger', "Wajib isi alasan overbudget!");
@@ -326,10 +357,21 @@ export default function CashFlowPage() {
         overbudget_reason: formData.overbudget_reason || null,
       });
 
+      // Tandai bila transaksi terkait pekerjaan tambah / CCO (untuk Unapproved Work Alert)
+      if (rpcRes?.id && (formData.is_variation_work || formData.cco_id)) {
+        await supabase
+          .from('cash_flows')
+          .update({
+            is_variation_work: Boolean(formData.is_variation_work || formData.cco_id),
+            cco_id: formData.cco_id || null,
+          })
+          .eq('id', rpcRes.id);
+      }
+
       const stepsCount = rpcRes?.required_approval_steps || 1;
       setIsModalOpen(false);
       showToast('success', `Transaksi diajukan dengan penguncian anggaran (${stepsCount} tahap approval)!`);
-      setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '', approval_status: 'Pending', overbudget_reason: '' });
+      setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '', approval_status: 'Pending', overbudget_reason: '', is_variation_work: false, cco_id: '' });
       setFile(null); setSelectedWbsBudget(null); setSelectedWbsRow(null); fetchData();
     } catch (error) { showToast('danger', error.message); } 
     finally { setIsSaving(false); setIsUploading(false); }
@@ -385,6 +427,35 @@ export default function CashFlowPage() {
             </button>
           )}
         </div>
+
+        {/* RING-FENCED CASHFLOW & UNAPPROVED WORK ALERTS */}
+        {ringFenced && ringFenced.is_deficit && (
+          <div className="bg-rose-50 border border-rose-300 text-rose-800 p-4 rounded-lg flex items-start gap-3 shadow-sm">
+            <AlertTriangle className="mt-0.5 flex-shrink-0 text-rose-600" size={18} />
+            <div className="text-sm">
+              <p className="font-bold">Ring-Fenced Cashflow Alert: Proyek Dalam Kondisi Defisit Kas ({formatRp(ringFenced.ringfenced_cash_balance)})</p>
+              <p className="text-xs mt-0.5">
+                Kas Masuk Klien: <b>{formatRp(ringFenced.total_client_inflow)}</b> • Dropping Pusat: <b>{formatRp(ringFenced.total_hq_dropping)}</b> • Total Keluar+Pending: <b>{formatRp(ringFenced.total_actual_outflow + ringFenced.total_pending_outflow)}</b>. Segera tagih termin atau ajukan Dropping Kantor Pusat.
+              </p>
+            </div>
+          </div>
+        )}
+        {unapprovedWork.length > 0 && (
+          <div className="bg-orange-50 border border-orange-300 text-orange-900 p-4 rounded-lg flex items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-start gap-3 text-sm">
+              <AlertTriangle className="mt-0.5 flex-shrink-0 text-orange-600" size={18} />
+              <div>
+                <p className="font-bold">Unapproved Work Alert: {unapprovedWork.length} Pengeluaran Pekerjaan Tambah Tanpa Addendum Resmi</p>
+                <p className="text-xs mt-0.5">
+                  Total biaya terpapar: <b>{formatRp(unapprovedWork.reduce((s, r) => s + Number(r.incurred_cost || 0), 0))}</b>.
+                </p>
+              </div>
+            </div>
+            <a href="/change-orders" className="shrink-0 bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold">
+              Kelola CCO / Addendum
+            </a>
+          </div>
+        )}
 
         {/* CONTEXTUAL SOP ALERT: CASH FLOW */}
         {!hasTodayTransaction && (
@@ -831,6 +902,7 @@ export default function CashFlowPage() {
                       <>
                         <option value="DP">Uang Muka (DP)</option>
                         <option value="Termin">Termin Pembayaran</option>
+                        <option value="Dropping Kantor Pusat">Dropping Dana Kantor Pusat (HQ)</option>
                         <option value="Retensi">Pencairan Retensi</option>
                         <option value="Retur">Retur / Koreksi Pengembalian</option>
                         <option value="Lainnya">Lainnya</option>
@@ -883,7 +955,12 @@ export default function CashFlowPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Rp</span>
                   <input required type="text" value={formData.amount ? Number(formData.amount).toLocaleString('id-ID') : ''} onChange={(e) => { const rawValue = e.target.value.replace(/\D/g, ''); setFormData({ ...formData, amount: rawValue }); }} className={`w-full border p-2 pl-10 rounded-lg text-sm focus:ring-2 outline-none font-bold text-lg ${isOverbudget ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-500' : 'border-slate-300 focus:ring-indigo-500'}`} placeholder="0" />
                 </div>
-                {isHardBlocked ? (
+                {isCashDeficitBlocked ? (
+                  <div className="mt-2 bg-rose-50 p-3 rounded-lg border border-rose-300 text-rose-800 text-xs space-y-1">
+                    <p className="font-bold flex items-center gap-1"><AlertTriangle size={13}/> RING-FENCED CASHFLOW BLOCK: Kas Mandiri Proyek Tidak Mencukupi!</p>
+                    <p>{ringFencedCheck?.message}</p>
+                  </div>
+                ) : (hardStopEnabled && isOverbudget) ? (
                   <div className="mt-2 bg-rose-50 p-3 rounded-lg border border-rose-300 text-rose-800 text-xs space-y-1">
                     <p className="font-bold flex items-center gap-1"><AlertTriangle size={13}/> HARD-STOP ANGGARAN: Nominal melebihi Available Budget ({formatRp(effectiveAvailableBudget)})!</p>
                     <p>Pengajuan diblokir otomatis (Pagu - Committed - Actual tidak mencukupi). Lakukan revisi anggaran / CCO terlebih dahulu.</p>
@@ -904,6 +981,34 @@ export default function CashFlowPage() {
                   </div>
                 )}
               </div>
+
+              {formData.type === 'OUT' && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-lg p-3 space-y-2">
+                  <label className="inline-flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formData.is_variation_work)}
+                      onChange={(e) => setFormData({ ...formData, is_variation_work: e.target.checked })}
+                      className="rounded border-amber-400"
+                    />
+                    Tandai sebagai Pekerjaan Tambah (Variation Work / CCO)
+                  </label>
+                  {formData.is_variation_work && (
+                    <select
+                      value={formData.cco_id || ''}
+                      onChange={(e) => setFormData({ ...formData, cco_id: e.target.value })}
+                      className="w-full border border-amber-300 rounded-lg p-2 text-xs bg-white"
+                    >
+                      <option value="">-- Belum Ada CCO Resmi (Akan Memicu Unapproved Work Alert) --</option>
+                      {ccoList.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          [{c.cco_number}] {c.title} ({c.status})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-600 mb-1">Keterangan Tambahan</label>

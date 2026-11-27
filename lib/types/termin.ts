@@ -25,6 +25,7 @@ export interface ClientContract {
   ppn_pct: number;
   start_date: string | null;
   end_date: string | null;
+  retention_due_date?: string | null;
   status: ContractStatus;
   is_active: boolean;
   created_by: string | null;
@@ -49,6 +50,9 @@ export interface ProjectTermin {
   bapp_number: string | null;
   bapp_date: string | null;
   bapp_url: string | null;
+  bakp_number?: string | null;
+  bakp_date?: string | null;
+  bakp_verified_progress_pct?: number | null;
   submitted_at: string | null;
   approved_at: string | null;
   approved_by: string | null;
@@ -151,6 +155,9 @@ export interface CreateTerminInput {
   gross_amount: number;
   retention_pct: number;
   notes?: string;
+  bakp_number?: string | null;
+  bakp_date?: string | null;
+  bakp_verified_progress_pct?: number | null;
 }
 
 export interface IssueInvoiceInput {
