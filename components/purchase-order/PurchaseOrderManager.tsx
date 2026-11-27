@@ -14,6 +14,7 @@ import {
 } from '@/lib/services/purchase-order-service';
 import { useRole } from '@/lib/hooks/useRole';
 import type { PurchaseOrder, Vendor, POItem } from '@/types/purchase-order';
+import { getWbsBudget3Layer, type WbsBudget3LayerRow } from '@/lib/services/budget-control.service';
 
 export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   const { can } = useRole(projectId);
@@ -29,7 +30,9 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
   const [poNumber, setPoNumber] = useState('');
   const [vendorId, setVendorId] = useState('');
   const [poDate, setPoDate] = useState(new Date().toISOString().split('T')[0]);
-  const [shippingAddress, setShippingAddress] = useState(''); 
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [wbsCode, setWbsCode] = useState('');
+  const [wbsBudgets, setWbsBudgets] = useState<WbsBudget3LayerRow[]>([]);
   const [ppnPercent, setPpnPercent] = useState(11);
   const [pphPercent, setPphPercent] = useState(1.5);
   
@@ -86,6 +89,8 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
       setPos(poData);
       setVendors(vendorData);
       setMaterials(hsdData || []);
+      const budgetRows = await getWbsBudget3Layer(projectId).catch(() => []);
+      setWbsBudgets(budgetRows || []);
 
       const { data: projectData } = await supabase.from('projects').select('name, location').eq('id', projectId).single();
       if (projectData) setShippingAddress(`${projectData.name} - ${projectData.location}`);
@@ -161,6 +166,7 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     const generatedPo = `PO-${new Date().getFullYear()}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
     setPoNumber(generatedPo); 
     setVendorId('');
+    setWbsCode('');
     setPoItems([]);
     setPoDate(new Date().toISOString().split('T')[0]);
     setIsManualInput(false);
@@ -173,6 +179,7 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
     setVendorId(po.vendor_id);
     setPoDate(po.po_date);
     setShippingAddress(po.shipping_address || '');
+    setWbsCode(po.wbs_code || '');
     setPpnPercent(po.ppn_percent);
     setPphPercent(po.pph_percent);
     setIsManualInput(false);
@@ -206,7 +213,8 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
       pph_percent: pphPercent,
       pph_amount: pphAmount,
       grand_total: grandTotal,
-      shipping_address: shippingAddress
+      shipping_address: shippingAddress,
+      wbs_code: wbsCode || null
     };
 
     try {
@@ -645,9 +653,22 @@ export function PurchaseOrderManager({ projectId }: { projectId: string }) {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-600 mb-1">Alamat Pengiriman (Site)</label>
-                <input type="text" value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} className="w-full border rounded-md p-2 text-sm focus:ring-1 focus:ring-blue-500 bg-slate-50" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Alamat Pengiriman (Site)</label>
+                  <input type="text" value={shippingAddress} onChange={e => setShippingAddress(e.target.value)} className="w-full border rounded-md p-2 text-sm focus:ring-1 focus:ring-blue-500 bg-slate-50" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Relasi WBS / Penguncian Anggaran (Hard-Stop)</label>
+                  <select value={wbsCode} onChange={e => setWbsCode(e.target.value)} className="w-full border rounded-md p-2 text-sm focus:ring-1 focus:ring-blue-500 bg-white">
+                    <option value="">-- Validasi Pagu Tingkat Proyek --</option>
+                    {wbsBudgets.map(w => (
+                      <option key={w.wbs_code} value={w.wbs_code}>
+                        [{w.wbs_code}] {w.task_name} (Avail: Rp {Math.round(w.available_budget).toLocaleString('id-ID')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">

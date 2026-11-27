@@ -1,6 +1,7 @@
 // lib/services/purchase-order-service.ts
 import { supabase } from '../supabase';
 import type { Vendor, PurchaseOrder, POItem } from '@/types/purchase-order';
+import { validatePoBudgetLock } from '@/lib/services/budget-control.service';
 
 // ==========================================
 // --- VENDOR SERVICE ---
@@ -75,11 +76,33 @@ async function ensureHsdExists(item: POItem): Promise<string> {
 }
 
 export async function createPurchaseOrder(poHeader: Partial<PurchaseOrder>, items: POItem[]) {
-  const { data: po, error: poError } = await supabase
+  // Enterprise Hard-Stop & Pessimistic Lock (SELECT ... FOR UPDATE) sebelum PO mengunci komitmen anggaran
+  let approvalMeta: Record<string, any> = {};
+  if (poHeader.project_id && Number(poHeader.grand_total || 0) > 0) {
+    const lockRes = await validatePoBudgetLock(
+      poHeader.project_id,
+      poHeader.wbs_code || null,
+      Number(poHeader.grand_total || 0),
+      'Material'
+    );
+    approvalMeta = {
+      approval_chain: lockRes.approval_chain,
+      required_approval_steps: lockRes.required_approval_steps,
+    };
+  }
+
+  let { data: po, error: poError } = await supabase
     .from('purchase_orders')
-    .insert(poHeader)
+    .insert({ ...poHeader, ...approvalMeta })
     .select()
     .single();
+
+  if (poError && poError.code === '42703') {
+    const { wbs_code: _w, approval_chain: _c, required_approval_steps: _s, ...legacyHeader } = poHeader as any;
+    const retry = await supabase.from('purchase_orders').insert(legacyHeader).select().single();
+    po = retry.data;
+    poError = retry.error;
+  }
 
   if (poError) throw new Error(poError.message);
 

@@ -8,11 +8,13 @@ import { useRole } from '@/lib/hooks/useRole';
 import { invalidateCache } from '@/lib/utils/cache';
 import { getMfaStatus, verifyTotpCode } from '@/lib/services/mfa.service';
 import { recordAuditEvent } from '@/lib/services/logs.service';
-import { ShieldCheck, X, CheckCircle2, AlertTriangle, Lock, KeyRound, Loader2 } from 'lucide-react';
+import { processTieredApproval } from '@/lib/services/approval-rules.service';
+import { canRoleApproveStep } from '@/lib/utils/budget-control';
+import { ShieldCheck, X, CheckCircle2, AlertTriangle, Lock, KeyRound, Loader2, GitBranch } from 'lucide-react';
 
 export default function ApprovalsPage() {
   const { activeProjectId } = useProject();
-  const { can, isApprover } = useRole(activeProjectId);
+  const { can, isApprover, globalRole, projectRole, role } = useRole(activeProjectId);
 
   const canApprove = can('APPROVE_FINANCE');
 
@@ -69,35 +71,45 @@ export default function ApprovalsPage() {
   const executeApprovalUpdate = async (id, status, reason = null) => {
     if (!activeProjectId) return;
     const prevRow = pendingFlows.find((f) => f.id === id) || null;
-    const payload = { approval_status: status };
-    if (reason) payload.rejection_reason = reason;
 
-    const { error } = await supabase
-      .from('cash_flows')
-      .update(payload)
-      .eq('id', id)
-      .eq('project_id', activeProjectId);
+    try {
+      const res = await processTieredApproval({
+        recordId: id,
+        projectId: activeProjectId,
+        decision: status,
+        reason,
+      });
 
-    if (error) {
-      showToast('danger', 'Gagal memproses persetujuan: ' + error.message);
-      return;
+      await recordAuditEvent({
+        projectId: activeProjectId,
+        tableName: 'cash_flows',
+        action: status === 'Approved' ? 'APPROVE' : 'REJECT',
+        recordId: id,
+        oldData: prevRow
+          ? {
+              approval_status: prevRow.approval_status,
+              current_approval_step: prevRow.current_approval_step || 1,
+              amount: prevRow.amount,
+            }
+          : null,
+        newData: res,
+      });
+
+      invalidateCache(`finances_${activeProjectId}`);
+      if (res.approval_status === 'Pending' && res.next_required_role) {
+        showToast(
+          'success',
+          `Tahap disetujui! Dilanjutkan ke Tahap ${res.current_approval_step}/${res.required_approval_steps} (${res.next_required_role}).`
+        );
+      } else {
+        showToast('success', `Transaksi berhasil di-${res.approval_status}!`);
+      }
+      setIsRejectModalOpen(false);
+      setRejectReason('');
+      fetchPending();
+    } catch (err) {
+      showToast('danger', err?.message || 'Gagal memproses persetujuan.');
     }
-
-    // Rekam ke Immutable Audit Log (mencatat IP, User-Agent, & snapshot Role)
-    await recordAuditEvent({
-      projectId: activeProjectId,
-      tableName: 'cash_flows',
-      action: status === 'Approved' ? 'APPROVE' : 'REJECT',
-      recordId: id,
-      oldData: prevRow ? { approval_status: prevRow.approval_status, amount: prevRow.amount } : null,
-      newData: payload,
-    });
-
-    invalidateCache(`finances_${activeProjectId}`);
-    showToast('success', `Transaksi berhasil di-${status}!`);
-    setIsRejectModalOpen(false);
-    setRejectReason('');
-    fetchPending();
   };
 
   const handleAction = async (id, status, reason = null) => {
@@ -175,11 +187,21 @@ export default function ApprovalsPage() {
               Tinjau dan setujui pengajuan kas untuk proyek aktif (tercatat otomatis di Immutable Audit Log).
             </p>
           </div>
-          {!canApprove && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-              <Lock size={14} /> Mode Lihat Saja (Khusus Approver)
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {canApprove && (
+              <Link
+                href="/settings/approval-matrix"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+              >
+                <GitBranch size={14} /> Matriks Approval
+              </Link>
+            )}
+            {!canApprove && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                <Lock size={14} /> Mode Lihat Saja (Khusus Approver)
+              </span>
+            )}
+          </div>
         </div>
 
         {isApprover && mfaStatus && !mfaStatus.hasTotp && (
@@ -207,6 +229,7 @@ export default function ApprovalsPage() {
                 <th className="p-3">Kategori</th>
                 <th className="p-3">WBS</th>
                 <th className="p-3">Vendor/Ref</th>
+                <th className="p-3">Jenjang Approval</th>
                 <th className="p-3 text-right">Nominal (Rp)</th>
                 <th className="p-3 text-center">Aksi</th>
               </tr>
@@ -214,18 +237,25 @@ export default function ApprovalsPage() {
             <tbody className="divide-y divide-slate-100">
               {!activeProjectId ? (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-slate-500 italic">
+                  <td colSpan={7} className="p-10 text-center text-slate-500 italic">
                     Pilih proyek aktif terlebih dahulu untuk meninjau persetujuan.
                   </td>
                 </tr>
               ) : pendingFlows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-slate-500 italic">
+                  <td colSpan={7} className="p-10 text-center text-slate-500 italic">
                     Tidak ada transaksi yang menunggu persetujuan pada proyek ini.
                   </td>
                 </tr>
               ) : (
-                pendingFlows.map((f) => (
+                pendingFlows.map((f) => {
+                  const chain = Array.isArray(f.approval_chain) && f.approval_chain.length > 0 ? f.approval_chain : ['Project Manager'];
+                  const totalSteps = f.required_approval_steps || chain.length;
+                  const currStep = Math.min(Math.max(1, f.current_approval_step || 1), totalSteps);
+                  const requiredRole = chain[currStep - 1] || 'Project Manager';
+                  const eligibleForStep = canApprove && canRoleApproveStep(requiredRole, { globalRole, projectRole: projectRole || role });
+
+                  return (
                   <tr key={f.id} className="hover:bg-slate-50">
                     <td className="p-3 text-slate-600 text-xs">
                       {new Date(f.transaction_date).toLocaleDateString('id-ID')}
@@ -240,9 +270,14 @@ export default function ApprovalsPage() {
                     </td>
                     <td className="p-3 font-mono text-xs">{f.wbs_code || '-'}</td>
                     <td className="p-3 text-xs">{f.vendor_or_ref || f.description || '-'}</td>
+                    <td className="p-3 text-xs">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold text-[11px]">
+                        Tahap {currStep}/{totalSteps}: {requiredRole}
+                      </span>
+                    </td>
                     <td className="p-3 text-right font-bold text-red-600">{formatRp(f.amount)}</td>
                     <td className="p-3 text-center">
-                      {canApprove ? (
+                      {eligibleForStep ? (
                         <div className="flex gap-2 justify-center">
                           <button
                             onClick={() => handleAction(f.id, 'Approved')}
@@ -261,11 +296,12 @@ export default function ApprovalsPage() {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">Hanya Approver</span>
+                        <span className="text-[11px] text-slate-400 italic">Menunggu {requiredRole}</span>
                       )}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

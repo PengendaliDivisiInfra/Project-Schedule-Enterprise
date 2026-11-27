@@ -11,6 +11,13 @@ import {
 } from 'recharts';
 import CashFlowStatementView from '@/components/finances/CashFlowStatementView';
 import CashFlowForecastView from '@/components/finances/CashFlowForecastView'; // <-- NEW IMPORT
+import {
+  getProjectBudgetSummary,
+  getWbsBudget3Layer,
+  submitBudgetedCashFlow,
+} from '@/lib/services/budget-control.service';
+import { listApprovalRules } from '@/lib/services/approval-rules.service';
+import { resolveApprovalMatrix } from '@/lib/utils/budget-control';
 
 export default function CashFlowPage() {
   const { userRole, activeProjectId } = useProject(); 
@@ -40,6 +47,9 @@ export default function CashFlowPage() {
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [selectedWbsBudget, setSelectedWbsBudget] = useState(null);
+  const [selectedWbsRow, setSelectedWbsRow] = useState(null);
+  const [budgetSummary, setBudgetSummary] = useState(null);
+  const [approvalRules, setApprovalRules] = useState([]);
   
   // TABS
   const [activeTab, setActiveTab] = useState('ledger');
@@ -113,16 +123,22 @@ export default function CashFlowPage() {
         .order('transaction_date', { ascending: false });
       if (flowData) setFlows(flowData);
 
-      // 2. Ambil data WBS Cost Control
-      const { data: taskData } = await supabase
-        .from('v_cost_control_wbs')
-        .select('*')
-        .eq('project_id', projectId)
-        .order('wbs_code');
-      if (taskData) {
-        setTasks(taskData);
-        setCostControlData(taskData);
-      }
+      // 2. Ambil data WBS 3-Lapisan Anggaran (Pagu RAB, Committed PO/SPK/Pending, Actual, Available)
+      const [wbs3Layer, projBudgetSum, rulesList] = await Promise.all([
+        getWbsBudget3Layer(projectId),
+        getProjectBudgetSummary(projectId),
+        listApprovalRules(projectId).catch(() => []),
+      ]);
+      const taskData = (wbs3Layer || []).map((item) => ({
+        ...item,
+        pagu_anggaran_rap: item.pagu_rab,
+        total_pengeluaran_aktual: item.actual_cost,
+        sisa_anggaran_plafon: item.available_budget,
+      }));
+      setTasks(taskData);
+      setCostControlData(taskData);
+      setBudgetSummary(projBudgetSum);
+      setApprovalRules(rulesList || []);
 
       // 3. Ambil Nilai Kontrak Proyek
       const { data: projData } = await supabase
@@ -226,6 +242,7 @@ export default function CashFlowPage() {
     const wbsCode = e.target.value;
     setFormData({ ...formData, wbs_code: wbsCode });
     const wbsData = tasks.find(t => t.wbs_code === wbsCode);
+    setSelectedWbsRow(wbsData || null);
     setSelectedWbsBudget(wbsData ? wbsData.sisa_anggaran_plafon : null);
   };
 
@@ -255,7 +272,20 @@ export default function CashFlowPage() {
     } catch (err) { showToast('danger', err.message); } finally { setIsVoiding(false); }
   };
 
-  const isOverbudget = selectedWbsBudget !== null && Number(formData.amount) > selectedWbsBudget;
+  const effectiveAvailableBudget =
+    formData.type === 'OUT'
+      ? (selectedWbsBudget !== null ? selectedWbsBudget : (budgetSummary && budgetSummary.pagu_rab > 0 ? budgetSummary.available_budget : null))
+      : null;
+  const hardStopEnabled = budgetSummary?.budget_hard_stop !== false;
+  const isOverbudget = effectiveAvailableBudget !== null && Number(formData.amount) > effectiveAvailableBudget;
+  const isHardBlocked = hardStopEnabled && isOverbudget;
+
+  const matchedApprovalPlan = resolveApprovalMatrix(approvalRules, {
+    documentType: (formData.category || '').toLowerCase().includes('kasbon') ? 'KASBON' : 'CASH_OUT',
+    costCategory: formData.category || 'ALL',
+    amount: Number(formData.amount) || 0,
+    projectId,
+  });
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -264,6 +294,9 @@ export default function CashFlowPage() {
 
     const isUploadRequired = formData.type === 'OUT' && (formData.payment_method === 'Petty Cash' || formData.payment_method === 'Tunai');
     if (isUploadRequired && !file) return showToast('danger', "Wajib unggah bukti untuk Tunai/Petty Cash!");
+    if (isHardBlocked) {
+      return showToast('danger', "Hard-Stop Aktif: Nominal melebihi Available Budget (Pagu - Committed - Actual). Ajukan Addendum/CCO terlebih dahulu.");
+    }
     if (isOverbudget && !formData.overbudget_reason) return showToast('danger', "Wajib isi alasan overbudget!");
     
     setIsSaving(true);
@@ -276,20 +309,28 @@ export default function CashFlowPage() {
         const fileName = `${projectId}/fin_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('evidence').upload(fileName, file);
         if (uploadError) throw new Error("Gagal upload: " + uploadError.message);
-        // Simpan path relatif (private bucket); akses file memakai Signed URL 10 menit
         finalAttachmentUrl = fileName;
       }
 
-      const finalStatus = isOverbudget ? 'Pending Overbudget' : 'Pending';
-      const payload = { ...formData, project_id: projectId, approval_status: finalStatus, amount: Number(formData.amount), attachment_url: finalAttachmentUrl };
-      
-      const { error } = await supabase.from('cash_flows').insert([payload]);
-      if (error) throw error;
+      const rpcRes = await submitBudgetedCashFlow({
+        project_id: projectId,
+        type: formData.type,
+        category: formData.category,
+        description: formData.description,
+        amount: Number(formData.amount),
+        transaction_date: formData.transaction_date,
+        payment_method: formData.payment_method,
+        vendor_or_ref: formData.vendor_or_ref || null,
+        wbs_code: formData.wbs_code || null,
+        attachment_url: finalAttachmentUrl,
+        overbudget_reason: formData.overbudget_reason || null,
+      });
 
+      const stepsCount = rpcRes?.required_approval_steps || 1;
       setIsModalOpen(false);
-      showToast('success', 'Transaksi berhasil diajukan!');
+      showToast('success', `Transaksi diajukan dengan penguncian anggaran (${stepsCount} tahap approval)!`);
       setFormData({ type: 'OUT', category: 'Material', description: '', amount: 0, transaction_date: new Date().toISOString().split('T')[0], payment_method: 'Transfer', vendor_or_ref: '', wbs_code: '', approval_status: 'Pending', overbudget_reason: '' });
-      setFile(null); setSelectedWbsBudget(null); fetchData();
+      setFile(null); setSelectedWbsBudget(null); setSelectedWbsRow(null); fetchData();
     } catch (error) { showToast('danger', error.message); } 
     finally { setIsSaving(false); setIsUploading(false); }
   };
@@ -471,42 +512,71 @@ export default function CashFlowPage() {
         </div>
         )}
 
-        {/* TAB COST CONTROL */}
+        {/* TAB COST CONTROL — 3 LAPISAN ANGGARAN (AVAILABLE / COMMITTED / ACTUAL) */}
         {activeTab === 'cost_control' && (
-          <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                  <tr>
-                    <th className="p-4 font-semibold">Kode WBS</th>
-                    <th className="p-4 font-semibold">Nama Pekerjaan</th>
-                    <th className="p-4 font-semibold text-right">Pagu RAP (Rp)</th>
-                    <th className="p-4 font-semibold text-right">Terpakai (Rp)</th>
-                    <th className="p-4 font-semibold text-right">Sisa Plafon (Rp)</th>
-                    <th className="p-4 font-semibold text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {costControlData.map((item, index) => {
-                    const isParent = !item.wbs_code.includes('.');
-                    return (
-                    <tr key={index} className={`transition-colors ${isParent ? 'bg-slate-50 border-t-2 border-slate-200' : 'hover:bg-slate-50'}`}>
-                      <td className={`p-4 text-sm font-mono ${isParent ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>{item.wbs_code}</td>
-                      <td className={`p-4 text-sm ${isParent ? 'text-slate-900 font-bold' : 'text-slate-800 font-medium'}`}>{item.task_name}</td>
-                      <td className={`p-4 text-sm text-right ${isParent ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{formatRp(item.pagu_anggaran_rap)}</td>
-                      <td className={`p-4 text-sm text-right ${isParent ? 'font-bold text-rose-700' : 'text-rose-600 font-medium'}`}>{formatRp(item.total_pengeluaran_aktual)}</td>
-                      <td className={`p-4 text-sm text-right font-bold ${item.sisa_anggaran_plafon < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatRp(item.sisa_anggaran_plafon)}</td>
-                      <td className="p-4 text-center">
-                        {item.sisa_anggaran_plafon < 0 ? (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold"><AlertTriangle size={12} /> Overbudget</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold"><ShieldCheck size={12} /> Aman</span>
-                        )}
-                      </td>
+          <div className="space-y-4">
+            {budgetSummary && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase text-slate-500">1. Pagu Anggaran (RAB/RAP)</p>
+                  <p className="text-lg font-extrabold text-slate-800 mt-1">{formatRp(budgetSummary.pagu_rab)}</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Hard-Stop: {budgetSummary.budget_hard_stop ? 'Aktif (Locked)' : 'Soft Warning'}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-amber-200 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase text-amber-600">2. Committed Budget</p>
+                  <p className="text-lg font-extrabold text-amber-700 mt-1">{formatRp(budgetSummary.committed_budget)}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">PO: {formatRp(budgetSummary.committed_po)} • SPK: {formatRp(budgetSummary.committed_spk)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-rose-200 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase text-rose-600">3. Actual Cost (Terbayar)</p>
+                  <p className="text-lg font-extrabold text-rose-700 mt-1">{formatRp(budgetSummary.actual_cost)}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Pending Kas: {formatRp(budgetSummary.committed_pending_cash)}</p>
+                </div>
+                <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-sm">
+                  <p className="text-[11px] font-bold uppercase text-emerald-600">Available Budget (Sisa Bebas)</p>
+                  <p className={`text-lg font-extrabold mt-1 ${budgetSummary.available_budget < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatRp(budgetSummary.available_budget)}</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Pagu - (Committed + Actual)</p>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="p-4 font-semibold">Kode WBS</th>
+                      <th className="p-4 font-semibold">Nama Pekerjaan</th>
+                      <th className="p-4 font-semibold text-right">Pagu RAB/RAP</th>
+                      <th className="p-4 font-semibold text-right">Committed (PO/SPK/Pending)</th>
+                      <th className="p-4 font-semibold text-right">Actual Cost</th>
+                      <th className="p-4 font-semibold text-right">Available Budget</th>
+                      <th className="p-4 font-semibold text-center">Status</th>
                     </tr>
-                  )})}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {costControlData.map((item, index) => {
+                      const isParent = !String(item.wbs_code || '').includes('.');
+                      return (
+                      <tr key={index} className={`transition-colors ${isParent ? 'bg-slate-50 border-t-2 border-slate-200' : 'hover:bg-slate-50'}`}>
+                        <td className={`p-4 text-sm font-mono ${isParent ? 'text-slate-800 font-bold' : 'text-slate-600'}`}>{item.wbs_code}</td>
+                        <td className={`p-4 text-sm ${isParent ? 'text-slate-900 font-bold' : 'text-slate-800 font-medium'}`}>{item.task_name}</td>
+                        <td className={`p-4 text-sm text-right ${isParent ? 'font-bold text-slate-800' : 'text-slate-600'}`}>{formatRp(item.pagu_anggaran_rap)}</td>
+                        <td className="p-4 text-sm text-right font-medium text-amber-700">{formatRp(item.committed_budget || 0)}</td>
+                        <td className={`p-4 text-sm text-right ${isParent ? 'font-bold text-rose-700' : 'text-rose-600 font-medium'}`}>{formatRp(item.total_pengeluaran_aktual)}</td>
+                        <td className={`p-4 text-sm text-right font-bold ${item.sisa_anggaran_plafon < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{formatRp(item.sisa_anggaran_plafon)}</td>
+                        <td className="p-4 text-center">
+                          {item.sisa_anggaran_plafon < 0 ? (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-700 rounded-full text-xs font-bold"><AlertTriangle size={12} /> Overbudget</span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold"><ShieldCheck size={12} /> Aman</span>
+                          )}
+                        </td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -776,14 +846,17 @@ export default function CashFlowPage() {
                     <option value="">-- Tanpa Relasi WBS --</option>
                     {tasks.map(t => <option key={t.wbs_code} value={t.wbs_code}>[{t.wbs_code}] {t.task_name}</option>)}
                   </select>
-                  {selectedWbsBudget !== null && (
-                        <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
-      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1"><ShieldCheck size={12}/> Informasi Anggaran WBS</p>
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-slate-600">Sisa Plafon Tersedia:</span>
-        <strong className={`text-sm ${selectedWbsBudget < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatRp(selectedWbsBudget)}</strong>
-      </div>
-    </div>
+                  {selectedWbsRow && (
+                    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1 text-xs">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1"><ShieldCheck size={12}/> 3 Lapisan Anggaran WBS</p>
+                      <div className="flex justify-between"><span>Pagu RAB:</span><strong>{formatRp(selectedWbsRow.pagu_rab)}</strong></div>
+                      <div className="flex justify-between text-amber-700"><span>Committed (PO/SPK/Pending):</span><strong>{formatRp(selectedWbsRow.committed_budget || 0)}</strong></div>
+                      <div className="flex justify-between text-rose-600"><span>Actual Cost:</span><strong>{formatRp(selectedWbsRow.actual_cost || 0)}</strong></div>
+                      <div className="flex justify-between border-t pt-1 mt-1">
+                        <span className="font-bold text-slate-700">Available Budget:</span>
+                        <strong className={selectedWbsBudget < 0 ? 'text-red-600' : 'text-emerald-600'}>{formatRp(selectedWbsBudget)}</strong>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -810,7 +883,12 @@ export default function CashFlowPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Rp</span>
                   <input required type="text" value={formData.amount ? Number(formData.amount).toLocaleString('id-ID') : ''} onChange={(e) => { const rawValue = e.target.value.replace(/\D/g, ''); setFormData({ ...formData, amount: rawValue }); }} className={`w-full border p-2 pl-10 rounded-lg text-sm focus:ring-2 outline-none font-bold text-lg ${isOverbudget ? 'border-red-500 bg-red-50 text-red-700 focus:ring-red-500' : 'border-slate-300 focus:ring-indigo-500'}`} placeholder="0" />
                 </div>
-                {isOverbudget && (
+                {isHardBlocked ? (
+                  <div className="mt-2 bg-rose-50 p-3 rounded-lg border border-rose-300 text-rose-800 text-xs space-y-1">
+                    <p className="font-bold flex items-center gap-1"><AlertTriangle size={13}/> HARD-STOP ANGGARAN: Nominal melebihi Available Budget ({formatRp(effectiveAvailableBudget)})!</p>
+                    <p>Pengajuan diblokir otomatis (Pagu - Committed - Actual tidak mencukupi). Lakukan revisi anggaran / CCO terlebih dahulu.</p>
+                  </div>
+                ) : isOverbudget && (
                   <>
                     <p className="text-xs text-red-600 font-bold mt-1 flex items-center gap-1"><AlertTriangle size={12}/> Nominal melebihi sisa anggaran WBS!</p>
                     <div className="mt-3 bg-red-50 p-3 rounded-lg border border-red-200">
@@ -818,6 +896,12 @@ export default function CashFlowPage() {
                       <textarea required rows="2" value={formData.overbudget_reason} onChange={e => setFormData({...formData, overbudget_reason: e.target.value})} placeholder="cth: Kenaikan harga material mendadak / perubahan spesifikasi di lapangan" className="w-full border border-red-300 p-2 rounded-lg text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none bg-white text-slate-800" />
                     </div>
                   </>
+                )}
+                {formData.type === 'OUT' && Number(formData.amount) > 0 && (
+                  <div className="mt-2 bg-indigo-50/70 border border-indigo-200 rounded-lg px-3 py-2 text-xs text-indigo-800">
+                    <strong>Jenjang Approval Dinamis ({matchedApprovalPlan.totalSteps} Tahap):</strong>{' '}
+                    {matchedApprovalPlan.approverRoles.map((r, i) => `${i + 1}. ${r}`).join(' → ')}
+                  </div>
                 )}
               </div>
 
@@ -839,8 +923,8 @@ export default function CashFlowPage() {
 
               <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors">Batal</button>
-                <button type="submit" disabled={isSaving || isUploading} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${(isSaving || isUploading) ? 'bg-indigo-400 cursor-not-allowed' : isOverbudget ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
-                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : isOverbudget ? <><AlertTriangle size={16}/> Ajukan (Overbudget)</> : <><Save size={16}/> Ajukan Transaksi</>}
+                <button type="submit" disabled={isSaving || isUploading || isHardBlocked} className={`px-6 py-2 text-sm font-bold text-white rounded-lg shadow-md transition-all flex items-center gap-2 ${(isSaving || isUploading || isHardBlocked) ? 'bg-slate-400 cursor-not-allowed' : isOverbudget ? 'bg-orange-500 hover:bg-orange-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                  {(isSaving || isUploading) ? <><Loader2 size={16} className="animate-spin" /> Memproses...</> : isHardBlocked ? <><AlertTriangle size={16}/> Diblokir (Hard-Stop)</> : <><Save size={16}/> Ajukan Transaksi</>}
                 </button>
               </div>
             </form>
