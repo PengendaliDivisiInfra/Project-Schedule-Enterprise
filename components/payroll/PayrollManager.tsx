@@ -9,6 +9,7 @@ import {
   getPayrollHistory, voidPayroll, getPayrollDetails 
 } from '@/lib/services/payroll-service';
 import { useRole } from '@/lib/hooks/useRole';
+import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
 export function PayrollManager({ projectId }: { projectId: string }) {
@@ -18,6 +19,8 @@ export function PayrollManager({ projectId }: { projectId: string }) {
 
   // State Utama
   const [payrollType, setPayrollType] = useState<'Weekly' | 'Monthly'>('Weekly');
+  const [wbsTasks, setWbsTasks] = useState<any[]>([]);
+  const [selectedWbsCode, setSelectedWbsCode] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
@@ -55,7 +58,17 @@ export function PayrollManager({ projectId }: { projectId: string }) {
     }
   };
 
-  useEffect(() => { loadHistory(); }, [projectId]);
+  useEffect(() => {
+    loadHistory();
+    if (projectId) {
+      supabase
+        .from('wbs_tasks')
+        .select('id, wbs_code, name, summary')
+        .eq('project_id', projectId)
+        .order('wbs_code')
+        .then(({ data }) => setWbsTasks((data || []).filter((t: any) => t.summary !== 'Yes')));
+    }
+  }, [projectId]);
 
   const handleOpenView = async (payroll: any) => {
     setViewTarget(payroll);
@@ -100,7 +113,8 @@ export function PayrollManager({ projectId }: { projectId: string }) {
     if (!previewData || !projectId) return;
     setLoading(true);
     try {
-      const res = await savePayroll(projectId, startDate, endDate, payrollType, previewData.items, previewData.totalAmount);
+      const matchedTask = wbsTasks.find((t) => t.wbs_code === selectedWbsCode);
+      const res = await savePayroll(projectId, startDate, endDate, payrollType, previewData.items, previewData.totalAmount, selectedWbsCode || null, matchedTask?.id || null);
       setSavedPayrollId(res.id);
       showToast("Draft Payroll berhasil disimpan.", "success");
       await loadHistory();
@@ -115,7 +129,8 @@ export function PayrollManager({ projectId }: { projectId: string }) {
     if (!savedPayrollId || !previewData || !projectId) return;
     setLoading(true);
     try {
-      await approvePayroll(savedPayrollId, projectId, previewData.totalAmount, endDate);
+      const matchedTask = wbsTasks.find((t) => t.wbs_code === selectedWbsCode);
+      await approvePayroll(savedPayrollId, projectId, previewData.totalAmount, endDate, selectedWbsCode || null, matchedTask?.id || null);
       showToast("Payroll di-Approve. Biaya masuk ke Laporan Laba Rugi (HPP).", "success");
       setPreviewData(null);
       setSavedPayrollId(null);
@@ -197,6 +212,15 @@ export function PayrollManager({ projectId }: { projectId: string }) {
           <div>
             <label className="block text-xs font-bold text-slate-600 mb-1">Tanggal Selesai</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="border border-slate-300 p-2.5 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div className="min-w-[220px]">
+            <label className="block text-xs font-bold text-slate-600 mb-1">Pos Biaya Tenaga Kerja (WBS RAB)</label>
+            <select value={selectedWbsCode} onChange={e => setSelectedWbsCode(e.target.value)} className="w-full border border-slate-300 p-2.5 rounded-lg bg-white text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="">-- Umum Proyek (Tanpa WBS) --</option>
+              {wbsTasks.map((t) => (
+                <option key={t.id} value={t.wbs_code}>[{t.wbs_code}] {t.name}</option>
+              ))}
+            </select>
           </div>
           <button onClick={handleGenerate} disabled={loading} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-colors disabled:opacity-70">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Generate Gaji

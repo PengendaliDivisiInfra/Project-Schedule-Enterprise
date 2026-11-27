@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useProject } from '../../context/ProjectContext';
+import { HsePermitGateManager } from '@/components/qhse/HsePermitGateManager';
 import { ShieldCheck, HardHat, CheckCircle2, AlertTriangle, Plus, Edit, X, Loader2, Save, Image as ImageIcon, UploadCloud } from 'lucide-react';
 
 export default function QhsePage() {
@@ -170,6 +171,7 @@ export default function QhsePage() {
           <div className="flex bg-slate-100 p-1 rounded-lg">
             <button onClick={() => setActiveTab('qc')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'qc' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>QA/QC (Mutu)</button>
             <button onClick={() => setActiveTab('hse')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'hse' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>HSE (K3L)</button>
+            <button onClick={() => setActiveTab('permits')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'permits' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>JSA &amp; Work Permit Gate</button>
           </div>
         </div>
 
@@ -263,6 +265,13 @@ export default function QhsePage() {
           </div>
         )}
       </div>
+
+        {/* TAB CONTENT: JSA & WORK PERMIT COMPLIANCE GATE */}
+        {activeTab === 'permits' && activeProjectId && (
+          <div className="animate-in fade-in">
+            <HsePermitGateManager projectId={activeProjectId} showToast={showToast} />
+          </div>
+        )}
 
       {/* MODAL QA/QC */}
       {isQcModalOpen && (

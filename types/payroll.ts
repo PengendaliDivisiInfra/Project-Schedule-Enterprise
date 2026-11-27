@@ -20,5 +20,6 @@ export interface Employee {
   resignation_date: string | null;
   nik: string | null;
   work_location: string | null;
+  default_wbs_code?: string | null;
   created_at: string;
 }

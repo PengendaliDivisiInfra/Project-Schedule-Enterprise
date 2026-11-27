@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import type { Employee } from '@/types/payroll';
 import { calcDailyOvertimePointsPP35, calcHourlyRatePP35 } from '@/lib/utils/overtime-pp35';
+import { checkGhostWorkerConflict } from '@/lib/services/hse-workforce.service';
 
 // ==========================================
 // 1. SERVICE MASTER KARYAWAN
@@ -140,8 +141,19 @@ export async function saveAttendance(payload: {
   clock_in?: string, 
   clock_out?: string, 
   overtime_hours: number, 
-  notes: string 
+  notes: string,
+  wbs_code?: string | null
 }) {
+  // Anti-Ghost Worker Guard: cek konflik NIK lintas proyek sebelum simpan kehadiran
+  if (['present', 'hadir', 'overtime', 'half day', 'half_day'].includes((payload.status || '').toLowerCase())) {
+    const conflict = await checkGhostWorkerConflict(payload.employee_id, payload.attendance_date);
+    if (conflict?.has_conflict) {
+      throw new Error(
+        `Anti-Ghost Worker: "${conflict.employee_name || 'Pekerja'}" (NIK ${conflict.nik}) sudah tercatat HADIR pada ${payload.attendance_date} di proyek "${conflict.conflict_project_name}". Klaim upah ganda diblokir!`
+      );
+    }
+  }
+
   const { error } = await supabase
     .from('employee_attendances')
     .upsert({
@@ -266,10 +278,34 @@ export async function generatePayroll(projectId: string, startDate: string, endD
   return { items, totalAmount };
 }
 
-export async function savePayroll(projectId: string, periodStart: string, periodEnd: string, payrollType: string, items: any[], totalAmount: number) {
-  const { data: payroll, error: pError } = await supabase.from('payrolls').insert({
-    project_id: projectId, period_start: periodStart, period_end: periodEnd, payroll_type: payrollType, status: 'Draft', total_amount: totalAmount
+export async function savePayroll(
+  projectId: string,
+  periodStart: string,
+  periodEnd: string,
+  payrollType: string,
+  items: any[],
+  totalAmount: number,
+  wbsCode?: string | null,
+  taskId?: string | null
+) {
+  let { data: payroll, error: pError } = await supabase.from('payrolls').insert({
+    project_id: projectId,
+    period_start: periodStart,
+    period_end: periodEnd,
+    payroll_type: payrollType,
+    status: 'Draft',
+    total_amount: totalAmount,
+    ...(wbsCode ? { wbs_code: wbsCode } : {}),
+    ...(taskId ? { task_id: taskId } : {}),
   }).select().single();
+
+  if (pError && pError.code === '42703') {
+    const retry = await supabase.from('payrolls').insert({
+      project_id: projectId, period_start: periodStart, period_end: periodEnd, payroll_type: payrollType, status: 'Draft', total_amount: totalAmount
+    }).select().single();
+    payroll = retry.data;
+    pError = retry.error;
+  }
 
   if (pError) throw new Error(pError.message);
 
@@ -283,18 +319,41 @@ export async function savePayroll(projectId: string, periodStart: string, period
   return payroll;
 }
 
-export async function approvePayroll(payrollId: string, projectId: string, totalAmount: number, periodEnd: string) {
-  const { data: current } = await supabase.from('payrolls').select('status').eq('id', payrollId).single();
+export async function approvePayroll(
+  payrollId: string,
+  projectId: string,
+  totalAmount: number,
+  periodEnd: string,
+  wbsCode?: string | null,
+  taskId?: string | null
+) {
+  const { data: current } = await supabase.from('payrolls').select('*').eq('id', payrollId).single();
   if (current?.status === 'Approved' || current?.status === 'Paid') {
     throw new Error("Payroll ini sudah disetujui atau dibayar.");
   }
 
+  const resolvedWbs = wbsCode || (current as any)?.wbs_code || null;
+  const resolvedTaskId = taskId || (current as any)?.task_id || null;
+
   const { error: pError } = await supabase.from('payrolls').update({ status: 'Approved', approved_at: new Date().toISOString() }).eq('id', payrollId);
   if (pError) throw new Error(pError.message);
 
-  const { error: costError } = await supabase.from('actual_costs').insert({
-    project_id: projectId, resource_type: 'Labor', cost_amount: totalAmount, source_id: payrollId, reference_type: 'payroll', recorded_at: new Date().toISOString()
+  let { error: costError } = await supabase.from('actual_costs').insert({
+    project_id: projectId,
+    task_id: resolvedTaskId,
+    wbs_code: resolvedWbs,
+    resource_type: 'Labor',
+    cost_amount: totalAmount,
+    source_id: payrollId,
+    reference_type: 'payroll',
+    recorded_at: new Date().toISOString()
   });
+  if (costError && costError.code === '42703') {
+    const retry = await supabase.from('actual_costs').insert({
+      project_id: projectId, task_id: resolvedTaskId, resource_type: 'Labor', cost_amount: totalAmount, source_id: payrollId, reference_type: 'payroll', recorded_at: new Date().toISOString()
+    });
+    costError = retry.error;
+  }
   if (costError) throw new Error("Gagal menyuntik ke Actual Cost: " + costError.message);
 }
 
@@ -307,8 +366,20 @@ export async function payPayroll(payrollId: string, projectId: string, totalAmou
   const { error: pError } = await supabase.from('payrolls').update({ status: 'Paid', paid_at: new Date().toISOString() }).eq('id', payrollId);
   if (pError) throw new Error(pError.message);
 
+  const { data: prRow } = await supabase.from('payrolls').select('*').eq('id', payrollId).maybeSingle();
+  const resolvedWbs = (prRow as any)?.wbs_code || null;
+
   const { error: cashError } = await supabase.from('cash_flows').insert({
-    project_id: projectId, transaction_date: new Date().toISOString().split('T')[0], type: 'OUT', category: 'Upah', amount: totalAmount, description: `Pembayaran Gaji Karyawan (Periode s/d ${periodEnd})`, reference_id: payrollId, vendor_or_ref: 'Payroll', approval_status: 'Approved'
+    project_id: projectId,
+    transaction_date: new Date().toISOString().split('T')[0],
+    type: 'OUT',
+    category: 'Upah',
+    wbs_code: resolvedWbs,
+    amount: totalAmount,
+    description: `Pembayaran Gaji Karyawan (Periode s/d ${periodEnd})${resolvedWbs ? ` [WBS ${resolvedWbs}]` : ''}`,
+    reference_id: payrollId,
+    vendor_or_ref: 'Payroll',
+    approval_status: 'Approved'
   });
   if (cashError) throw new Error("Gagal menyuntik ke Cash Flow: " + cashError.message);
 }

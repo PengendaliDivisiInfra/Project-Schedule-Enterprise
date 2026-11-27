@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase'; 
-import { Search, RefreshCw, BarChart3, Database, Loader2, CalendarDays, Download, Plus, X, Save } from 'lucide-react';
+import { Search, RefreshCw, BarChart3, Database, Loader2, CalendarDays, Download, Plus, X, Save, Camera, ShieldAlert, ShieldCheck, WifiOff } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext'; 
 import { useRole } from '../../lib/hooks/useRole'; 
-import { queueOfflineAction } from '../../lib/services/sync-service';
+import { queueOfflineAction, queueOfflinePhoto, getPendingOfflineCount, processSyncQueue } from '../../lib/services/sync-service';
+import { compressFieldPhoto } from '@/lib/utils/image-compressor';
+import { checkHseComplianceGateForTask } from '@/lib/services/hse-workforce.service';
 import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
 
 export default function ProgressHarianPage() {
@@ -18,6 +20,10 @@ export default function ProgressHarianPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({ task_id: '', volume: '' });
+  const [compressedPhoto, setCompressedPhoto] = useState(null);
+  const [compressingPhoto, setCompressingPhoto] = useState(false);
+  const [hseGateResult, setHseGateResult] = useState(null);
+  const [offlineQueueCount, setOfflineQueueCount] = useState({ records: 0, photos: 0, total: 0 });
 
   const { activeProjectId } = useProject();
   const { can } = useRole(activeProjectId);
@@ -52,7 +58,7 @@ export default function ProgressHarianPage() {
 
       const { data: tasks, error: taskErr } = await supabase
         .from('wbs_tasks')
-        .select('id, wbs_code, name, volume, satuan_hsd, summary')
+        .select('id, wbs_code, name, volume, satuan_hsd, summary, is_high_risk')
         .eq('project_id', activeProjectId)
         .eq('summary', 'No');
       
@@ -150,6 +156,44 @@ export default function ProgressHarianPage() {
     document.body.removeChild(link);
   };
 
+  useEffect(() => {
+    getPendingOfflineCount().then(setOfflineQueueCount).catch(() => {});
+  }, [activeProjectId, isModalOpen]);
+
+  const handleTaskSelection = async (taskId) => {
+    setFormData({ ...formData, task_id: taskId });
+    setHseGateResult(null);
+    const task = rawTasks.find((t) => t.id === taskId);
+    if (!task || !activeProjectId || !task.is_high_risk) return;
+    if (typeof window !== 'undefined' && navigator.onLine) {
+      try {
+        const res = await checkHseComplianceGateForTask({
+          projectId: activeProjectId,
+          wbsCode: task.wbs_code,
+          isHighRisk: Boolean(task.is_high_risk),
+          recordDate: new Date().toISOString().split('T')[0],
+        });
+        setHseGateResult(res);
+      } catch {
+        // Abaikan jika tabel permit belum dimigrasi
+      }
+    }
+  };
+
+  const handlePhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressingPhoto(true);
+    try {
+      const result = await compressFieldPhoto(file, { maxDimension: 1280, quality: 0.72 });
+      setCompressedPhoto(result);
+    } catch (err) {
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'error', message: err?.message || 'Gagal mengompresi foto.' } }));
+    } finally {
+      setCompressingPhoto(false);
+    }
+  };
+
   const handleSubmitProgress = async (e) => {
     e.preventDefault();
     if (!formData.task_id || !formData.volume) {
@@ -157,28 +201,69 @@ export default function ProgressHarianPage() {
       return;
     }
 
+    if (hseGateResult && !hseGateResult.allowed) {
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'error', message: hseGateResult.message } }));
+      return;
+    }
+
     setIsSubmitting(true);
+    const progressId = crypto.randomUUID();
+    const storagePath = compressedPhoto
+      ? `${activeProjectId}/prog_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`
+      : null;
+
     const payload = {
-      id: crypto.randomUUID(),
+      id: progressId,
       task_id: formData.task_id,
       completed_volume: parseFloat(formData.volume),
       record_date: new Date().toISOString().split('T')[0],
       created_at: new Date().toISOString(),
+      ...(storagePath ? { photo_url: storagePath } : {}),
+      ...(hseGateResult?.matchedPermitId ? { hse_permit_id: hseGateResult.matchedPermitId } : {}),
     };
 
     try {
       if (navigator.onLine) {
-        const { error } = await supabase.from('daily_progress').insert(payload);
+        if (compressedPhoto && storagePath) {
+          const { error: upErr } = await supabase.storage
+            .from('evidence')
+            .upload(storagePath, compressedPhoto.file, { contentType: 'image/jpeg' });
+          if (upErr) throw upErr;
+        }
+
+        let { error } = await supabase.from('daily_progress').insert(payload);
+        if (error && error.code === '42703') {
+          const { photo_url: _p, hse_permit_id: _h, ...legacyPayload } = payload;
+          const retry = await supabase.from('daily_progress').insert(legacyPayload);
+          error = retry.error;
+        }
         if (error) throw error;
         
-        window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'success', message: 'Progres harian berhasil disimpan!' } }));
+        window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'success', message: compressedPhoto ? `Progres & foto terkompresi (${compressedPhoto.stats.compressedLabel}) berhasil disimpan!` : 'Progres harian berhasil disimpan!' } }));
         fetchProgress(); 
       } else {
+        if (compressedPhoto && storagePath) {
+          await queueOfflinePhoto({
+            project_id: activeProjectId,
+            task_id: formData.task_id,
+            daily_progress_id: progressId,
+            bucket: 'evidence',
+            storage_path: storagePath,
+            file_name: compressedPhoto.file.name,
+            mime_type: 'image/jpeg',
+            data_url: compressedPhoto.dataUrl,
+            original_size: compressedPhoto.stats.originalBytes,
+            compressed_size: compressedPhoto.stats.compressedBytes,
+          });
+        }
         await queueOfflineAction('daily_progress', 'INSERT', payload);
+        getPendingOfflineCount().then(setOfflineQueueCount).catch(() => {});
       }
       
       setIsModalOpen(false);
       setFormData({ task_id: '', volume: '' });
+      setCompressedPhoto(null);
+      setHseGateResult(null);
     } catch (err) {
       console.error(err);
       window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'error', message: err.message || 'Gagal menyimpan data.' } }));
@@ -205,7 +290,20 @@ export default function ProgressHarianPage() {
             </h1>
             <p className="text-sm text-slate-500 mt-1">Pantau histori realisasi volume pekerjaan lapangan secara <em>real-time</em>.</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {offlineQueueCount.total > 0 && (
+              <button
+                onClick={async () => {
+                  await processSyncQueue();
+                  const c = await getPendingOfflineCount();
+                  setOfflineQueueCount(c);
+                }}
+                className="px-3 py-2 bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                title="Klik untuk sinkronisasi antrean offline"
+              >
+                <WifiOff size={14} /> {offlineQueueCount.total} Antrean Offline ({offlineQueueCount.photos} Foto)
+              </button>
+            )}
             {canInputProgress && (
               <button 
                 onClick={() => setIsModalOpen(true)} 
@@ -320,13 +418,13 @@ export default function ProgressHarianPage() {
                 <label className="block text-xs font-bold text-slate-600 mb-1">Pilih Pekerjaan (WBS)</label>
                 <select 
                   value={formData.task_id}
-                  onChange={(e) => setFormData({...formData, task_id: e.target.value})}
+                  onChange={(e) => handleTaskSelection(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 text-slate-700"
                   required
                 >
                   <option value="">-- Pilih Pekerjaan --</option>
                   {rawTasks.map(t => (
-                    <option key={t.id} value={t.id}>{t.wbs_code} - {t.name}</option>
+                    <option key={t.id} value={t.id}>{t.wbs_code} - {t.name}{t.is_high_risk ? ' [RISIKO TINGGI - HSE GATE]' : ''}</option>
                   ))}
                 </select>
               </div>
@@ -344,11 +442,51 @@ export default function ProgressHarianPage() {
                 />
               </div>
 
+              {hseGateResult && (
+                <div className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                  hseGateResult.allowed
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-300 text-rose-800'
+                }`}>
+                  {hseGateResult.allowed ? (
+                    <ShieldCheck size={16} className="shrink-0 mt-0.5 text-emerald-600" />
+                  ) : (
+                    <ShieldAlert size={16} className="shrink-0 mt-0.5 text-rose-600" />
+                  )}
+                  <div>
+                    <p className="font-bold">{hseGateResult.message}</p>
+                    {!hseGateResult.allowed && (
+                      <a href="/qhse" className="underline font-bold text-rose-700 mt-1 inline-block">
+                        Terbitkan JSA / Work Permit di Halaman QHSE →
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">
+                  Foto Progres Lapangan (Kompresi Otomatis &amp; Offline-First)
+                </label>
+                <label className="cursor-pointer w-full border-2 border-dashed border-slate-300 hover:border-indigo-400 rounded-xl p-3 flex items-center justify-center gap-2 text-xs font-bold text-slate-600 bg-slate-50">
+                  {compressingPhoto ? (
+                    <><Loader2 size={16} className="animate-spin text-indigo-600" /> Mengompresi foto...</>
+                  ) : compressedPhoto ? (
+                    <span className="text-emerald-700">
+                      ✓ Terkompresi: {compressedPhoto.stats.originalLabel} → {compressedPhoto.stats.compressedLabel} (Hemat {compressedPhoto.stats.savedPercent}%)
+                    </span>
+                  ) : (
+                    <><Camera size={16} className="text-indigo-500" /> Ambil / Pilih Foto Progres (Otomatis Kompres)</>
+                  )}
+                  <input type="file" accept="image/*" capture="environment" onChange={handlePhotoSelect} className="hidden" />
+                </label>
+              </div>
+
               <div className="pt-2 flex gap-3">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">
                   Batal
                 </button>
-                <button type="submit" disabled={isSubmitting} className="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
+                <button type="submit" disabled={isSubmitting || compressingPhoto || (hseGateResult && !hseGateResult.allowed)} className="flex-1 px-4 py-2.5 bg-indigo-600 disabled:bg-slate-400 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2">
                   {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Simpan
                 </button>
               </div>
