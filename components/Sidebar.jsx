@@ -6,7 +6,7 @@ import {
   Building2,
   LayoutDashboard, Calendar, ListTodo, FileText, Activity, AlertTriangle, 
   Database, FileSpreadsheet, Users, Package, Fuel, Coins, FileCheck, 
-  TrendingUp, Settings, ShieldCheck, KeyRound, GitBranch, FileDiff 
+  TrendingUp, Settings, ShieldCheck, KeyRound, GitBranch, FileDiff, Award 
 } from 'lucide-react';
 
 export default function Sidebar({ activeProjectId, isCollapsed }) {
@@ -133,6 +133,10 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
             <Link href={`/projects/${projectId}/subcontractors`} title="Subkontraktor" className={`${baseMenu} ${isPathIncludes('/subcontractors') ? activeMenu : inactiveMenu}`}>
               <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Subkontraktor</span>}
+            </Link>
+            <Link href="/vendors/compliance" title="Kepatuhan Vendor" className={`${baseMenu} ${isActive('/vendors/compliance') ? activeMenu : inactiveMenu}`}>
+              <Award size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Kepatuhan Vendor</span>}
             </Link>
             <Link href="/change-orders" title="Addendum & CCO" className={`${baseMenu} ${isActive('/change-orders') ? activeMenu : inactiveMenu}`}>
               <FileDiff size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 

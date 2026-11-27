@@ -11,6 +11,16 @@ export interface Vendor {
   bank_account_number: string | null;
   bank_account_name: string | null;
   is_active: boolean;
+  is_centralized?: boolean;
+  vendor_code?: string | null;
+  npwp_number?: string | null;
+  pkp_status?: 'PKP' | 'NON_PKP' | string | null;
+  pkp_expiry_date?: string | null;
+  legal_expiry_date?: string | null;
+  is_blacklisted?: boolean;
+  blacklist_reason?: string | null;
+  avg_score?: number | null;
+  score_grade?: string | null;
 }
 
 export interface POItem {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { FileSignature, Plus, X, Loader2, CheckCircle2, AlertTriangle, Info, Edit, Trash2, Eye, Calendar, Truck } from 'lucide-react';
 import { getEquipmentContracts, saveEquipmentContract, updateEquipmentContract, softDeleteEquipmentContract, getEquipmentCategories, getVendors, calculateRentalBilling } from '@/lib/services/equipment.service';
+import { listRentalHealth, postDailyRentalAccrual } from '@/lib/services/asset-custody.service';
 
 export default function EquipmentContractsPage({ params }) {
   const projectId = params.projectId;
@@ -12,6 +13,8 @@ export default function EquipmentContractsPage({ params }) {
   const [vendors, setVendors] = useState([]);
   const [categories, setCategories] = useState([]);
   const [allTimesheets, setAllTimesheets] = useState([]);
+  const [rentalHealth, setRentalHealth] = useState([]);
+  const [postingAccrual, setPostingAccrual] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -46,13 +49,15 @@ export default function EquipmentContractsPage({ params }) {
   const fetchInitialData = async () => {
     setLoadingData(true);
     try {
-      const [contractsData, vendorsData, categoriesData, tsData] = await Promise.all([ 
+      const [contractsData, vendorsData, categoriesData, tsData, healthData] = await Promise.all([ 
         getEquipmentContracts(projectId), 
         getVendors(projectId), 
         getEquipmentCategories(),
-        supabase.from('equipment_timesheets').select('contract_id, working_hours, standby_hours, breakdown_hours').eq('project_id', projectId).eq('is_deleted', false).eq('status', 'Approved')
+        supabase.from('equipment_timesheets').select('contract_id, working_hours, standby_hours, breakdown_hours').eq('project_id', projectId).eq('is_deleted', false).eq('status', 'Approved'),
+        listRentalHealth(projectId).catch(() => []),
       ]);
-      setContracts(contractsData || []); 
+      setContracts(contractsData || []);
+      setRentalHealth(healthData || []);
       setVendors(vendorsData || []); 
       setCategories(categoriesData || []);
       setAllTimesheets(tsData.data || []);
@@ -143,6 +148,27 @@ export default function EquipmentContractsPage({ params }) {
     } catch (err) { showToast(err.message, 'error'); } finally { setLoading(false); setDeleteTarget(null); }
   };
 
+  const handlePostDailyAccrual = async () => {
+    setPostingAccrual(true);
+    try {
+      const res = await postDailyRentalAccrual(projectId);
+      if (res.posted_contracts > 0) {
+        showToast(`Accrual sewa harian dicatat untuk ${res.posted_contracts} kontrak (${formatCurrency(res.total_accrued_amount)})!`, 'success');
+      } else {
+        showToast('Accrual sewa hari ini sudah tercatat untuk seluruh kontrak aktif.', 'success');
+      }
+      fetchInitialData();
+    } catch (err) {
+      showToast(err?.message || 'Gagal mencatat accrual sewa harian.', 'error');
+    } finally {
+      setPostingAccrual(false);
+    }
+  };
+
+  const expiringContracts = rentalHealth.filter((r) => ['EXPIRED', 'CRITICAL_3D', 'WARNING_7D'].includes(r.expiry_severity));
+  const totalAccruedSewa = rentalHealth.reduce((s, r) => s + Number(r.total_accrued_amount || 0), 0);
+  const totalDailyBurn = rentalHealth.reduce((s, r) => s + (r.expiry_severity !== 'EXPIRED' ? Number(r.estimated_daily_burn || 0) : 0), 0);
+
   const formatCurrency = (val) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(val);
   const formatDate = (date) => date ? new Date(date).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }) : '-';
 
@@ -160,8 +186,47 @@ export default function EquipmentContractsPage({ params }) {
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2"><FileSignature className="text-indigo-600" /> Kontrak Sewa Alat (PO)</h1>
           <p className="text-sm text-slate-500 mt-1">Kelola master kontrak, tarif, kuota, dan aturan lembur.</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"><Plus size={18} /> Buat Kontrak</button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handlePostDailyAccrual}
+            disabled={postingAccrual}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+          >
+            {postingAccrual ? <Loader2 size={15} className="animate-spin" /> : <Calendar size={15} />} Catat Accrual Sewa Hari Ini
+          </button>
+          <button onClick={() => handleOpenModal()} className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"><Plus size={18} /> Buat Kontrak</button>
+        </div>
       </div>
+
+      {/* PANEL RENTAL COST ACCRUAL & EXPIRY ALERT */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <p className="text-[11px] font-bold uppercase text-slate-400">Estimasi Burn Rate Sewa / Hari</p>
+          <p className="text-lg font-extrabold text-indigo-700 mt-1">{formatCurrency(totalDailyBurn)} <span className="text-xs font-normal text-slate-400">/ hari</span></p>
+        </div>
+        <div className="bg-white p-4 rounded-xl border border-emerald-200 shadow-sm">
+          <p className="text-[11px] font-bold uppercase text-emerald-600">Total Akumulasi Accrual Sewa</p>
+          <p className="text-lg font-extrabold text-emerald-700 mt-1">{formatCurrency(totalAccruedSewa)}</p>
+        </div>
+        <div className={`p-4 rounded-xl border shadow-sm ${expiringContracts.length > 0 ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'}`}>
+          <p className="text-[11px] font-bold uppercase text-amber-700">Kontrak Sewa Segera Berakhir (≤ H-7)</p>
+          <p className="text-lg font-extrabold text-amber-800 mt-1">{expiringContracts.length} Kontrak</p>
+        </div>
+      </div>
+
+      {expiringContracts.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 text-amber-900 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="text-amber-600 shrink-0 mt-0.5" size={20} />
+          <div className="text-xs space-y-1">
+            <p className="font-bold text-sm">Peringatan Masa Sewa Alat Berat (Cegah Denda Perpanjangan):</p>
+            {expiringContracts.map((ex) => (
+              <p key={ex.contract_id}>
+                • <b>{ex.contract_number}</b> ({ex.vendor_name}): berakhir <b>{formatDate(ex.end_date)}</b> ({ex.days_to_expiry < 0 ? `Lewat ${Math.abs(ex.days_to_expiry)} hari` : `H-${ex.days_to_expiry} hari`}).
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
