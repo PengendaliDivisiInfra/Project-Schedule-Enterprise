@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from 'react';
-import { Store, Plus, X, Edit, PowerOff, CheckCircle } from 'lucide-react';
+import Link from 'next/link';
+import { Store, Plus, X, Edit, PowerOff, CheckCircle, ShieldAlert, ShieldCheck } from 'lucide-react';
 import { getVendors, createVendor, updateVendor, deactivateVendor } from '@/lib/services/vendor-service';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Vendor } from '@/types/purchase-order';
@@ -115,9 +116,14 @@ export function VendorManager({ projectId }: { projectId: string }) {
           </h3>
           <p className="text-sm text-slate-500">Kelola data supplier, kontak, dan informasi rekening bank.</p>
         </div>
-        <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> Tambah Vendor
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href="/vendors/compliance" className="flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors">
+            <ShieldCheck className="w-4 h-4" /> Blacklist &amp; Scorecard Terpusat
+          </Link>
+          <button onClick={() => handleOpenModal()} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> Tambah Vendor
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -136,7 +142,16 @@ export function VendorManager({ projectId }: { projectId: string }) {
               vendors.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-500">Belum ada data vendor.</td></tr> :
               vendors.map(v => (
                 <tr key={v.id} className="hover:bg-slate-50">
-                  <td className="p-4 font-medium text-slate-800">{v.name}</td>
+                  <td className="p-4 font-medium text-slate-800">
+                    <div>{v.name}</div>
+                    {v.is_blacklisted ? (
+                      <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">
+                        <ShieldAlert className="w-3 h-3" /> BLACKLISTED (PO Terblokir)
+                      </span>
+                    ) : v.npwp_number ? (
+                      <span className="text-[10px] font-mono text-slate-400">NPWP: {v.npwp_number}</span>
+                    ) : null}
+                  </td>
                   <td className="p-4 text-slate-600">{v.contact_person || '-'}</td>
                   <td className="p-4 text-slate-600 font-mono">{v.phone || '-'}</td>
                   <td className="p-4">

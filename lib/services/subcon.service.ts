@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { assertSubconCompliantForSpk } from '@/lib/services/vendor-compliance.service';
 import { 
   Subcontractor, SubcontractorContract, SubcontractorPayment, 
   SubcontractorAddendum, AddendumItemChange, BAPPData, BPUTKData, BPUTKItem,
@@ -90,6 +91,10 @@ export async function listSPK(projectId: string) {
 }
 
 export async function createSPK(payload: Partial<SubcontractorContract>) {
+  // Enterprise Compliance Guard: blokir SPK ke subkontraktor Blacklist atau pajak/SBU kedaluwarsa
+  if (payload.subcontractor_id) {
+    await assertSubconCompliantForSpk(payload.subcontractor_id);
+  }
   const { data, error } = await supabase.from('subcontractor_contracts').insert([payload]).select().single();
   if (error) throw new Error(error.message);
   return data;

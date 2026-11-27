@@ -2,20 +2,32 @@
 import { supabase } from '../supabase';
 import type { Vendor, PurchaseOrder, POItem } from '@/types/purchase-order';
 import { validatePoBudgetLock } from '@/lib/services/budget-control.service';
+import { assertVendorCompliantForPo } from '@/lib/services/vendor-compliance.service';
 
 // ==========================================
 // --- VENDOR SERVICE ---
 // ==========================================
 export async function getVendors(projectId: string): Promise<Vendor[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('vendors')
     .select('*')
-    .eq('project_id', projectId)
+    .or(`project_id.is.null,is_centralized.eq.true,project_id.eq.${projectId}`)
     .eq('is_active', true)
     .order('name');
-    
+
+  if (error && (error.code === '42703' || String(error.message || '').includes('is_centralized'))) {
+    const fallback = await supabase
+      .from('vendors')
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('is_active', true)
+      .order('name');
+    data = fallback.data;
+    error = fallback.error;
+  }
+
   if (error) throw new Error(error.message);
-  return data;
+  return (data || []) as Vendor[];
 }
 
 export async function createVendor(payload: Partial<Vendor>): Promise<Vendor> {
@@ -76,6 +88,11 @@ async function ensureHsdExists(item: POItem): Promise<string> {
 }
 
 export async function createPurchaseOrder(poHeader: Partial<PurchaseOrder>, items: POItem[]) {
+  // Enterprise Compliance Guard: blokir otomatis PO ke vendor Blacklist atau PKP/Legalitas kedaluwarsa
+  if (poHeader.vendor_id) {
+    await assertVendorCompliantForPo(poHeader.vendor_id);
+  }
+
   // Enterprise Hard-Stop & Pessimistic Lock (SELECT ... FOR UPDATE) sebelum PO mengunci komitmen anggaran
   let approvalMeta: Record<string, any> = {};
   if (poHeader.project_id && Number(poHeader.grand_total || 0) > 0) {

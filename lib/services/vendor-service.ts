@@ -5,15 +5,27 @@ import type { Vendor } from '@/types/purchase-order';
 const TABLE = 'vendors';
 
 export async function getVendors(projectId: string): Promise<Vendor[]> {
-  const { data, error } = await supabase
+  // Ambil Master Vendor Terpusat (lintas proyek) + vendor khusus proyek aktif
+  let { data, error } = await supabase
     .from(TABLE)
     .select('*')
-    .eq('project_id', projectId)
+    .or(`project_id.is.null,is_centralized.eq.true,project_id.eq.${projectId}`)
     .eq('is_active', true)
     .order('name');
-    
+
+  if (error && (error.code === '42703' || String(error.message || '').includes('is_centralized'))) {
+    const fallback = await supabase
+      .from(TABLE)
+      .select('*')
+      .eq('project_id', projectId)
+      .eq('is_active', true)
+      .order('name');
+    data = fallback.data;
+    error = fallback.error;
+  }
+
   if (error) throw new Error(error.message);
-  return data;
+  return (data || []) as Vendor[];
 }
 
 export async function createVendor(payload: Partial<Vendor>): Promise<Vendor> {
