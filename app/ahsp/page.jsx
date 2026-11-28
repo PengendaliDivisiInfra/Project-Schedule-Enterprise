@@ -3,10 +3,14 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import AssignmentModal from '../../components/AssignmentModal';
-import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
+import { saveToCache, getFromCache } from '../../lib/utils/cache';
+import { useProject } from '../../context/ProjectContext';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 import { Plus, Printer, Trash2, AlertTriangle, CheckCircle2, Save, X, Edit, Loader2, FileText } from 'lucide-react';
 
 export default function AhspPage() {
+  const { activeProjectId } = useProject();
+  const [projectInfo, setProjectInfo] = useState(null);
   const [ahspList, setAhspList] = useState([]);
   const [selectedAhspId, setSelectedAhspId] = useState('');
   const [selectedAhsp, setSelectedAhsp] = useState(null);
@@ -27,6 +31,23 @@ export default function AhspPage() {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3000);
   };
+
+  useEffect(() => {
+    if (!activeProjectId) {
+      setProjectInfo(null);
+      return;
+    }
+    supabase
+      .from('projects')
+      .select('id, name, company_name, contractor_name, contractor_address, logo_url, consultant_name, owner_name, contractor_pic_name, contractor_pic_title, ppk_name')
+      .eq('id', activeProjectId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) setProjectInfo(data);
+      });
+  }, [activeProjectId]);
+
+  const branding = resolveProjectBranding(projectInfo);
 
   // 1. Fetch Daftar Induk AHSP (DENGAN CACHE)
   const fetchAhspList = async () => {
@@ -297,6 +318,17 @@ export default function AhspPage() {
         <div className="bg-white w-full max-w-[1700px] mx-auto shadow-xl border border-slate-300 p-8 print-container rounded-sm">
           {selectedAhsp ? (
             <>
+              {/* KOP SURAT OTOMATIS DARI PENGATURAN PROYEK (TAMPIL SAAT CETAK) */}
+              <div className="hidden print:flex items-center gap-4 pb-3 mb-4 border-b-[3px] border-double border-slate-900">
+                {branding.logoUrl && (
+                  <img src={branding.logoUrl} alt="Logo Perusahaan" className="h-14 max-w-[130px] object-contain shrink-0" />
+                )}
+                <div className={branding.logoUrl ? 'text-left flex-1' : 'text-center flex-1'}>
+                  <div className="font-extrabold text-base uppercase tracking-wide text-slate-900">{branding.companyName}</div>
+                  <div className="text-[10px] text-slate-600 mt-0.5">{branding.companyAddress}</div>
+                </div>
+              </div>
+
               <div className="mb-6 border-b-2 border-slate-800 pb-4 relative">
                 <div className="absolute right-0 top-0 print-hidden">
                   <button onClick={handleOpenEditAhsp} className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1.5 text-xs font-bold shadow-sm" title="Edit Nama & Satuan AHSP">
@@ -314,7 +346,7 @@ export default function AhspPage() {
                     <p className="text-sm text-slate-600 font-medium mt-1">Satuan Pekerjaan: {selectedAhsp.unit}</p>
                   </div>
                   <div className="text-left md:text-right text-xs text-slate-500 font-medium">
-                    <p>Proyek Konstruksi</p>
+                    <p className="font-bold text-slate-700">{projectInfo?.name || 'Master Katalog AHSP'}</p>
                     <p>Tanggal Cetak: {new Date().toLocaleDateString('id-ID')}</p>
                   </div>
                 </div>
@@ -480,18 +512,36 @@ export default function AhspPage() {
                 </table>
               </div>
               
-              <div className="hidden print:grid grid-cols-2 gap-8 mt-12 text-center text-xs">
+              <div
+                className="hidden print:grid grid-cols-3 gap-6 mt-10 text-center text-[11px]"
+                style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
+              >
                 <div>
-                  <p>Diperiksa Oleh,</p>
-                  <p>Konsultan Pengawas</p>
+                  <p className="text-slate-600">Diajukan Oleh,</p>
+                  <p className="font-bold uppercase text-slate-900">{branding.companyName}</p>
                   <div className="h-16"></div>
-                  <p className="font-bold border-b border-black inline-block px-8">( .............................. )</p>
+                  <p className="font-bold border-b border-slate-900 inline-block min-w-[140px] px-4 pb-0.5 uppercase">
+                    {branding.picName || '( ............................ )'}
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">{branding.picTitle}</p>
                 </div>
                 <div>
-                  <p>Disetujui Oleh,</p>
-                  <p>Pemilik Proyek (PPK)</p>
+                  <p className="text-slate-600">Diperiksa Oleh,</p>
+                  <p className="font-bold uppercase text-slate-900">{branding.consultantName}</p>
                   <div className="h-16"></div>
-                  <p className="font-bold border-b border-black inline-block px-8">( .............................. )</p>
+                  <p className="font-bold border-b border-slate-900 inline-block min-w-[140px] px-4 pb-0.5 uppercase">
+                    ( ............................ )
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">Konsultan Pengawas</p>
+                </div>
+                <div>
+                  <p className="text-slate-600">Disetujui Oleh,</p>
+                  <p className="font-bold uppercase text-slate-900">{branding.ownerName}</p>
+                  <div className="h-16"></div>
+                  <p className="font-bold border-b border-slate-900 inline-block min-w-[140px] px-4 pb-0.5 uppercase">
+                    {projectInfo?.ppk_name || '( ............................ )'}
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">Pemilik Proyek (PPK)</p>
                 </div>
               </div>
             </>

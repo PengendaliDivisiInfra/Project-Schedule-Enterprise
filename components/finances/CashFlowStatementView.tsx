@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { resolveProjectBranding, buildEnterpriseSignatureHtml, escapePrintHtml } from '@/lib/utils/print-branding';
 import { Printer, FileText, Loader2, Calendar, Settings, Info } from 'lucide-react';
 
 interface CashFlowCategory {
@@ -38,23 +39,41 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
   const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
 
   const [showSigSettings, setShowSigSettings] = useState(false);
+  const defaultSignatures = [
+    { status: 'Disusun oleh', role: 'Finance Proyek', name: '', meta: '' },
+    { status: 'Diperiksa oleh', role: 'Project Manager', name: '', meta: '' },
+    { status: 'Disetujui oleh', role: 'Direktur', name: '', meta: '' },
+  ];
+
   const [signatures, setSignatures] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('cashflow_signatures');
-      if (saved) return JSON.parse(saved);
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`cashflow_signatures_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
     }
-    return [
-      { status: 'Disusun oleh', role: 'Finance Proyek', name: 'NAMA FINANCE', meta: 'NIP. -' },
-      { status: 'Diperiksa oleh', role: 'Project Manager', name: 'NAMA PM', meta: 'NIP. -' },
-      { status: 'Disetujui oleh', role: 'Direktur', name: 'NAMA DIREKTUR', meta: 'NIP. -' },
-    ];
+    return defaultSignatures;
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !projectId) return;
+    try {
+      const saved = localStorage.getItem(`cashflow_signatures_${projectId}`);
+      if (saved) {
+        setSignatures(JSON.parse(saved));
+        return;
+      }
+    } catch {}
+    setSignatures(defaultSignatures);
+  }, [projectId]);
 
   const handleUpdateSignature = (index: number, field: string, value: string) => {
     const newSigs = [...signatures];
     newSigs[index] = { ...newSigs[index], [field]: value };
     setSignatures(newSigs);
-    localStorage.setItem('cashflow_signatures', JSON.stringify(newSigs));
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`cashflow_signatures_${projectId}`, JSON.stringify(newSigs));
+    }
   };
 
   const formatNum = (val: number) => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(val || 0);
@@ -170,9 +189,10 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
       }]);
 
       const { data: project } = await supabase.from('projects').select('*').eq('id', projectId).single();
-      const companyName = project?.contractor_name || project?.company_name || 'NAMA PERUSAHAAN';
-      const companyAddress = project?.contractor_address || project?.address || 'Alamat Perusahaan Belum Diatur';
-      const contractNumber = project?.contract_number || project?.project_code || '-';
+      const branding = resolveProjectBranding(project);
+      const companyName = escapePrintHtml(branding.companyName);
+      const companyAddress = escapePrintHtml(branding.companyAddress);
+      const contractNumber = escapePrintHtml(branding.contractNumber || project?.project_code || '-');
       
       const docNumber = `DOC/FIN-CF/${new Date().getFullYear()}/${(new Date().getMonth()+1).toString().padStart(2, '0')}/${Date.now().toString().slice(-4)}`;
       const printTime = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -229,7 +249,7 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
         `;
       };
 
-      const logoUrl = project?.logo_url || '';
+      const logoUrl = escapePrintHtml(branding.logoUrl);
 
       const html = `
         <!DOCTYPE html>
@@ -287,7 +307,7 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
               .sig-status { font-size: 8.5pt; color: #64748b; margin: 0; }
               .sig-role { font-size: 9.5pt; font-weight: 700; color: #0f172a; margin: 2px 0 0 0; }
               
-              .sig-space { height: 40px; }
+              .sig-space { height: 64px; }
               
               /* FIX: Garis Nama Tanda Tangan */
               .sig-name { font-weight: 700; font-size: 9.5pt; margin: 0; border-bottom: 1px solid #000; display: inline-block; min-width: 160px; padding-bottom: 2px; min-height: 18px; color: #0f172a; }
@@ -377,19 +397,15 @@ export default function CashFlowStatementView({ projectId }: { projectId: string
                 </div>
 
                 <div class="sig-wrapper">
-                  <table class="sig-table">
-                    <tr>
-                      ${signatures.map(sig => `
-                        <td>
-                          <p class="sig-status">${sig.status},</p>
-                          <p class="sig-role">${sig.role}</p>
-                          <div class="sig-space"></div>
-                          <p class="sig-name">${sig.name}</p>
-                          <p class="sig-meta">${sig.meta}</p>
-                        </td>
-                      `).join('')}
-                    </tr>
-                  </table>
+                  ${buildEnterpriseSignatureHtml(
+                    signatures.map((sig: any, idx: number) => ({
+                      roleLabel: `${sig.status || ''},`.replace(/^,$/, ''),
+                      title: sig.role || '',
+                      name: sig.name || (idx === 1 ? branding.picName : ''),
+                      meta: sig.meta || '',
+                    })),
+                    { spaceHeightPx: 64, marginTopPx: 14 }
+                  )}
                 </div>
 
                 <div class="footer-meta">
