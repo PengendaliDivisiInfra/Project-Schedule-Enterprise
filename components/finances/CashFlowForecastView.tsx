@@ -20,23 +20,41 @@ export default function CashFlowForecastView({ projectId }: { projectId: string 
 
   // STATE UNTUK PENGATURAN TTD
   const [showSigSettings, setShowSigSettings] = useState(false);
+  const defaultSigs = [
+    { status: 'Disusun oleh', role: 'Finance Proyek', name: '', meta: '' },
+    { status: 'Diperiksa oleh', role: 'Project Manager', name: '', meta: '' },
+    { status: 'Disetujui oleh', role: 'Direktur', name: '', meta: '' },
+  ];
+
   const [signatures, setSignatures] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('cashflow_forecast_signatures');
-      if (saved) return JSON.parse(saved);
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`cashflow_forecast_signatures_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
     }
-    return [
-      { status: 'Disusun oleh', role: 'Finance Proyek', name: 'NAMA FINANCE', meta: 'NIP. -' },
-      { status: 'Diperiksa oleh', role: 'Project Manager', name: 'NAMA PM', meta: 'NIP. -' },
-      { status: 'Disetujui oleh', role: 'Direktur', name: 'NAMA DIREKTUR', meta: 'NIP. -' },
-    ];
+    return defaultSigs;
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !projectId) return;
+    try {
+      const saved = localStorage.getItem(`cashflow_forecast_signatures_${projectId}`);
+      if (saved) {
+        setSignatures(JSON.parse(saved));
+        return;
+      }
+    } catch {}
+    setSignatures(defaultSigs);
+  }, [projectId]);
 
   const handleUpdateSignature = (index: number, field: string, value: string) => {
     const newSigs = [...signatures];
     newSigs[index] = { ...newSigs[index], [field]: value };
     setSignatures(newSigs);
-    localStorage.setItem('cashflow_forecast_signatures', JSON.stringify(newSigs));
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`cashflow_forecast_signatures_${projectId}`, JSON.stringify(newSigs));
+    }
   };
 
   useEffect(() => {

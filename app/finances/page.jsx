@@ -26,6 +26,7 @@ import {
   listUnapprovedVariationWork,
 } from '@/lib/services/contractor-controls.service';
 import { evaluateRingFencedCashflow } from '@/lib/utils/contractor-controls';
+import { getSignedFileUrl, SIGNED_URL_EXPIRY_SECONDS } from '@/lib/utils/secure-storage';
 
 export default function CashFlowPage() {
   const { userRole, activeProjectId } = useProject(); 
@@ -484,6 +485,17 @@ export default function CashFlowPage() {
   }
   const runway = burnRate > 0 ? (netCash / burnRate) : 0;
 
+  const handleOpenEvidence = async (pathOrUrl) => {
+    if (!pathOrUrl) return;
+    try {
+      const signed = await getSignedFileUrl('evidence', pathOrUrl, SIGNED_URL_EXPIRY_SECONDS);
+      if (!signed) throw new Error('Bukti transaksi tidak dapat diakses.');
+      window.open(signed, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      showToast('danger', err?.message || 'Gagal membuka bukti transaksi (Signed URL).');
+    }
+  };
+
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
 
   // Cek apakah ada transaksi hari ini untuk SOP Alert
@@ -636,7 +648,17 @@ export default function CashFlowPage() {
                       {f.wbs_code && <span className="block text-[10px] text-slate-500 mt-1 font-mono">WBS: {f.wbs_code}</span>}
                     </td>
                     <td className="p-3 text-xs text-slate-600">
-                      {f.description || f.vendor_or_ref || '-'}
+                      <div>{f.description || f.vendor_or_ref || '-'}</div>
+                      {f.attachment_url && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEvidence(f.attachment_url)}
+                          className="mt-1 inline-flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200/80 transition-colors"
+                          title="Buka nota/kuitansi via Signed URL 10 menit"
+                        >
+                          <FileText size={11} /> Lihat Bukti
+                        </button>
+                      )}
                     </td>
                     <td className="p-3 text-center">
                       {f.voided_at ? (

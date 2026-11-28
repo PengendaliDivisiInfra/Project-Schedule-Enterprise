@@ -29,12 +29,27 @@ export default function InvoicePrintView({ projectId, projectData, bappData, sho
     clientAddress: projectData?.client_address || 'Alamat Klien'
   });
 
-  // State Tanda Tangan (3 Pihak)
-  const [signatures, setSignatures] = useState([
-    { title: 'Hormat Kami,\nDirektur Utama / CFO', name: 'NAMA DIREKTUR' },
-    { title: 'Diperiksa Oleh,\nProject Manager', name: 'NAMA PM' },
-    { title: 'Diterima Oleh,\nPemberi Kerja', name: 'NAMA KLIEN' },
-  ]);
+  // State Tanda Tangan (3 Pihak — tersimpan otomatis per proyek)
+  const [signatures, setSignatures] = useState(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`invoice_sig_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    const b = resolveProjectBranding(projectData);
+    return [
+      { title: 'Hormat Kami,\nDirektur Utama / CFO', name: '' },
+      { title: `Diperiksa Oleh,\n${b.picTitle || 'Project Manager'}`, name: b.picName ? b.picName.toUpperCase() : '' },
+      { title: 'Diterima Oleh,\nPemberi Kerja', name: projectData?.client_name || b.ownerName || '' },
+    ];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`invoice_sig_${projectId}`, JSON.stringify(signatures));
+    }
+  }, [signatures, projectId]);
 
   // 1. HITUNG FINANSIAL MENGGUNAKAN ENGINE (Absolute Rule)
   // Asumsi: bappData memiliki nilai_bruto, dp_deduct, retensi_deduct dari BAPP yang dipilih

@@ -23,7 +23,7 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
   }`;
   
   const inactiveMenu = "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100 border border-transparent";
-  const activeMenu = "bg-gradient-to-r from-indigo-600/95 via-blue-600/95 to-indigo-600/90 text-white shadow-[0_6px_20px_-4px_rgba(79,70,229,0.55)] border border-indigo-400/35 ring-1 ring-white/10";
+  const activeMenu = "bg-executive-gradient font-bold shadow-[0_8px_22px_-4px_var(--brand-glow)] border border-white/15 ring-1 ring-white/10";
 
   return (
     <aside 

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { useProject } from '../../context/ProjectContext';
 import { HsePermitGateManager } from '@/components/qhse/HsePermitGateManager';
+import { getSignedFileUrl, SIGNED_URL_EXPIRY_SECONDS } from '@/lib/utils/secure-storage';
 import { ShieldCheck, HardHat, CheckCircle2, AlertTriangle, Plus, Edit, X, Loader2, Save, Image as ImageIcon, UploadCloud } from 'lucide-react';
 
 export default function QhsePage() {
@@ -16,6 +17,7 @@ export default function QhsePage() {
   
   // States for Modals
   const [isQcModalOpen, setIsQcModalOpen] = useState(false);
+  const [editingQcId, setEditingQcId] = useState(null);
   const [isHseModalOpen, setIsHseModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [qcFile, setQcFile] = useState(null);
@@ -109,14 +111,22 @@ export default function QhsePage() {
         finalEvidenceUrl = fileName;
       }
 
-      // 3. SIMPAN DATA KE DATABASE
-      const payload = { ...qcForm, ...(hasProjectColumn.qc && activeProjectId ? { project_id: activeProjectId } : {}), evidence_url: finalEvidenceUrl, inspection_date: new Date().toISOString() };
-      const { error } = await supabase.from('qc_inspections').insert([payload]);
-      
+      // 3. SIMPAN ATAU PERBARUI DATA KE DATABASE
+      const payload = {
+        ...qcForm,
+        ...(hasProjectColumn.qc && activeProjectId ? { project_id: activeProjectId } : {}),
+        evidence_url: finalEvidenceUrl,
+        ...(editingQcId ? {} : { inspection_date: new Date().toISOString() }),
+      };
+      const { error } = editingQcId
+        ? await supabase.from('qc_inspections').update(payload).eq('id', editingQcId)
+        : await supabase.from('qc_inspections').insert([payload]);
+
       if (error) throw error;
 
       setIsQcModalOpen(false);
-      showToast('success', 'Data Inspeksi QA/QC berhasil disimpan!');
+      setEditingQcId(null);
+      showToast('success', editingQcId ? 'Data Inspeksi QA/QC berhasil diperbarui!' : 'Data Inspeksi QA/QC berhasil disimpan!');
       setQcForm({ wbs_code: '', inspector_name: '', status: 'Pending', notes: '', testing_method: '', reference_standard: '', evidence_url: '', ncr_action: '' });
       setQcFile(null); // Reset file
       fetchData();
@@ -126,6 +136,40 @@ export default function QhsePage() {
     } finally {
       setIsSaving(false);
       setIsUploading(false);
+    }
+  };
+
+  const handleOpenCreateQc = () => {
+    setEditingQcId(null);
+    setQcForm({ wbs_code: '', inspector_name: '', status: 'Pending', notes: '', testing_method: '', reference_standard: '', evidence_url: '', ncr_action: '' });
+    setQcFile(null);
+    setIsQcModalOpen(true);
+  };
+
+  const handleOpenEditQc = (qc) => {
+    setEditingQcId(qc.id);
+    setQcForm({
+      wbs_code: qc.wbs_code || '',
+      inspector_name: qc.inspector_name || '',
+      status: qc.status || 'Pending',
+      notes: qc.notes || '',
+      testing_method: qc.testing_method || '',
+      reference_standard: qc.reference_standard || '',
+      evidence_url: qc.evidence_url || '',
+      ncr_action: qc.ncr_action || '',
+    });
+    setQcFile(null);
+    setIsQcModalOpen(true);
+  };
+
+  const handleViewQcEvidence = async (pathOrUrl) => {
+    if (!pathOrUrl) return;
+    try {
+      const signed = await getSignedFileUrl('evidence', pathOrUrl, SIGNED_URL_EXPIRY_SECONDS);
+      if (!signed) throw new Error('Bukti foto tidak ditemukan.');
+      window.open(signed, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      showToast('danger', err?.message || 'Gagal membuka bukti foto QA/QC.');
     }
   };
 
@@ -180,7 +224,7 @@ export default function QhsePage() {
           <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden animate-fade-in">
             <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-blue-50/50">
               <h2 className="font-bold text-blue-800 flex items-center gap-2"><ShieldCheck size={18}/> Laporan Inspeksi Mutu (QA/QC)</h2>
-              <button onClick={() => setIsQcModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold shadow transition-colors flex items-center gap-2">
+              <button onClick={handleOpenCreateQc} className="btn-executive-gradient px-3.5 py-1.5 rounded-xl text-sm font-bold flex items-center gap-2">
                 <Plus size={16} /> Buat Inspeksi
               </button>
             </div>
@@ -212,8 +256,26 @@ export default function QhsePage() {
                         }`}>{qc.status}</span>
                       </td>
                       <td className="p-3 text-slate-600 text-xs max-w-xs truncate" title={qc.ncr_action}>{qc.ncr_action || '-'}</td>
-                      <td className="p-3 text-center text-blue-600 font-medium text-xs">
-                        <button className="hover:underline"><Edit size={14} className="inline mr-1"/> Edit</button>
+                      <td className="p-3 text-center text-xs">
+                        <div className="inline-flex items-center gap-2">
+                          {qc.evidence_url && (
+                            <button
+                              type="button"
+                              onClick={() => handleViewQcEvidence(qc.evidence_url)}
+                              className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-md font-bold inline-flex items-center gap-1 transition-colors"
+                              title="Lihat Foto Bukti (Signed URL 10 menit)"
+                            >
+                              <ImageIcon size={13} /> Foto
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditQc(qc)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline font-bold inline-flex items-center gap-1"
+                          >
+                            <Edit size={13} /> Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
