@@ -1,23 +1,8 @@
 import './globals.css';
-import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { ProjectProvider } from '../context/ProjectContext';
 import ClientLayout from '../components/ClientLayout';
 import ToastListener from '../components/ToastListener';
 import BottomNav from '../components/BottomNav';
-
-const plusJakarta = Plus_Jakarta_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  variable: '--font-sans',
-  display: 'swap',
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-mono',
-  display: 'swap',
-});
 
 export const metadata = {
   title: 'InfraControl PRO — Enterprise Construction ERP',
@@ -26,7 +11,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="id" className={`${plusJakarta.variable} ${jetbrainsMono.variable}`}>
+    <html lang="id" className="font-sans">
       <head>
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#0f172a" />
