@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getWorkingDaysDiff } from '@/lib/cpmEngine';
 import { requireProjectAccess } from '@/lib/utils/api-auth';
 

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useState, useEffect } from 'react';
 
 export default function AhspTemplateModal({ isOpen, onClose, onSave, initialData, isEdit }) {

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../../lib/supabase';
 import { useProject } from '../../../context/ProjectContext'; // Gunakan Context

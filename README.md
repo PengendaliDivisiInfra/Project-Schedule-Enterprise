@@ -1,107 +1,57 @@
-﻿<div align="center">
-  <img src="https://via.placeholder.com/150x150?text=InfraControl" alt="InfraControl PRO Logo" width="120" />
-  <h1>🏗️ InfraControl PRO</h1>
-  <p><b>Enterprise Construction ERP & Project Controls System</b></p>
-  
-  [![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js&style=for-the-badge)](https://nextjs.org/)
-  [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&style=for-the-badge)](https://supabase.com/)
-  [![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?logo=typescript&style=for-the-badge)](https://www.typescriptlang.org/)
-  [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?logo=tailwind-css&style=for-the-badge)](https://tailwindcss.com/)
-  [![Vercel](https://img.shields.io/badge/Vercel-Deployed-black?logo=vercel&style=for-the-badge)](https://vercel.com/)
-  
-  <p><i>Menggabungkan Penjadwalan (CPM), EVM, Akuntansi PSAK 115/207, dan Manajemen Alat Berat dalam Satu Platform Terpadu.</i></p>
-</div>
+# Project Schedule Enterprise (InfraControl PRO — V36 Enterprise)
+
+Platform **Enterprise Construction ERP, Project Controls & Multi-PM Governance** berbasis **Next.js 14 (App Router)**, **TypeScript**, **Supabase (PostgreSQL + RLS + Storage + MFA)**, dan **PWA Offline-First**. Dirancang mengikuti standar **Permen PUPR** (AHSP-RAP), **PSAK 115 / PSAK 207**, **PP 35/2021** (Lembur), serta kontrol tata kelola kontraktor korporat.
 
 ---
 
-## 🌟 Visi & Standar Enterprise
-**InfraControl PRO** dirancang untuk menggantikan sistem *spreadsheet* manual dan aplikasi terpisah-pisah. Aplikasi ini mengadopsi standar **Permen PUPR** untuk Analisa Harga Satuan Pekerjaan (AHSP) dan mengimplementasikan algoritma **Project Controls** setara dengan Oracle Primavera P6, dipadukan dengan *Engine* Akuntansi Kelas Perusahaan.
+## Arsitektur 10 Pilar Enterprise & Standar Kontraktor (Gelombang A–F)
 
-Semua kode ditulis dengan prinsip **100% Type-Safe (TypeScript)**, UI/UX Premium (*Midnight Blue & Glassmorphism*), dan kepatuhan mutlak pada standar *Audit Trail* (Soft Delete & RLS).
-
----
-
-## 🚀 Modul Utama (V35-C)
-
-### 1. Advanced Project Scheduling (CPM & EVM)
-- **CPM Engine**: Full Forward & Backward Pass (ES, EF, LS, LF, Slack, Critical Path).
-- **Premium Gantt & WBS**: UI *Sticky Columns*, *Tabular Typography*, dan *Smart Target* harian.
-- **EVM S-Curve**: Garis PV, EV, dan AC dipetakan secara proporsional (Cut-off Date).
-
-### 2. Equipment & Fuel Management (Phase 2)
-- **Kontrak Sewa (PO)**: Konfigurasi Tarif, Kuota (Jam/Hari), Overtime, dan Limit Normal.
-- **Virtual Fuel Tank**: Pelacakan sisa BBM *real-time* (Running Balance) berdasarkan HM. Angka minus dibiarkan sebagai *Red Flag* audit.
-- **Approval Workflow**: Penguncian data `Draft` hingga di-`Approve` oleh Site Manager.
-- **BAR (Berita Acara Rekonsiliasi)**: Generate PDF tagihan vendor (1 Halaman, Tripartit) dengan kalkulasi Reguler, OT, dan *Auto-Deduction* BBM.
-
-### 3. Financial & Accounting Engine
-- **PSAK 115**: Pengakuan Pendapatan Kontrak berbasis *Cost-to-Cost*.
-- **PSAK 207**: Laporan Arus Kas (Direct Method).
-- **Project Balance Sheet**: Neraca Proyek (Awal, Mutasi, Akhir) dengan *Balance Guard*.
-
-### 4. Material & Resource Management
-- **Resource Histogram**: Deteksi *Overallocated* untuk Tenaga Kerja & Alat.
-- **Material Requirement Plan**: Konversi AHSP otomatis ke daftar belanja material (dengan *Waste Factor*).
-
----
-
-## 🛠️ Tech Stack & Architecture
-
-| Layer | Teknologi |
+| Pilar | Kapabilitas Utama di Produksi |
 | :--- | :--- |
-| **Frontend** | Next.js 14 (App Router), React, Tailwind CSS, Lucide Icons |
-| **Backend/DB** | Supabase (PostgreSQL), RLS Policies, Edge Functions |
-| **PDF Engine** | Railway (Puppeteer Core), Pure HTML/CSS (No Tailwind in PDF) |
-| **State Mgmt** | React Hooks, Optimistic UI Updates |
-| **Deployment** | Vercel (CI/CD via GitHub Actions), Railway |
+| **1. Isolasi Multi-PM & RLS** | Keanggotaan proyek (`project_members`), PostgreSQL Row-Level Security pada seluruh tabel proyek dan tabel anak, serta isolasi query per `activeProjectId`. |
+| **2. Hybrid RBAC, Audit & 2FA** | Kombinasi `global_role` (Super Admin, Owner, Finance Manager, Central Procurement, Auditor *read-only*) + `project_role`, **Immutable Audit Log (`INSERT ONLY`)** di `/logs`, **Signed URL 10 menit** pada bucket privat, dan **2FA TOTP Approver** di `/settings/security`. |
+| **3. Anggaran 3-Lapisan & Approval Dinamis** | View `v_budget_3layer_wbs` (`Available`, `Committed` PO/SPK/Pending, `Actual`), **Hard-Stop + Pessimistic Lock (`SELECT ... FOR UPDATE`)**, serta **Dynamic Approval Matrix** (`approval_rules`) di `/settings/approval-matrix`. |
+| **4. Pengadaan 3-Way Match & Multi-Gudang** | *Document Chaining* (`WBS` -> `PR` -> `PO` -> `GRN` dengan Foto Surat Jalan + GPS/Timestamp -> `Vendor Invoice`), penguncian pembayaran otomatis, **Gudang Pusat vs Site**, **Material Transfer Request**, dan **Stock Opname** di `/materials`. |
+| **5. Arus Kas Mandiri, Garansi & BAKP** | **Ring-Fenced Cashflow Guard** (UI + RPC database `SELECT ... FOR UPDATE`), plafon **Dropping HQ** di `/settings/project`, **Bank Garansi & Pengingat Jatuh Tempo Retensi**, serta tarik progres **BAKP** otomatis di `/projects/[projectId]/termin`. |
+| **6. Versi RAB Terkunci & CCO** | Penguncian **RAB Baseline (v0)**, **Contract Change Order (CCO / Addendum)** membentuk versi `v1`, `v2`, ... tanpa menghapus histori, serta **Unapproved Work Alert** di `/change-orders`. |
+| **7. Kepatuhan Vendor & Scorecard** | **Centralized Vendor Master**, **Blacklist + NPWP/PKP/Legal Expiry Trigger** (otomatis memblokir PO/SPK di seluruh PM), dan **Vendor Performance Scorecard** tertimbang (Waktu 35%, Mutu 35%, K3 30%) di `/vendors/compliance`. |
+| **8. Sewa Alat & Custody Aset QR** | **Daily Rental Cost Accrual** idempoten ke `actual_costs`, peringatan masa sewa berakhir (`H-7`/`H-3`), serta **Asset Custody Transfer antar-PM** lengkap dengan generator stiker **QR Code offline** (ISO/IEC 18004) di `/projects/[projectId]/equipment/custody`. |
+| **9. HSE Gate & Field Offline Photo** | **HSE / K3 Compliance Gate** (JSA & Work Permit mengunci progres WBS risiko tinggi) di `/qhse` + `/progress`, serta **Offline-First Photo Queue (Dexie v3)** dengan kompresi Canvas otomatis dan `Permissions-Policy: camera=(self)`. |
+| **10. Anti-Ghost Workers & Payroll WBS** | Validasi **NIK unik lintas proyek** (blokir absensi hadir ganda pada tanggal sama), perhitungan lembur **PP 35/2021**, dan penautan biaya payroll langsung ke pos `wbs_code` RAB di `/manpower`. |
 
 ---
 
-## 🚀 Panduan Instalasi Lokal
+## Migrasi Database Supabase (`supabase/migrations/`)
 
-1. **Clone Repositori**
-   ```bash
-   git clone https://github.com/PengendaliDivisiInfra/Project-Schedule-Enterprise.git
-   cd Project-Schedule-Enterprise
+Seluruh **13 migrasi SQL** bersifat idempoten dan dijalankan berurutan dari `01` hingga `13`:
 
-2. **Install Dependensi**
-    npm install
+1. `20261127_01_hybrid_rbac_and_rls.sql` — Hybrid RBAC & Table-wide RLS
+2. `20261127_02_immutable_audit_logs.sql` — Immutable Audit Logs (`INSERT ONLY`)
+3. `20261127_03_budget_3layer_and_pessimistic_lock.sql` — 3-Layer Budget Views & Lock
+4. `20261127_04_dynamic_approval_matrix.sql` — Dynamic Approval Matrix & Tiered RPC
+5. `20261127_05_supply_chain_pr_invoice_3way.sql` — PR, Vendor Invoice & 3-Way Match GRN
+6. `20261127_06_multi_warehouse_transfer_opname.sql` — Multi-Warehouse, Transfer & Opname
+7. `20261127_07_ringfenced_cashflow_and_guarantees.sql` — Ring-Fenced Cashflow & Bank Guarantees
+8. `20261127_08_rab_versions_cco_and_unapproved_work.sql` — Locked RAB Versions & CCO
+9. `20261127_09_centralized_vendor_blacklist_scorecard.sql` — Centralized Vendor Blacklist & Scorecard
+10. `20261127_10_equipment_accrual_and_asset_custody_qr.sql` — Daily Rental Accrual & Asset Custody QR
+11. `20261127_11_hse_compliance_gate_and_field_readiness.sql` — HSE JSA/Work Permit Gate
+12. `20261127_12_anti_ghost_worker_and_wbs_labor_link.sql` — Anti-Ghost Worker NIK Guard & WBS Payroll
+13. `20261128_13_rpc_ringfenced_cashflow_enforcement.sql` — Database-Level Ring-Fenced Cashflow RPC Lock
 
-3. **Konfigurasi Environment (.env.local)**
-    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+---
 
-4. **Jalankan Server**
-    npm run dev
+## Pengujian & Deployment Lokal (Windows PowerShell)
 
-    **Buka http://localhost:3000 di browser Anda.**
+```powershell
+# Verifikasi menyeluruh (UTF-8 BOM, TypeScript, 11 Jest Suites / 43 Tests, & Next.js Build)
+.\PreFlight-Check.ps1
 
-🛡️ Absolute Compliance Rules (Developer Guidelines)
-Jika Anda berkontribusi pada repository ini, Anda WAJIB mematuhi aturan berikut:
+# Atau jalankan manual:
+npx tsc --noEmit
+npm test -- --ci
+npm run build
+```
 
-UI/UX: DILARANG menggunakan alert(), confirm(), atau prompt() bawaan browser. Gunakan Custom Modal berbasis React State.
-
-Database: DILARANG melakukan Hard Delete pada data finansial dan inventaris. Gunakan metode Soft Delete (is_deleted = true atau voided_at).
-
-PDF Engine:
-
-NO TAILWIND IN PDF: Gunakan Inline Style / Pure CSS.
-
-NO FLEXBOX/GRID: Layout PDF WAJIB menggunakan <table> murni.
-
-ANTI PAGE-BREAK: Gunakan margin-top: auto; pada footer / Tanda Tangan.
-
-RLS: Wajib mengaktifkan dan membuat policy Row Level Security setiap kali membuat tabel/bucket baru.
-
-🗄️ Struktur Database & Triggers Kunci
-Aplikasi ini bergantung pada Database Triggers untuk otomatisasi:
-
-trg_sync_contract_date: Menggeser jadwal task jika tanggal kontrak berubah.
-
-auto_generate_task_assignments: Mengisi tabel assignments dan material requirements dari AHSP.
-
-log_daily_progress(): Mencatat historis harian WBS secara otomatis.
-
-(Lihat file HANDOFF.md untuk detail teknis lengkap dan roadmap).
-
-<div align="center"> <p>Dibangun dengan ❤️ untuk memajukan industri konstruksi Indonesia.</p> <p><b>© 2026 PT. BAngun Kontruksi Persada. Divisi Infratruktur. All Rights Reserved.</b></p> </div> ```
+* **CI/CD:** GitHub Actions (`.github/workflows/deploy.yml`) menjalankan `tsc --noEmit`, `jest --ci`, dan `next build` sebelum deploy otomatis ke **Vercel Production**.
+* **Konvensi Windows PowerShell 5.1:** Saat menulis file `.ts`/`.tsx` secara terprogram, selalu gunakan `[System.IO.File]::WriteAllText(..., [System.Text.UTF8Encoding]::new($false))` agar tidak muncul karakter UTF-8 BOM.
