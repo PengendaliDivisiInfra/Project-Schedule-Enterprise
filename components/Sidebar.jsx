@@ -7,7 +7,7 @@ import {
   Building2,
   LayoutDashboard, Calendar, ListTodo, FileText, Activity, AlertTriangle, 
   Database, FileSpreadsheet, Users, Package, Fuel, Coins, FileCheck, 
-  TrendingUp, Settings, ShieldCheck, KeyRound, GitBranch, FileDiff, Award 
+  TrendingUp, Settings, ShieldCheck, KeyRound, GitBranch, FileDiff, Award, HardHat, ClipboardList, CalendarDays 
 } from 'lucide-react';
 
 export default function Sidebar({ activeProjectId, isCollapsed }) {
@@ -71,6 +71,10 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
               <Activity size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Progres Harian</span>}
             </Link>
+            <Link href="/qhse" title="QHSE & Izin Kerja K3" className={`${baseMenu} ${isActive('/qhse') ? activeMenu : inactiveMenu}`}>
+              <HardHat size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>QHSE &amp; Izin K3</span>}
+            </Link>
             <Link href="/risks" title="Daftar Risiko" className={`${baseMenu} ${isActive('/risks') ? activeMenu : inactiveMenu}`}>
               <AlertTriangle size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Daftar Risiko</span>}
@@ -82,6 +86,14 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
         <div>
           {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Pelaporan</p>}
           <div className="space-y-1.5">
+            <Link href="/reports/daily" title="Laporan Harian" className={`${baseMenu} ${isActive('/reports/daily') ? activeMenu : inactiveMenu}`}>
+              <ClipboardList size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Laporan Harian</span>}
+            </Link>
+            <Link href="/reports/weekly" title="Laporan Mingguan" className={`${baseMenu} ${isActive('/reports/weekly') ? activeMenu : inactiveMenu}`}>
+              <CalendarDays size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
+              {!isCollapsed && <span>Laporan Mingguan</span>}
+            </Link>
             <Link href={projectHref('/reports/master')} title="Laporan Induk" className={`${baseMenu} ${isPathIncludes('/reports/master') ? activeMenu : inactiveMenu}`}>
               <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Laporan Induk</span>}

@@ -1,66 +1,46 @@
-# 📑 PROJECT HANDOFF DOCUMENT - INFRA CONTROL PRO
+# PROJECT HANDOFF DOCUMENT — PROJECT SCHEDULE ENTERPRISE (V36)
 
-**Status Proyek:** 🚀 Production Ready (V35-I - Enterprise Gold Standard)
-**Terakhir Diperbarui:** 15 November 2026
-**Environment Setup:** Next.js 14, Vercel, Supabase (PostgreSQL, RLS, Storage), PWA (Service Worker, Dexie).
+**Status Proyek:** Production Ready (V36 Enterprise Gold Standard)
+**Terakhir Diperbarui:** 28 November 2026
+**Stack & Infrastruktur:** Next.js 14.2.35 (App Router), TypeScript, Tailwind CSS, Supabase (PostgreSQL, RLS, Auth, MFA, Private Storage), PWA (`@ducanh2912/next-pwa` + Dexie v3), Vercel Production, Railway PDF Service.
 
-## 1. EXECUTIVE SUMMARY
-InfraControl PRO adalah Sistem ERP Konstruksi Terpadu dengan standar akuntansi **PSAK 115**, **PSAK 207**, dan **Project Balance Sheet**. 
-Fokus V35-I adalah implementasi **PWA (Progressive Web App) & Offline Mode**. Sistem kini dapat di-*install* di perangkat mobile (Android/iOS), dilengkapi *Bottom Navigation*, dan memiliki kemampuan *Offline-First*. Data dasbor, keuangan, dan WBS disimpan di *Local Cache* (localStorage), sementara input lapangan (Progres) disimpan di *IndexedDB* (Dexie) dan disinkronkan otomatis saat online.
+---
 
-## 2. IMPLEMENTED FEATURES
+## 1. RINGKASAN EKSEKUTIF
 
-### A. PWA & Offline Mode (V35-I)
-- **Service Worker**: Menggunakan `@ducanh2912/next-pwa`. Mencakup *caching* halaman (`NetworkFirst`), aset statis (`StaleWhileRevalidate`), dan RSC Payload untuk navigasi instan.
-- **Local Cache System**: Menggunakan `lib/utils/cache.js` untuk menyimpan data Supabase (Dasbor, Gantt, Tugas, Keuangan) ke `localStorage`. Saat offline, halaman memuat data terakhir secara instan tanpa *loading* lama.
-- **Offline Input (IndexedDB)**: Menggunakan `Dexie` untuk antrean sinkronisasi (saat ini diimplementasikan di `/progress`). Data yang diinput saat offline akan dikirim ke Supabase saat koneksi kembali.
-- **Mobile UI**: Penambahan `BottomNav.jsx` (khusus layar mobile) dan indikator status Online/Offline di `Header.jsx`.
-- **Robust Auth Middleware**: Memperbaiki konfigurasi Supabase SSR dan Middleware agar Google SSO berjalan lancar, serta mencegah *redirect loop* atau *MIME type error* saat berpindah halaman dalam mode offline.
+Seluruh **10 Pilar Cetak Biru Enterprise Premium & Standar Operasional Kontraktor** telah terimplementasi penuh dari lapisan database PostgreSQL (trigger, view, RPC `SELECT ... FOR UPDATE`, RLS) hingga antarmuka web & PWA mobile:
 
-### B. Cash Flow & Financials (V35-H)
-- **Cost Control Fix**: Memperbaiki View `v_cost_control_wbs` (menambahkan `project_id` dan `security_invoker`) untuk mengatasi error 400 Bad Request pada halaman Arus Kas.
-- **Forecasting**: Proyeksi kas 3 bulan (Inflow/Outflow) & Cetak PDF A4 Landscape.
+* **Gelombang A (Keamanan & Tata Kelola):** Table-wide RLS, Hybrid RBAC (`global_role` + `project_role`), Immutable Audit Log (`INSERT ONLY` + IP/User-Agent), Signed URL 10 menit, dan 2FA TOTP Approver.
+* **Gelombang B (Anggaran & Persetujuan):** 3 Lapisan Anggaran (`Available`/`Committed`/`Actual`), Hard-Stop `SELECT ... FOR UPDATE`, dan Dynamic Approval Matrix (`approval_rules`).
+* **Gelombang C (Rantai Pasok & Gudang):** Purchase Request (PR), Vendor Invoice + Three-Way Matching + GPS/Timestamp Surat Jalan GRN, Multi-Gudang (Pusat vs Site), Material Transfer Request (realokasi biaya antar-proyek), dan Stock Opname.
+* **Gelombang D (Arus Kas & Perubahan Kontrak):** Ring-Fenced Cashflow Guard (UI + RPC database), Bank Garansi & Jatuh Tempo Retensi, BAKP Auto-Progress Billing, Penguncian RAB Baseline v0 & Addendum CCO v1..n, serta Unapproved Work Alert.
+* **Gelombang E (Vendor & Aset Lapangan):** Centralized Vendor Master, Blacklist & NPWP/PKP/Legal Expiry Trigger (memblokir PO/SPK otomatis), Performance Scorecard, Daily Rental Cost Accrual & Expiry Alert, serta Asset Custody Transfer + Stiker QR Code offline.
+* **Gelombang F (HSE & SDM Lapangan):** HSE Compliance Gate (JSA/Work Permit mengunci progres WBS risiko tinggi), Offline-First Photo Queue (Dexie v3) dengan kompresi Canvas otomatis, Anti-Ghost Worker NIK Guard lintas proyek, dan penautan upah payroll ke `wbs_code` RAB.
+* **Hardening & Operational Polish:** Penegakan Ring-Fenced Cashflow di dalam `rpc_submit_budgeted_cashflow`, penghapusan seluruh UUID/profil statis, persetujuan Ledger via `processTieredApproval` + 2FA, auto-scoping `useRole()`, kebijakan kamera `camera=(self)`, isolasi query multi-proyek 100%, kontrol proteksi proyek di `/settings/project`, serta pembaruan navigasi Sidebar/BottomNav.
 
-### C. Manpower & Payroll (V35-G)
-- **Master Karyawan**: Sistem All-In dan Harian.
-- **Auto-Cost**: Payroll `Approved` insert ke `actual_costs`, `Paid` insert ke `cash_flows`.
+---
 
-## 3. ARCHITECTURE & CORE LOGIC
-- **Data Fetching**: Menggunakan pola *Local-First*. Cek `getFromCache()` -> Cek `navigator.onLine` -> Jika online, `fetch` ke Supabase -> `saveToCache()`.
-- **Print Engine Rules**: Menggunakan `@page { size: A4 landscape; }` dengan teknik **`<table>` murni (NO FLEXBOX/GRID)** dan *Absolute Footer* untuk mencegah tumpang tindih (overlap) dan halaman kosong.
-- **Schema & RLS**: RLS aktif di semua tabel. View `v_cost_control_wbs` menggunakan `security_invoker = true` agar RLS tabel dasar berlaku pada View.
+## 2. QUALITY GATE & DATABASE
 
-## 4. 🛑 ABSOLUTE RULES (DO NOT BREAK)
-1. **UI/UX**: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal / Toast.
-2. **Database**: DILARANG Hard Delete pada data finansial & inventaris. Gunakan Soft Delete (`is_deleted` / `voided_at`).
-3. **Print Engine**: NO TAILWIND IN PDF, **NO FLEXBOX/GRID**, WAJIB `<table>` murni, ANTI PAGE-BREAK.
-4. **RLS**: Wajib update Row Level Security setiap membuat tabel/bucket baru.
-5. **RBAC**: Setiap tombol aksi baru **WAJIB** dibungkus dengan hook `useRole`.
+* **Migrasi SQL Supabase:** 13 file migrasi idempoten (`supabase/migrations/20261127_01_...sql` s.d. `20261128_13_...sql`) sudah tereksekusi bersih di Supabase Production.
+* **Automated Tests:** **11 Jest Test Suites (43/43 unit tests PASS)**:
+  1. `hybrid-rbac.test.js`
+  2. `budget-approval-engine.test.js`
+  3. `supply-chain-3way.test.js`
+  4. `contractor-controls.test.js`
+  5. `vendor-equipment-controls.test.js`
+  6. `hse-workforce-controls.test.js`
+  7. `cpm-engine.test.js`
+  8. `evm-engine.test.js`
+  9. `sak-calculator.test.js`
+  10. `overtime-pp35.test.js`
+  11. `terbilang.test.js`
+* **API Routes:** `8/8` endpoint API terverifikasi autentikasi + otorisasi proyek; `0` dialog bawaan browser (`alert`/`confirm`/`prompt`).
 
-## 5. NEXT STEPS (ROADMAP SPRINT V35-I KE ATAS)
+---
 
-**FASE 1: Financial & Cost Control (Sisa)**
-- **A. Variation Order (CCO)**: Pencatatan pekerjaan tambah/kurang (Addendum) yang otomatis meng-update Nilai Kontrak, RAP, dan P&L.
-- **B. Modul Rekonsiliasi Bank**: Upload CSV Mutasi Bank vs Cash Flow.
+## 3. OPERASIONAL & PEMELIHARAAN
 
-**FASE 2: Operations & Field Management**
-- **C. Multi-Warehouse**: Pemisahan stok antar gudang site beserta fitur Stock Transfer.
-- **D. Document Control & RFI**: Integrasi Supabase Storage untuk Shop Drawing/Addendum.
-
-**FASE 3: Quality & Executive**
-- **E. Upgrade Modul QHSE**: Digital checklist ITP, Defect Tracking, Safety Report.
-- **F. Executive Multi-Project Dashboard**: Agregasi SPI, CPI, dan Margin dari seluruh proyek.
-
-**FASE 4: Advanced Tech**
-- **G. PWA & Offline Mode**: ✅ SELESAI (V35-I).
-- **H. Integrasi WhatsApp Bot**: Daily Report & Input via WA.
-- **I. OCR Auto-Read Nota**: Scan Surat Jalan/Nota.
-
-## 6. WORKFLOW GIT & DEPLOYMENT (ENTERPRISE STANDARD)
-1. Buat branch baru: `git checkout -b feat/V35-I-nama-fitur`.
-2. Lakukan *development* dan jalankan `npm run build` (Pastikan 0 error).
-3. `git add .` lalu `git commit -m "feat(V35-I): Deskripsi Fitur"`.
-4. `git push -u origin feat/V35-I-nama-fitur` (Otomatis trigger Vercel Preview).
-5. Lakukan QA di Link Preview Vercel.
-6. Buat Pull Request (PR) di GitHub, lalu Merge ke `main`.
-7. Vercel otomatis deploy ke Production.
+1. **Pengaturan Proteksi per Proyek:** Admin/Finance Manager/Owner dapat mengatur `budget_hard_stop`, `ring_fenced_cashflow`, dan `hq_dropping_limit` langsung melalui **`/settings/project`** (tercatat otomatis ke Audit Log).
+2. **Penguncian Baseline Kontrak:** Sebelum memulai pekerjaan tambah/kurang pada proyek baru, PM/Owner disarankan mengunci **RAB Baseline (v0)** di menu **`/change-orders`**.
+3. **Verifikasi Sebelum Rilis:** Jalankan `.\PreFlight-Check.ps1` di root repositori sebelum membuat Pull Request baru.

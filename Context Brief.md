@@ -1,69 +1,41 @@
-# 📋 ENTERPRISE SYSTEM CONTEXT & ARCHITECTURE BRIEF: InfraControl PRO (V35-I)
+# ENTERPRISE SYSTEM CONTEXT & ARCHITECTURE BRIEF — PROJECT SCHEDULE ENTERPRISE (V36)
 
-**To:** Senior Full-Stack Tech Lead / AI Assistant
-**Subject:** Project Onboarding & Context Handoff - InfraControl PRO (V35-I)
-**Tech Stack:** Next.js 14 (App Router), Supabase (PostgreSQL, RLS, Storage, Auth), PWA (Service Worker, Dexie/IndexedDB), Tailwind CSS, TypeScript.
+**Subject:** System Architecture & Developer Onboarding Brief (V36 Enterprise)
+**Updated:** 28 November 2026
+**Tech Stack:** Next.js 14.2.35 (App Router), TypeScript, Tailwind CSS, Supabase (PostgreSQL + RLS + Storage + TOTP MFA), PWA (`@ducanh2912/next-pwa` + Dexie v3), Jest 29, Vercel, Railway PDF Service.
 
-## 1. PROJECT OVERVIEW
-InfraControl PRO adalah Sistem ERP Konstruksi Terpadu (Enterprise-Grade) dengan standar akuntansi **PSAK 115 (Pendapatan Kontrak)**, **PSAK 207 (Laporan Arus Kas)**, dan **Neraca Proyek (Project Balance Sheet)**. 
-Fokus V35-I: **PWA & Offline Mode (Mobile-First Optimization)**. Sistem kini dilengkapi dengan *Service Worker* untuk *caching* App Shell, *IndexedDB* (Dexie) untuk antrean sinkronisasi data lapangan, dan *Local Cache* (localStorage) untuk membaca data dasbor/keuangan secara instan saat offline. Sistem Autentikasi (Middleware) juga diperkuat agar tidak terjadi *loop* atau error MIME saat berpindah halaman offline.
+---
 
-## 2. DIRECTORY STRUCTURE (VERIFIED & EXPANDED)
-- `app/finances/page.jsx` : UI Keuangan (Ledger, Cost Control, Health, Aging). Terintegrasi Local Cache.
-- `app/dashboard/page.jsx` : UI Dasbor Eksekutif. Terintegrasi Local Cache.
-- `app/gantt/page.jsx` : UI Gantt Workspace. Terintegrasi Local Cache.
-- `app/tasks/page.jsx` : UI Tabel WBS Premium. Terintegrasi Local Cache.
-- `app/progress/page.jsx` : UI Progres Harian & Input Offline (Dexie).
-- `app/login/page.jsx` : UI Login (Email & Google SSO). Menggunakan `<Suspense>`.
-- `app/auth/callback/route.ts` : Handler OAuth Supabase (Next.js 14 App Router).
-- `app/offline/page.jsx` : Halaman Fallback jika benar-benar tidak ada koneksi.
-- `app/error.tsx` : Error Boundary Custom (Penangkap error navigasi).
-- `components/BottomNav.jsx` : Navigasi Bawah khusus Mobile (PWA).
-- `lib/utils/cache.js` : Helper `saveToCache` & `getFromCache` (localStorage).
-- `lib/db/offline-db.ts` : Konfigurasi Dexie (IndexedDB) untuk antrean sinkronisasi.
-- `lib/services/sync-service.ts` : Logic antrean sinkronisasi data offline ke Supabase.
-- `middleware.js` : Middleware Auth & RBAC (Next.js 14).
-- `next.config.js` : Konfigurasi PWA (`@ducanh2912/next-pwa`).
-- `public/manifest.json` : Manifest PWA (Ikon, Tema, Start URL).
+## 1. ARCHITECTURAL INVARIANTS (WAJIB DIPATUHI)
 
-## 3. SYSTEM ARCHITECTURE & CORE LOGIC (V35-I)
-- **PWA & Offline-First**: Menggunakan `@ducanh2912/next-pwa` dengan strategi `StaleWhileRevalidate` untuk aset statis dan RSC payload, serta `NetworkFirst` untuk halaman. Fallback ke `/offline` jika *request* gagal.
-- **Local Data Cache**: Setiap halaman (`/finances`, `/dashboard`, `/tasks`) menyimpan data Supabase terakhir ke `localStorage` via `saveToCache`. Saat offline (`!navigator.onLine`), halaman langsung memuat dari `getFromCache` tanpa menunggu *timeout*.
-- **Offline Input (Dexie)**: Form Progres Harian (dan modul lain di masa depan) disimpan ke IndexedDB saat offline. Saat koneksi kembali online, `sync-service.ts` mengirim antrean ke Supabase secara otomatis.
-- **Auth & Middleware**: Middleware mengecualikan rute `/auth`, `/api`, dan file statis. Jika terjadi *rate limit* atau *offline*, Middleware memvalidasi keberadaan *cookie* auth agar tidak memaksa *logout*.
-- **Database Schema Fix**: View `v_cost_control_wbs` telah diperbarui untuk menyertakan `project_id` dan menerapkan `security_invoker = true` untuk keamanan RLS.
+1. **Multi-Tenant Isolation:** Setiap query data proyek wajib terikat `project_id` (serta dilindungi RLS PostgreSQL melalui `public.has_project_access(project_id)` dan `public.has_project_write_access(project_id)`).
+2. **Soft-Void & Auditability:** Transaksi keuangan, PO, SPK, payroll, dan log tidak boleh di-*hard-delete*; gunakan mekanisme soft-void (`voided_at`, `is_deleted`) dan catat ke `audit_logs` (`INSERT ONLY`) via `recordAuditEvent()`.
+3. **Pessimistic Concurrency Locking:** Pengajuan kas keluar, PO, penguncian RAB Baseline, penandatanganan CCO, dan serah terima aset wajib diproses melalui RPC PostgreSQL dengan `SELECT ... FOR UPDATE`.
+4. **Private Storage Policy:** Seluruh dokumen sensitif (KTP, bukti nota, Surat Jalan GRN, Bank Garansi, JSA/Work Permit, Addendum) disimpan di bucket privat (`evidence`, `ktp_documents`, `project-vault`) dan hanya diakses lewat **Signed URL 10 menit** (`lib/utils/secure-storage.ts`). Bucket publik hanya digunakan untuk logo perusahaan (`project-assets`).
+5. **Zero Native Browser Dialogs:** Dilarang menggunakan `alert()`, `confirm()`, atau `prompt()`. Gunakan `ConfirmModal` (`components/ui/ConfirmModal.tsx`) dan event `app-toast`.
+6. **Windows PowerShell UTF-8 (No BOM):** Hindari `Set-Content -Encoding UTF8` pada Windows PowerShell 5.1 untuk file `.ts`/`.tsx`; gunakan `UTF8Encoding($false)` dan verifikasi via `.\PreFlight-Check.ps1`.
 
-## 4. 🛑 ABSOLUTE COMPLIANCE RULES (DO NOT BREAK)
-1. **UI/UX**: DILARANG `alert()`, `confirm()`, `prompt()`. Wajib Custom Modal / Toast.
-2. **Keuangan & Data**: DILARANG Hard Delete pada data finansial dan inventaris. Wajib Soft Delete (VOID / `voided_at` / `is_deleted`).
-3. **Print Engine (PDF)**: NO TAILWIND, **NO FLEXBOX/GRID**, WAJIB `<table>` murni, ANTI PAGE-BREAK (Gunakan teknik *Absolute Footer* & *Wrapper*).
-4. **Database**: Wajib update RLS setiap membuat tabel/bucket baru.
-5. **RBAC**: Setiap tombol aksi baru (Edit, Delete, Approve, Void, Cetak) **WAJIB** dibungkus dengan hook `useRole`.
-6. **Git Workflow**: DILARANG `git push` langsung ke `main`. Wajib menggunakan *Feature Branch* (`feat/nama-fitur`), uji di Vercel *Preview*, lalu buat *Pull Request* (PR) sebelum *Merge* ke `main`.
+---
 
-## 5. CURRENT STATE (V35-I - PRODUCTION READY)
-- **Security & Multi-Tenancy**: SELESAI.
-- **Financial & P&L Engine**: SELESAI.
-- **Warehouse, Ledger & BBM Integration**: SELESAI (V35-F).
-- **Manpower & Payroll Management**: SELESAI (V35-G).
-- **Cash Flow Forecasting**: SELESAI (V35-H).
-- **PWA & Offline Mode**: SELESAI (V35-I). Termasuk perbaikan Google SSO & Sinkronisasi Dexie.
+## 2. KEY MODULES & FILE MAP
 
-## 6. NEXT STEPS (ROADMAP V35-I ke atas)
+### Core App Routes (`app/`)
+* `/dashboard`, `/gantt`, `/tasks`, `/s-curve` — Penjadwalan CPM, EVM, dan Kurva-S.
+* `/progress` — Progres harian offline-first + kompresi foto otomatis (`image-compressor.ts`) + HSE Gate check.
+* `/qhse` — QA/QC, HSE Log, dan **JSA & Work Permit Compliance Gate** (`HsePermitGateManager.tsx`).
+* `/finances` — Ledger (persetujuan berjenjang + 2FA), 3-Layer Cost Control, Ring-Fenced Cashflow Alert, Forecasting, dan Laporan Arus Kas PSAK 207.
+* `/projects/[projectId]/termin` — Termin klien, BAKP Auto-Progress Billing, Pencairan Retensi, dan **Bank Garansi** (`BankGuaranteeManager.tsx`).
+* `/change-orders` — Penguncian RAB Baseline v0, Contract Change Order (CCO) v1..n, dan Unapproved Variation Work Alert.
+* `/materials` — Requirement Plan, Stok Gudang, PR, PO, Vendor Invoice & 3-Way Match (GRN GPS/Foto), Multi-Gudang & Transfer, Master Vendor, dan Rekap Laporan.
+* `/vendors/compliance` — Centralized Vendor Master, Blacklist & NPWP/PKP Guard, dan Performance Scorecard.
+* `/projects/[projectId]/equipment/*` — Kontrak Sewa (+ Daily Accrual & Expiry Alert), Unit, **Custody & QR Aset** (`/custody`), BBM, Timesheet, dan BAR.
+* `/manpower` — Karyawan, Absensi (Anti-Ghost Worker NIK Guard lintas proyek), dan Payroll (PP 35/2021 + WBS Cost Link).
+* `/approvals`, `/settings/approval-matrix`, `/settings/security`, `/settings/project`, `/logs` — Persetujuan berjenjang, Matriks Approval, 2FA TOTP, Proteksi Keuangan Proyek, dan Log Audit.
 
-**FASE 1: Financial & Cost Control (Sisa)**
-- **A. Variation Order (CCO)**: Pencatatan Addendum, update Kontrak, RAP, P&L.
-- **B. Rekonsiliasi Bank**: Upload CSV Mutasi Bank (BCA/Mandiri) vs Cash Flow (Auto-Matching).
-
-**FASE 2: Operations & Field**
-- **C. Multi-Warehouse**: Stock Transfer antar Gudang Site.
-- **D. Document Control & RFI**: Integrasi Supabase Storage untuk Shop Drawing/Addendum.
-
-**FASE 3: Quality & Executive**
-- **E. Upgrade Modul QHSE**: Digital checklist ITP, Defect Tracking, Safety Report.
-- **F. Executive Multi-Project Dashboard**: Dasbor Owner untuk agregasi SPI, CPI, Margin.
-
-**FASE 4: Advanced Tech**
-- **G. PWA & Offline Mode**: ✅ SELESAI (V35-I).
-- **H. Integrasi WhatsApp Bot**: Daily Report otomatis & input progres via WA. (Berikutnya)
-- **I. OCR Auto-Read Nota**: Scan Nota/SJ.
+### Core Engines & Services (`lib/`)
+* `lib/config/permissions.ts` & `lib/hooks/useRole.ts` — Hybrid RBAC (otomatis *fallback* ke `activeProjectId` dari `ProjectContext`).
+* `lib/utils/budget-control.ts` & `lib/services/budget-control.service.ts` — 3-Layer Budget & Approval Matrix Engine.
+* `lib/utils/supply-chain.ts` & `lib/services/supply-chain.service.ts` — PR, 3-Way Match, Multi-Gudang & Opname.
+* `lib/utils/contractor-controls.ts` & `lib/services/contractor-controls.service.ts` — Ring-Fenced Cashflow, Bank Garansi, BAKP & CCO.
+* `lib/utils/vendor-equipment-controls.ts`, `lib/utils/qr-svg.ts`, `lib/services/vendor-compliance.service.ts`, `lib/services/asset-custody.service.ts` — Vendor Blacklist/Scorecard, Rental Accrual & ISO QR Generator.
+* `lib/utils/hse-workforce-controls.ts`, `lib/utils/image-compressor.ts`, `lib/db/offline-db.ts`, `lib/services/sync-service.ts`, `lib/services/hse-workforce.service.ts` — HSE Gate, Offline Photo Sync (Dexie v3) & Anti-Ghost Workers.
