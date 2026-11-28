@@ -52,8 +52,35 @@ export function ReportManager({ projectId }: { projectId: string }) {
         });
       }
 
-      const { data: reqData } = await supabase.from('task_material_requirements').select(`hsd_id, volume_requirement, master_hsd(nama_item, satuan, kategori_akun)`);
-      const { data: poData } = await supabase.from('purchase_order_items').select(`hsd_id, ordered_qty, received_qty, purchase_orders!inner(project_id)`).eq('purchase_orders.project_id', projectId);
+      // Isolasi kebutuhan material (RAB/AHSP) khusus proyek aktif agar akun Owner/Admin lintas proyek tidak tercampur
+      let reqData: any[] = [];
+      const reqRes = await supabase
+        .from('task_material_requirements')
+        .select(`hsd_id, task_id, volume_requirement, wbs_tasks!inner(id, project_id), master_hsd(nama_item, satuan, kategori_akun)`)
+        .eq('wbs_tasks.project_id', projectId);
+
+      if (!reqRes.error && reqRes.data) {
+        reqData = reqRes.data;
+      } else {
+        const { data: projTasks } = await supabase
+          .from('wbs_tasks')
+          .select('id')
+          .eq('project_id', projectId);
+        const taskIds = (projTasks || []).map((t: any) => t.id).filter(Boolean);
+        if (taskIds.length > 0) {
+          const fallbackReq = await supabase
+            .from('task_material_requirements')
+            .select(`hsd_id, task_id, volume_requirement, master_hsd(nama_item, satuan, kategori_akun)`)
+            .in('task_id', taskIds);
+          reqData = fallbackReq.data || [];
+        }
+      }
+
+      const { data: poData } = await supabase
+        .from('purchase_order_items')
+        .select(`hsd_id, ordered_qty, received_qty, purchase_orders!inner(project_id, status)`)
+        .eq('purchase_orders.project_id', projectId)
+        .neq('purchase_orders.status', 'Void');
       const { data: invData } = await supabase.from('inventory_materials').select('hsd_id, stok_on_hand').eq('project_id', projectId);
 
       const matMap = new Map();
