@@ -2,6 +2,10 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import PrintClientWrapper from './PrintClientWrapper';
+import {
+  extractStorageObjectPath,
+  SIGNED_URL_EXPIRY_SECONDS,
+} from '@/lib/utils/secure-storage';
 
 export default async function SPKPrintPage({
   params,
@@ -59,7 +63,21 @@ export default async function SPKPrintPage({
     );
   }
 
-  const enrichedSpk = { ...spk, bq_items: bqItems };
+  // Konversi ktp_url dari private bucket ktp_documents ke Signed URL 10 menit agar bisa dirender Puppeteer PDF
+  let resolvedKtpUrl = spk.ktp_url || '';
+  if (resolvedKtpUrl) {
+    const relativePath = extractStorageObjectPath('ktp_documents', resolvedKtpUrl);
+    if (relativePath) {
+      const { data: signedData } = await supabase.storage
+        .from('ktp_documents')
+        .createSignedUrl(relativePath, SIGNED_URL_EXPIRY_SECONDS);
+      if (signedData?.signedUrl) {
+        resolvedKtpUrl = signedData.signedUrl;
+      }
+    }
+  }
+
+  const enrichedSpk = { ...spk, bq_items: bqItems, ktp_url: resolvedKtpUrl };
 
   return (
     <PrintClientWrapper
