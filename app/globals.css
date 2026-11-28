@@ -227,3 +227,75 @@ textarea:focus-visible {
   backdrop-filter: blur(12px);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -6px rgba(15, 23, 42, 0.07);
 }
+/* =========================================
+   5. ENTERPRISE ADAPTIVE GRADIENT & AUTO FONT CONTRAST TOKENS
+   ========================================= */
+:root {
+  --brand-from: #312e81;
+  --brand-via: #4f46e5;
+  --brand-to: #0284c7;
+  --brand-gradient: linear-gradient(135deg, #312e81 0%, #4f46e5 52%, #0284c7 100%);
+  --brand-accent: #4f46e5;
+  --brand-soft-bg: rgba(79, 70, 229, 0.08);
+  --brand-soft-border: rgba(79, 70, 229, 0.24);
+  --brand-glow: rgba(79, 70, 229, 0.45);
+  --brand-on-primary: #ffffff;
+  --brand-on-primary-muted: rgba(255, 255, 255, 0.82);
+  --brand-badge-bg: rgba(255, 255, 255, 0.16);
+  --brand-badge-border: rgba(255, 255, 255, 0.26);
+}
+
+.bg-executive-gradient {
+  background-image: var(--brand-gradient);
+  color: var(--brand-on-primary);
+}
+
+.text-auto-contrast {
+  color: var(--brand-on-primary);
+}
+
+.text-auto-muted {
+  color: var(--brand-on-primary-muted);
+}
+
+.badge-auto-contrast {
+  background-color: var(--brand-badge-bg);
+  border: 1px solid var(--brand-badge-border);
+  color: var(--brand-on-primary);
+}
+
+.btn-executive-gradient {
+  background-image: var(--brand-gradient);
+  color: var(--brand-on-primary);
+  box-shadow: 0 8px 22px -6px var(--brand-glow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+.btn-executive-gradient:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px -6px var(--brand-glow);
+}
+
+.card-executive {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.95) 100%);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 28px -10px rgba(15, 23, 42, 0.08);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+.card-executive:hover {
+  border-color: var(--brand-soft-border);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06), 0 16px 32px -12px rgba(15, 23, 42, 0.12);
+}
+
+.executive-canvas {
+  background-color: #f8fafc;
+  background-image:
+    radial-gradient(at 0% 0%, var(--brand-soft-bg) 0px, transparent 42%),
+    radial-gradient(at 100% 0%, rgba(14, 165, 233, 0.06) 0px, transparent 38%);
+}
+
+/* Override NProgress dengan degradasi tema aktif */
+#nprogress .bar {
+  background: var(--brand-gradient) !important;
+  box-shadow: 0 0 12px var(--brand-glow) !important;
+}
