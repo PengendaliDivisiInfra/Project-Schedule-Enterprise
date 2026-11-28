@@ -3,6 +3,14 @@
 @tailwind utilities;
 
 /* =========================================
+   0. EXECUTIVE TYPOGRAPHY TOKENS
+   ========================================= */
+:root {
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* =========================================
    1. HIDE SIDEBAR SCROLLBAR
    ========================================= */
 aside::-webkit-scrollbar, aside *::-webkit-scrollbar,
@@ -14,17 +22,70 @@ aside, aside *, nav, .sidebar-container {
 }
 
 /* =========================================
-   2. ENTERPRISE PRINT STYLES (BACKUP)
+   2. UNIFIED ENTERPRISE PRINT ENGINE
    ========================================= */
 @media print {
+  @page {
+    margin: 12mm 10mm;
+  }
   @page gantt_page { size: A3 landscape; margin: 10mm; }
   @page matrix_page { size: A4 portrait; margin: 15mm; }
 
   .print-page-gantt { page: gantt_page; break-before: page !important; }
   .print-page-matrix { page: matrix_page; break-before: page !important; }
 
-  body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  
+  /* Paksa cetak warna latar belakang & grafis */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Sembunyikan seluruh Chrome UI (Sidebar, Header, BottomNav, Modal) */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Tampilkan area cetak standar (#print-area maupun .print-container) */
+  #print-area,
+  #print-area *,
+  .print-container,
+  .print-container * {
+    visibility: visible;
+  }
+
+  #print-area,
+  .print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Pastikan tombol/aksi bertanda print-hidden atau print:hidden tetap tersembunyi */
+  .print-hidden,
+  .print-hidden *,
+  .print\:hidden,
+  .print\:hidden * {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Mencegah baris tabel & blok tanda tangan terpotong antar halaman */
+  tr,
+  .signature-block,
+  .sig-wrapper {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Gaya tabel cetak Gantt & Laporan */
   .gantt-table { border-collapse: collapse !important; width: 100% !important; }
   .gantt-table th, .gantt-table td { border: 1px solid #000 !important; padding: 0 !important; }
   .gantt-table td.bar-active { background-color: #2563eb !important; }
@@ -33,86 +94,7 @@ aside, aside *, nav, .sidebar-container {
 
   .report-table { width: 100% !important; border-collapse: collapse !important; }
   .report-table th, .report-table td { border: 1px solid #000 !important; padding: 3px 4px !important; font-size: 9px !important; }
-}
 
-/* =========================================
-   3. ENTERPRISE PRINT ENGINE (ABSOLUTE RULES)
-   ========================================= */
-@media print {
-  /* Sembunyikan semua elemen UI (Sidebar, Header, Tombol) */
-  body * {
-    visibility: hidden;
-  }
-  
-  /* Tampilkan HANYA area print laporan */
-  #print-area, #print-area * {
-    visibility: visible;
-  }
-  
-  /* Posisikan laporan di pojok kiri atas kertas A4 */
-  #print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 0;
-  }
-
-  /* Aturan Anti Page-Break untuk baris tabel */
-  tr {
-    page-break-inside: avoid;
-  }
-
-  /* Pastikan warna background tetap tercetak (jika diperlukan) */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-}
-
-/* =========================================
-   4. PREMIUM PRINT ENGINE (REPORT MANAGER)
-   ========================================= */
-@media print {
-  /* Paksa cetak warna background */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-
-  /* Sembunyikan UI Aplikasi */
-  body * {
-    visibility: hidden;
-  }
-  
-  /* Tampilkan HANYA area laporan */
-  #print-area, #print-area * {
-    visibility: visible;
-  }
-  
-  /* Atur halaman A4 */
-  @page {
-    size: A4 portrait;
-    margin: 15mm 10mm;
-  }
-
-  #print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    padding: 0;
-    background: white;
-  }
-
-  /* Mencegah tabel terpotong di tengah baris */
-  tr {
-    page-break-inside: avoid;
-  }
-
-  /* Desain Tabel Enterprise */
   .table-print {
     width: 100%;
     border-collapse: collapse;
@@ -129,25 +111,23 @@ aside, aside *, nav, .sidebar-container {
     text-align: center;
   }
   .table-print tr:nth-child(even) td {
-    background-color: #f8fafc !important; /* Zebra striping */
+    background-color: #f8fafc !important;
   }
 }
 
 /* =========================================
-   5. ENTERPRISE UI UTILITIES
+   3. ENTERPRISE UI UTILITIES
    ========================================= */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- TAMBAHAN UNTUK PWA (BOTTOM NAV SAFE AREA) --- */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
-/* Custom Scrollbar untuk Tabel Enterprise */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -163,9 +143,6 @@ aside, aside *, nav, .sidebar-container {
   background: #94a3b8;
 }
 
-/* =========================================
-   6. PREMIUM SCROLLBAR (ENTERPRISE)
-   ========================================= */
 .custom-scrollbar::-webkit-scrollbar {
   width: 5px;
 }
@@ -173,15 +150,15 @@ aside, aside *, nav, .sidebar-container {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #334155; /* Warna slate-700 */
+  background: #334155;
   border-radius: 10px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #475569; /* Warna slate-600 */
+  background: #475569;
 }
 
 /* =========================================
-   7. ENTERPRISE EXECUTIVE MOTION & LOADING
+   4. ENTERPRISE EXECUTIVE MOTION & LOADING
    ========================================= */
 @keyframes enterpriseShimmer {
   0% { background-position: -200% 0; }
@@ -236,7 +213,6 @@ aside, aside *, nav, .sidebar-container {
   transform: rotate(3deg) translate(0px, -4px);
 }
 
-/* Smooth Executive Focus & Modal Polish */
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,

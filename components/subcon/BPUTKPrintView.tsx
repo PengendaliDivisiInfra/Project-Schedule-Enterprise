@@ -2,8 +2,10 @@
 
 import { useRef } from 'react';
 import { Printer } from 'lucide-react';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 
-export function BPUTKPrintView({ data, mandorInfo, onClose }: { data: any, mandorInfo: any, onClose: () => void }) {
+export function BPUTKPrintView({ data, mandorInfo, projectData, onClose }: { data: any, mandorInfo: any, projectData?: any, onClose: () => void }) {
+  const branding = resolveProjectBranding(projectData || data?.project);
   const printRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = () => {
@@ -30,7 +32,7 @@ export function BPUTKPrintView({ data, mandorInfo, onClose }: { data: any, mando
                 .text-center { text-align: center; }
                 .font-bold { font-weight: bold; }
                 .header-title { font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 20px; }
-                .sig-grid { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; margin-top: 30px; }
+                .sig-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; text-align: center; margin-top: 30px; page-break-inside: avoid; break-inside: avoid; }
               </style>
             </head>
             <body>${printContent}</body>
@@ -56,6 +58,15 @@ export function BPUTKPrintView({ data, mandorInfo, onClose }: { data: any, mando
 
       {/* AREA YANG AKAN DI-CETAK */}
       <div className="bg-white p-8 w-full max-w-7xl shadow-lg text-xs" ref={printRef}>
+        <div className="flex items-center gap-4 pb-3 mb-4 border-b-[3px] border-double border-slate-900">
+          {branding.logoUrl && (
+            <img src={branding.logoUrl} alt="Logo" style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain' }} />
+          )}
+          <div className={branding.logoUrl ? 'text-left flex-1' : 'text-center flex-1'}>
+            <div className="font-extrabold text-sm uppercase text-slate-900">{branding.companyName}</div>
+            <div className="text-[10px] text-slate-600">{branding.companyAddress}</div>
+          </div>
+        </div>
         <div className="header-title">BIAYA PEMBAYARAN UPAH TENAGA KERJA</div>
         
         <div className="mb-4">
@@ -157,15 +168,15 @@ export function BPUTKPrintView({ data, mandorInfo, onClose }: { data: any, mando
           </table>
         </div>
 
-        {/* TANDA TANGAN */}
-        <div className="sig-grid mt-10">
-          <div><div className="mb-12">Direksi</div><div className="font-bold underline">RIZQI BILLAH BASALAMAH</div></div>
-          <div><div className="mb-12">KA. DIVISI INFRA</div><div className="font-bold underline">MEI SUNARKO</div></div>
-          <div><div className="mb-12">Ass. DIVISI INFRA</div><div className="font-bold underline">ARIF DARMAWAN</div></div>
-          <div><div className="mb-12">Ka. Pembelian</div><div className="font-bold underline">M. MAULIDIN</div></div>
-          <div><div className="mb-12">Pengendali</div><div className="font-bold underline">PENGENDALI</div></div>
-          <div><div className="mb-12">Site Engineer</div><div className="font-bold underline">SAIFUDDIN FAHMI</div></div>
-          <div><div className="mb-12">Dibuat Oleh,<br/>Kepala Mandor</div><div className="font-bold underline">{mandorInfo.company_name}</div></div>
+        {/* TANDA TANGAN PROFESIONAL (ANTI-PAGE-BREAK) */}
+        <div className="sig-grid mt-10" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+          <div><div className="mb-16">Disetujui Oleh,<br/>Direksi</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">( .................... )</div></div>
+          <div><div className="mb-16">KA. Divisi Infra</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">( .................... )</div></div>
+          <div><div className="mb-16">Ass. Divisi Infra</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">( .................... )</div></div>
+          <div><div className="mb-16">Ka. Pembelian</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">( .................... )</div></div>
+          <div><div className="mb-16">Pengendali</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">( .................... )</div></div>
+          <div><div className="mb-16">{branding.picTitle || 'Site Engineer'}</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">{branding.picName || '( .................... )'}</div></div>
+          <div><div className="mb-16">Dibuat Oleh,<br/>Kepala Mandor</div><div className="font-bold border-b border-slate-900 inline-block px-2 pb-0.5 uppercase">{mandorInfo?.contact_person || mandorInfo?.company_name || '( .................... )'}</div></div>
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { MoneyText } from '@/components/ui/MoneyText';
 import { SignatureItem } from '@/lib/types/subcon';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 
 export function LampiranBAPPView({ projectId, spks, showToast }: { projectId: string, spks: any[], showToast: any }) {
   const [loading, setLoading] = useState(false);
@@ -17,14 +18,28 @@ export function LampiranBAPPView({ projectId, spks, showToast }: { projectId: st
   const [sakResult, setSakResult] = useState<any>(null);
 
   const [showSigSettings, setShowSigSettings] = useState(false);
-  const [signatures, setSignatures] = useState<SignatureItem[]>([
-    { title: 'Direksi', name: 'RIZQI BILLAH BASALAMAH' },
-    { title: 'KA. Divisi Infra', name: 'MEI SUNARKO' },
-    { title: 'Ass. Divisi Infra', name: 'ARIF DARMAWAN' },
-    { title: 'Ka. Pembelian', name: 'M. MAULIDIN' },
-    { title: 'Site Engineer', name: 'SAIFUDDIN FAHMI' },
-    { title: 'Direktur / Mandor', name: 'HAERUL' },
-  ]);
+  const [signatures, setSignatures] = useState<SignatureItem[]>(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`lampiran_bapp_sig_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [
+      { title: 'Direksi', name: '' },
+      { title: 'KA. Divisi Infra', name: '' },
+      { title: 'Ass. Divisi Infra', name: '' },
+      { title: 'Ka. Pembelian', name: '' },
+      { title: 'Site Engineer', name: '' },
+      { title: 'Direktur / Mandor', name: '' },
+    ];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`lampiran_bapp_sig_${projectId}`, JSON.stringify(signatures));
+    }
+  }, [signatures, projectId]);
 
   useEffect(() => {
     const loadHistory = async () => {
@@ -58,13 +73,26 @@ export function LampiranBAPPView({ projectId, spks, showToast }: { projectId: st
         ]);
         setData({ bapp: bappRes, bputk: bputkRes });
 
-        if (bappRes.contract.subcontractors?.contact_person) {
-          setSignatures(prev => {
-            const newSigs = [...prev];
-            newSigs[5].name = bappRes.contract.subcontractors.contact_person.toUpperCase();
-            return newSigs;
-          });
-        }
+        setSignatures((prev) => {
+          const newSigs = [...prev];
+          const projPic = bappRes.contract.projects?.contractor_pic_name;
+          const projTitle = bappRes.contract.projects?.contractor_pic_title;
+          if (projPic && newSigs[4] && !newSigs[4].name) {
+            newSigs[4] = {
+              ...newSigs[4],
+              title: projTitle || newSigs[4].title,
+              name: String(projPic).toUpperCase(),
+            };
+          }
+          if (bappRes.contract.subcontractors?.contact_person && newSigs.length > 0) {
+            const lastIdx = newSigs.length - 1;
+            newSigs[lastIdx] = {
+              ...newSigs[lastIdx],
+              name: bappRes.contract.subcontractors.contact_person.toUpperCase(),
+            };
+          }
+          return newSigs;
+        });
 
         const hitung = hitungSAK({
           bruttoSd: bappRes.totalOpnameSdIni, nilaiKontrak: bappRes.contract.contract_value, nilaiDP: bappRes.nilaiDP, pphRate: bappRes.contract.pph_pct || 2, ppnRate: bappRes.contract.ppn_pct || 11, retensiRate: bappRes.contract.retention_pct || 5, kasbonDeduct: bappRes.totalPotongan, taxMode: bappRes.contract.tax_mode || 'EXCLUDE'
@@ -123,7 +151,7 @@ export function LampiranBAPPView({ projectId, spks, showToast }: { projectId: st
               .card-title { font-weight: bold; color: #0f766e; font-size: 10.5pt; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 10px; }
               .sig-table { width: 100%; margin-top: auto; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
               .sig-table td { border: none; vertical-align: bottom; text-align: center; padding: 0 5px; width: 16.66%; }
-              .sig-space { height: 65px; }
+              .sig-space { height: 64px; }
               .sig-line { border-top: 1px solid #64748b; width: 90%; margin: 0 auto 6px auto; }
               .sig-name { font-weight: bold; font-size: 9.5pt; color: #0f172a; word-wrap: break-word; line-height: 1.2; }
               .sig-title { font-size: 8.5pt; color: #475569; margin-bottom: 5px; }
@@ -189,12 +217,26 @@ export function LampiranBAPPView({ projectId, spks, showToast }: { projectId: st
             
             <div id="lampiran-bapp-print-area" style={{ display: 'flex', flexDirection: 'column', minHeight: '245mm' }}>
               
-              <div style={{ textAlign: 'center', borderBottom: '3px double #0f766e', paddingBottom: '10px', marginBottom: '20px' }}>
-                {data.bapp.contract.projects?.logo_url && <img src={data.bapp.contract.projects.logo_url} alt="Logo" style={{ maxHeight: '50px', margin: '0 auto 5px', display: 'block' }} />}
-                <h1 style={{ margin: 0, fontSize: '18pt', fontWeight: 800, textTransform: 'uppercase', color: '#0f172a', letterSpacing: '1px' }}>{data.bapp.contract.projects?.company_name || 'PT. NAMA PERUSAHAAN'}</h1>
-                <p style={{ margin: '2px 0', fontSize: '9.5pt', color: '#475569' }}>{data.bapp.contract.projects?.contractor_address || 'Alamat Perusahaan'}</p>
-                <p style={{ margin: '2px 0', fontSize: '9.5pt', color: '#475569', textTransform: 'uppercase' }}>GENERAL CONTRACTOR & SUPPLIER</p>
-              </div>
+              {(() => {
+                const b = resolveProjectBranding(data.bapp.contract.projects);
+                return (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '3px double #0f766e', marginBottom: '18px' }}>
+                    <tbody>
+                      <tr>
+                        {b.logoUrl && (
+                          <td style={{ width: '90px', paddingBottom: '10px', verticalAlign: 'middle', textAlign: 'left' }}>
+                            <img src={b.logoUrl} alt="Logo" style={{ maxHeight: '56px', maxWidth: '140px', objectFit: 'contain', display: 'block' }} />
+                          </td>
+                        )}
+                        <td style={{ paddingBottom: '10px', verticalAlign: 'middle', textAlign: b.logoUrl ? 'left' : 'center' }}>
+                          <h1 style={{ margin: 0, fontSize: '17pt', fontWeight: 800, textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.6px' }}>{b.companyName}</h1>
+                          <p style={{ margin: '3px 0 0 0', fontSize: '9.5pt', color: '#475569' }}>{b.companyAddress}</p>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
 
               <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                 <h2 style={{ fontSize: '13pt', fontWeight: 'bold', color: '#0f766e', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>LAMPIRAN BERITA ACARA PEMBAYARAN PRESTASI (BAPP)</h2>
@@ -388,15 +430,16 @@ export function LampiranBAPPView({ projectId, spks, showToast }: { projectId: st
                 </tbody>
               </table>
 
-              <table style={{ width: '100%', marginTop: 'auto', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+              <table style={{ width: '100%', marginTop: 'auto', borderCollapse: 'collapse', tableLayout: 'fixed', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
                 <tbody>
                   <tr>
                     {signatures.map((sig, idx) => (
-                      <td key={idx} style={{ width: '16.66%', textAlign: 'center', verticalAlign: 'bottom', padding: '0 5px', border: 'none' }}>
-                        <div style={{ fontSize: '8.5pt', color: '#475569', marginBottom: '5px', fontWeight: 'bold' }}>{sig.title}</div>
-                        <div style={{ height: '65px' }}></div>
-                        <div style={{ borderTop: '1px solid #64748b', width: '90%', margin: '0 auto 6px auto' }}></div>
-                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a', wordWrap: 'break-word', lineHeight: '1.2' }}>{sig.name}</div>
+                      <td key={idx} style={{ width: `${(100 / Math.max(1, signatures.length)).toFixed(2)}%`, textAlign: 'center', verticalAlign: 'bottom', padding: '0 6px', border: 'none' }}>
+                        <div style={{ fontSize: '8.5pt', color: '#475569', marginBottom: '4px', fontWeight: 'bold', whiteSpace: 'pre-line' }}>{sig.title}</div>
+                        <div style={{ height: '64px' }}></div>
+                        <div style={{ display: 'inline-block', minWidth: '115px', padding: '0 8px 2px 8px', borderBottom: '1.25px solid #0f172a', fontWeight: 'bold', fontSize: '9pt', color: '#0f172a', textTransform: 'uppercase', wordWrap: 'break-word', lineHeight: '1.2' }}>
+                          {sig.name || '( ........................ )'}
+                        </div>
                       </td>
                     ))}
                   </tr>
