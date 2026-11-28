@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { resolveProjectBranding, buildEnterpriseSignatureHtml } from '@/lib/utils/print-branding';
 import { FileText, Printer, Loader2, CheckCircle2, AlertTriangle, Droplets, TrendingUp, Calculator, Search, CheckCircle, XCircle, Wallet, Ban } from 'lucide-react';
 import { generateBarData, saveBarToDB, getBarHistory, approveBarToDB, payBarToDB, voidBarToDB } from '@/lib/services/equipment.service';
 
@@ -116,15 +117,16 @@ export default function BarPage({ params }) {
     const printTime = now.toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
     const printBy = user?.email || 'System Admin';
 
-    const logoHtml = proj?.logo_url 
-      ? `<img src="${proj.logo_url}" style="max-height: 75px; max-width: 180px; object-fit: contain;" />`
-      : `<div style="width: 120px; height: 60px; background-color: #E2E8F0; display: flex; align-items: center; justify-content: center; border: 1px dashed #94A3B8; color: #64748B; font-size: 10px;">LOGO</div>`;
+    const branding = resolveProjectBranding(proj);
+    const logoHtml = branding.logoUrl
+      ? `<img src="${branding.logoUrl}" style="max-height: 72px; max-width: 165px; object-fit: contain; display: block;" />`
+      : `<div style="width: 72px; height: 60px; background-color: #F1F5F9; display: flex; align-items: center; justify-content: center; border: 1.5px solid #0F172A; color: #0F172A; font-weight: 800; font-size: 13px; border-radius: 6px;">${branding.companyInitials}</div>`;
 
     const cleanVendorName = data.contract.vendor_name.replace(/TEst/g, 'Test');
-    const companyName = proj?.company_name || "PT BANGUN KONSTRUKSI PERSADA";
-    const companyAddress = proj?.contractor_address || "Alamat Perusahaan";
-    const projectName = proj?.name || "NAMA PROYEK";
-    const projectLocation = proj?.location || "Lokasi Proyek";
+    const companyName = branding.companyName;
+    const companyAddress = branding.companyAddress;
+    const projectName = branding.projectName;
+    const projectLocation = branding.projectLocation;
 
     const itemsHtml = data.items.map((item, idx) => `
       <tr style="border-bottom: 1px solid #E2E8F0;">
@@ -237,13 +239,11 @@ export default function BarPage({ params }) {
         </table>
 
         <div class="signature-block">
-          <table style="text-align: center; font-size: 11px;">
-            <tr>
-              <td style="width: 33%;"><p style="color: #475569; margin-bottom: 60px;">Dibuat Oleh,</p><p style="border-top: 1px solid #475569; display: inline-block; padding-top: 5px; font-weight: bold; color: #1E293B; min-width: 150px;">Admin Logistik</p></td>
-              <td style="width: 33%;"><p style="color: #475569; margin-bottom: 60px;">Diperiksa Oleh,</p><p style="border-top: 1px solid #475569; display: inline-block; padding-top: 5px; font-weight: bold; color: #1E293B; min-width: 150px;">Site Manager</p></td>
-              <td style="width: 34%;"><p style="color: #475569; margin-bottom: 60px;">Disetujui Oleh,</p><p style="border-top: 1px solid #475569; display: inline-block; padding-top: 5px; font-weight: bold; color: #1E293B; min-width: 150px;">Perwakilan Vendor</p></td>
-            </tr>
-          </table>
+          ${buildEnterpriseSignatureHtml([
+            { roleLabel: 'Dibuat Oleh,', name: '', subtitle: 'Admin Logistik / Peralatan' },
+            { roleLabel: 'Diperiksa Oleh,', name: branding.picName, subtitle: branding.picTitle || 'Project Manager / Site Engineer' },
+            { roleLabel: 'Disetujui Oleh,', name: cleanVendorName, subtitle: 'Perwakilan Vendor Alat' },
+          ], { spaceHeightPx: 64, marginTopPx: 28 })}
         </div>
 
         <div style="margin-top: 40px; padding-top: 10px; border-top: 1px solid #E2E8F0; text-align: center; font-size: 9px; color: #94A3B8;">

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 import { ArrowLeft, Printer, History, CheckCircle2, Loader2, FileSpreadsheet, Settings, AlertTriangle, Scale, Trash2 } from 'lucide-react';
 
 export default function ProfitLossPage() {
@@ -309,7 +310,8 @@ export default function ProfitLossPage() {
 
   const formatRp = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(num || 0);
   const today = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-  const logoUrl = project?.logo_url || '';
+  const branding = resolveProjectBranding(project);
+  const logoUrl = branding.logoUrl;
 
   if (loading) return <div className="p-10 text-center font-bold text-slate-500">Memuat Laporan...</div>;
   if (!project) return <div className="p-10 text-center text-red-500">Proyek tidak ditemukan.</div>;
@@ -433,8 +435,8 @@ export default function ProfitLossPage() {
                             </td>
                           )}
                           <td style={{ verticalAlign: 'bottom' }}>
-                            <h1 style={{ fontSize: '18pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase', fontFamily: 'Times New Roman, serif' }}>{project.company_name || 'PT. BANGUN KONSTRUKSI PERSADA'}</h1>
-                            <p style={{ fontSize: '10pt', margin: '5px 0 0 0', color: '#475569' }}>Sistem ERP Konstruksi Terpadu</p>
+                            <h1 style={{ fontSize: '17pt', fontWeight: 'bold', margin: 0, textTransform: 'uppercase', fontFamily: 'Times New Roman, serif', color: '#0f172a' }}>{branding.companyName}</h1>
+                            <p style={{ fontSize: '9.5pt', margin: '4px 0 0 0', color: '#475569' }}>{branding.companyAddress}</p>
                           </td>
                         </tr>
                       </tbody>
@@ -500,20 +502,20 @@ export default function ProfitLossPage() {
               </table>
             </div>
 
-            <table style={{ width: '100%', marginTop: '40px', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', marginTop: '36px', borderCollapse: 'collapse', tableLayout: 'fixed', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <tbody>
                 <tr>
                   <td style={{ width: '50%', textAlign: 'center', verticalAlign: 'bottom' }}>
-                    <p style={{ margin: '0 0 60px 0', fontSize: '10pt' }}>Dibuat Oleh,</p>
+                    <p style={{ margin: '0 0 64px 0', fontSize: '9.5pt', color: '#475569' }}>Dibuat Oleh,</p>
                     <div style={{ display: 'inline-block', textAlign: 'center' }}>
-                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '10pt', padding: '0 15px 2px 15px', borderBottom: '1px solid #000' }}>{signatures.financeName || '........................'}</p>
+                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '10pt', padding: '0 15px 2px 15px', borderBottom: '1.25px solid #0f172a', minWidth: '170px', textTransform: 'uppercase' }}>{signatures.financeName || '........................'}</p>
                       <p style={{ margin: '4px 0 0 0', fontSize: '9pt', color: '#475569' }}>{signatures.financeTitle || 'Finance / Admin'}</p>
                     </div>
                   </td>
                   <td style={{ width: '50%', textAlign: 'center', verticalAlign: 'bottom' }}>
-                    <p style={{ margin: '0 0 60px 0', fontSize: '10pt' }}>Disetujui Oleh,</p>
+                    <p style={{ margin: '0 0 64px 0', fontSize: '9.5pt', color: '#475569' }}>Disetujui Oleh,</p>
                     <div style={{ display: 'inline-block', textAlign: 'center' }}>
-                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '10pt', padding: '0 15px 2px 15px', borderBottom: '1px solid #000' }}>{signatures.pmName || '........................'}</p>
+                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '10pt', padding: '0 15px 2px 15px', borderBottom: '1.25px solid #0f172a', minWidth: '170px', textTransform: 'uppercase' }}>{signatures.pmName || '........................'}</p>
                       <p style={{ margin: '4px 0 0 0', fontSize: '9pt', color: '#475569' }}>{signatures.pmTitle || 'Project Manager'}</p>
                     </div>
                   </td>

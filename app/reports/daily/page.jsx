@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useProject } from '../../../context/ProjectContext';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 
 export default function DailyReportPage() {
   const { activeProjectId } = useProject();
@@ -38,6 +39,8 @@ export default function DailyReportPage() {
   const startDate = projectInfo.contract_start ? new Date(projectInfo.contract_start).toLocaleDateString('id-ID') : '-';
   const endDate = projectInfo.contract_end ? new Date(projectInfo.contract_end).toLocaleDateString('id-ID') : '-';
 
+  const branding = resolveProjectBranding(projectInfo);
+
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
       
@@ -60,14 +63,25 @@ export default function DailyReportPage() {
       {/* Kertas Laporan (A4) */}
       <div className="print-container bg-white mx-auto p-8 shadow-xl border border-gray-300 text-[11px] text-black" style={{ width: '210mm', minHeight: '297mm' }}>
         
-        <h1 className="text-center font-bold text-lg mb-4 uppercase">LAPORAN HARIAN PROYEK KONSTRUKSI</h1>
+        {/* KOP SURAT OTOMATIS DARI PENGATURAN PROYEK */}
+        <div className="flex items-center gap-4 pb-3 mb-4 border-b-[3px] border-double border-slate-900">
+          {branding.logoUrl && (
+            <img src={branding.logoUrl} alt="Logo Perusahaan" className="h-14 max-w-[120px] object-contain shrink-0" />
+          )}
+          <div className={branding.logoUrl ? 'text-left flex-1' : 'text-center flex-1'}>
+            <div className="font-extrabold text-base uppercase tracking-wide text-slate-900">{branding.companyName}</div>
+            <div className="text-[10px] text-slate-600 mt-0.5">{branding.companyAddress}</div>
+          </div>
+        </div>
+
+        <h1 className="text-center font-bold text-base mb-4 uppercase tracking-wide underline">LAPORAN HARIAN PROYEK KONSTRUKSI</h1>
         
         {/* Header Info Proyek */}
         <div className="mb-6 border-b-2 border-black pb-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
               <div className="grid grid-cols-[140px_10px_1fr]"><span>Nama Paket Proyek</span><span>:</span><span className="font-bold">{projectInfo.name || '-'}</span></div>
-              <div className="grid grid-cols-[140px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span>{projectInfo.contractor_name || '-'}</span></div>
+              <div className="grid grid-cols-[140px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span>{branding.companyName}</span></div>
               <div className="grid grid-cols-[140px_10px_1fr]"><span>Konsultan Pengawas</span><span>:</span><span>{projectInfo.consultant_name || '-'}</span></div>
             </div>
             <div className="space-y-1">
@@ -188,22 +202,28 @@ export default function DailyReportPage() {
           <div className="text-right mt-1 print:hidden"><button className="text-blue-600 hover:underline">+ Tambah Baris</button></div>
         </div>
 
-        {/* Tanda Tangan */}
-        <div className="mt-12 grid grid-cols-3 gap-4 text-center">
+        {/* Tanda Tangan Profesional (Anti-Page-Break) */}
+        <div className="mt-10 grid grid-cols-3 gap-6 text-center" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
           <div>
-            <p>Diajukan Oleh, Kontraktor Pelaksana</p>
-            <div className="h-20"></div>
-            <p className="font-bold border-b border-black inline-block px-8 uppercase">{projectInfo.contractor_name || 'PT. SAKA GRAHA INDONESIA'}</p>
+            <p className="text-slate-600">Diajukan Oleh,</p>
+            <p className="font-bold uppercase text-[10px] text-slate-900">{branding.companyName}</p>
+            <div className="h-16"></div>
+            <p className="font-bold border-b border-slate-900 inline-block min-w-[140px] px-4 pb-0.5 uppercase">{branding.picName || '( ............................ )'}</p>
+            <p className="text-[10px] text-slate-600 mt-1">{branding.picTitle}</p>
           </div>
           <div>
-            <p>Diperiksa Oleh, Konsultan Pengawas</p>
-            <div className="h-20"></div>
-            <p className="font-bold border-b border-black inline-block px-8 uppercase">{projectInfo.consultant_name || 'PT. ELEMEN TIGA TIGA'}</p>
+            <p className="text-slate-600">Diperiksa Oleh,</p>
+            <p className="font-bold uppercase text-[10px] text-slate-900">{branding.consultantName}</p>
+            <div className="h-16"></div>
+            <p className="font-bold border-b border-slate-900 inline-block min-w-[140px] px-4 pb-0.5 uppercase">( ............................ )</p>
+            <p className="text-[10px] text-slate-600 mt-1">Konsultan Pengawas</p>
           </div>
           <div>
-            <p>Disetujui Oleh, Direksi Pekerjaan / PPK</p>
-            <div className="h-20"></div>
-            <p className="font-bold border-b border-black inline-block px-8 uppercase">{projectInfo.ppk_name || '( ......................... )'}</p>
+            <p className="text-slate-600">Disetujui Oleh,</p>
+            <p className="font-bold uppercase text-[10px] text-slate-900">{branding.ownerName}</p>
+            <div className="h-16"></div>
+            <p className="font-bold border-b border-slate-900 inline-block min-w-[140px] px-4 pb-0.5 uppercase">{projectInfo.ppk_name || '( ............................ )'}</p>
+            <p className="text-[10px] text-slate-600 mt-1">Direksi Pekerjaan / PPK</p>
           </div>
         </div>
 

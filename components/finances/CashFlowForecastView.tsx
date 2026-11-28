@@ -116,7 +116,7 @@ export default function CashFlowForecastView({ projectId }: { projectId: string 
               body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #0f172a; margin: 0; padding: 0; }
               
               /* CONTAINER LOCK */
-              .print-container { position: relative; min-height: 175mm; display: block; font-variant-numeric: tabular-nums; }
+              .print-container { position: relative; min-height: 176mm; display: flex; flex-direction: column; font-variant-numeric: tabular-nums; }
               
               /* KOP SURAT */
               .header-table { width: 100%; border-collapse: collapse; margin-bottom: 2px; table-layout: fixed; }
@@ -142,11 +142,11 @@ export default function CashFlowForecastView({ projectId }: { projectId: string 
               .report-table td { padding: 8px; border: 1px solid #cbd5e1; }
               
               /* SIGNATURE (ABSOLUTE FOOTER) */
-              .bottom-wrapper { position: absolute; bottom: 0; width: 100%; page-break-inside: avoid; }
+              .bottom-wrapper { margin-top: auto; padding-top: 20px; width: 100%; page-break-inside: avoid; break-inside: avoid; }
               .sig-table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; }
               .sig-table td { text-align: center; vertical-align: bottom; padding: 0 10px; }
-              .sig-space { height: 50px; }
-              .sig-name { font-weight: bold; font-size: 9.5pt; margin: 0; border-bottom: 1px solid #000; display: inline-block; min-width: 180px; padding-bottom: 2px; }
+              .sig-space { height: 64px; }
+              .sig-name { font-weight: bold; font-size: 9.5pt; margin: 0; border-bottom: 1.25px solid #0f172a; display: inline-block; min-width: 165px; padding: 0 10px 2px 10px; text-transform: uppercase; }
               .sig-title { font-size: 8pt; color: #64748b; margin: 2px 0 0 0; }
               
               .footer-meta { border-top: 1px solid #e2e8f0; padding-top: 8px; font-size: 7.5pt; color: #64748b; margin-top: 15px; }

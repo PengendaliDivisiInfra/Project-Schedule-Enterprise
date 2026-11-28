@@ -1,6 +1,7 @@
 import React from 'react';
 import { terbilang } from '@/lib/utils/spk-helper';
 import { terbilang as terbilangAngka } from '@/lib/utils/terbilang';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 
 interface SPKPrintProps {
   spk: any;
@@ -70,12 +71,14 @@ export default function SPKPrintTemplate({
     }).format(Number(val || 0));
   };
 
-  const contractorAddress =
-    project?.contractor_address ||
-    'Jl. Ketintang Baru Selatan VII No. 10, Kota Surabaya - Jawa Timur';
+  const branding = resolveProjectBranding(project);
+  const companyName = branding.companyName;
+  const companyInitials = branding.companyInitials;
+  const companyLogoUrl = branding.logoUrl;
+  const contractorAddress = branding.companyAddress;
   const kotaTTD = project?.location
     ? project.location.split(',')[0].trim()
-    : 'Kab. Pinrang';
+    : '-';
 
   const namaPihak1 =
     spk.signature_pihak_1 || project?.contractor_pic_name || 'Nama Pihak 1';
@@ -193,7 +196,7 @@ export default function SPKPrintTemplate({
         new RegExp(`(Rekening Nomor\\s*:\\s*)(${bankAcc})`, 'gi'),
         '$1<strong>$2</strong>'
       )
-      .replace(/(PT\. BANGUN KONSTRUKSI PERSADA)/gi, '<strong>$1</strong>');
+      .replace(new RegExp(`(${companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<strong>$1</strong>');
 
     const rawLines = finalParsed.split('\n');
     const elements: React.ReactNode[] = [];
@@ -660,9 +663,9 @@ export default function SPKPrintTemplate({
                 textAlign: 'left',
               }}
             >
-              {project?.logo_url ? (
+              {companyLogoUrl ? (
                 <img
-                  src={project.logo_url}
+                  src={companyLogoUrl}
                   alt="Logo"
                   style={{
                     height: '66px',
@@ -685,7 +688,7 @@ export default function SPKPrintTemplate({
                     color: '#0f172a',
                   }}
                 >
-                  BKP
+                  {companyInitials}
                 </div>
               )}
             </td>
@@ -707,7 +710,7 @@ export default function SPKPrintTemplate({
                   lineHeight: '1.15',
                 }}
               >
-                PT. BANGUN KONSTRUKSI PERSADA
+                {companyName}
               </div>
               <div
                 style={{
@@ -855,7 +858,7 @@ export default function SPKPrintTemplate({
               <span>
                 Dalam hal ini menjalankan jabatannya selaku{' '}
                 <strong>{jabatanPihak1}</strong>, bertindak untuk dan atas nama{' '}
-                <strong>PT. Bangun Konstruksi Persada</strong>, berkedudukan
+                <strong>{companyName}</strong>, berkedudukan
                 dan beralamat di {contractorAddress}, untuk selanjutnya disebut{' '}
                 <strong>PIHAK PERTAMA</strong>.
               </span>
@@ -1096,7 +1099,7 @@ export default function SPKPrintTemplate({
                     color: '#0f172a',
                   }}
                 >
-                  PT. BANGUN KONSTRUKSI PERSADA
+                  {companyName}
                 </div>
 
                 <div
@@ -1193,10 +1196,10 @@ export default function SPKPrintTemplate({
                     color: '#0f172a',
                   }}
                 >
-                  PT. BANGUN KONSTRUKSI PERSADA
+                  {companyName}
                 </div>
                 <div style={{ fontSize: '8.5pt', color: '#475569' }}>
-                  Divisi Infrastruktur
+                  {branding.projectName}
                 </div>
               </td>
             </tr>

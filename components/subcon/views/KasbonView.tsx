@@ -12,6 +12,7 @@ import { MoneyText } from '@/components/ui/MoneyText';
 import { invalidateCache } from '@/lib/utils/cache';
 import { terbilang } from '@/lib/utils/terbilang';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { resolveProjectBranding, buildEnterpriseSignatureHtml, escapePrintHtml } from '@/lib/utils/print-branding';
 import { SignatureItem } from '@/lib/types/subcon';
 import {
   Wallet,
@@ -62,12 +63,27 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
   const [printingId, setPrintingId] = useState<string | null>(null);
 
   const [showSigSettings, setShowSigSettings] = useState(false);
-  const [signatures, setSignatures] = useState<SignatureItem[]>([
-    { title: 'Pemohon (Mandor)', name: 'MANDOR LAPANGAN' },
-    { title: 'Diperiksa (Site Engineer)', name: 'SAIFUDDIN FAHMI' },
-    { title: 'Disetujui (Project Manager)', name: 'MEI SUNARKO' },
-    { title: 'Keuangan / Kasir', name: 'ADMIN KEUANGAN' },
-  ]);
+  const [signatures, setSignatures] = useState<SignatureItem[]>(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`kasbon_sig_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    const b = resolveProjectBranding(projectData);
+    return [
+      { title: 'Pemohon (Mandor)', name: '' },
+      { title: `Diperiksa (${b.picTitle || 'Site Engineer'})`, name: b.picName ? b.picName.toUpperCase() : '' },
+      { title: 'Disetujui (Project Manager)', name: '' },
+      { title: 'Keuangan / Kasir', name: '' },
+    ];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`kasbon_sig_${projectId}`, JSON.stringify(signatures));
+    }
+  }, [signatures, projectId]);
 
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -288,18 +304,11 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
         .map((line: string) => `<div>${line}</div>`)
         .join('');
 
-      const sigCells = targetData.signatures
-        .map(
-          (sig: SignatureItem) => `
-          <td style="width: ${
-            100 / targetData.signatures.length
-          }%; text-align: center; vertical-align: bottom; padding: 0 6px;">
-            <div style="font-size: 8.5pt; color: #334155; margin-bottom: 52px;">${sig.title}</div>
-            <div style="font-weight: bold; text-decoration: underline; font-size: 9pt;">${sig.name}</div>
-          </td>
-        `
-        )
-        .join('');
+      const branding = resolveProjectBranding(projectData);
+      const sigBlockHtml = buildEnterpriseSignatureHtml(
+        targetData.signatures.map((sig: SignatureItem) => ({ title: sig.title, name: sig.name })),
+        { spaceHeightPx: 64, marginTopPx: 28 }
+      );
 
       const fullHtml = `
         <!DOCTYPE html>
@@ -331,12 +340,13 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
           <body>
             <table class="kop-table">
               <tr>
-                <td>
-                  <div style="font-size: 13pt; font-weight: bold; text-transform: uppercase;">
-                    ${projectData?.company_name || 'PT BANGUN KONSTRUKSI PERSADA'}
+                ${branding.logoUrl ? `<td style="width: 78px; text-align: left; vertical-align: middle; padding-right: 12px;"><img src="${escapePrintHtml(branding.logoUrl)}" style="max-height: 54px; max-width: 120px; object-fit: contain; display: block;" /></td>` : ''}
+                <td style="text-align: ${branding.logoUrl ? 'left' : 'center'}; vertical-align: middle;">
+                  <div style="font-size: 13.5pt; font-weight: 800; text-transform: uppercase; color: #0f172a;">
+                    ${escapePrintHtml(branding.companyName)}
                   </div>
-                  <div style="font-size: 8.5pt; color: #334155;">
-                    ${projectData?.contractor_address || 'GENERAL CONTRACTOR & SUPPLIER'}
+                  <div style="font-size: 8.5pt; color: #475569; margin-top: 2px;">
+                    ${escapePrintHtml(branding.companyAddress)}
                   </div>
                 </td>
               </tr>
@@ -404,11 +414,7 @@ export function KasbonView({ projectId, projectData, spks, showToast }: KasbonVi
               Catatan: Nilai kasbon ini akan diperhitungkan sebagai pemotong pembayaran termin / opname (BAPP) periode berikutnya.
             </div>
 
-            <div class="sig-wrapper">
-              <table>
-                <tr>${sigCells}</tr>
-              </table>
-            </div>
+            ${sigBlockHtml}
           </body>
         </html>
       `;

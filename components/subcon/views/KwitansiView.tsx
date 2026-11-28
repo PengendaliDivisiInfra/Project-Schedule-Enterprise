@@ -8,6 +8,9 @@ import { useCOA } from '@/lib/hooks/useCOA';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { supabase } from '@/lib/supabase';
 import { terbilang } from '@/lib/utils/terbilang';
+import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { SignatureItem } from '@/lib/types/subcon';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 
 
 interface CoaItem {
@@ -28,6 +31,29 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showSigSettings, setShowSigSettings] = useState(false);
+  const branding = resolveProjectBranding(projectData);
+  const [signatures, setSignatures] = useState<SignatureItem[]>(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`kwitansi_sig_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [
+      { title: 'KA. Divisi Infra', name: '' },
+      { title: 'Ass. Divisi Infra', name: '' },
+      { title: 'Ka. Pembelian', name: '' },
+      { title: branding.picTitle || 'Site Engineer', name: branding.picName ? branding.picName.toUpperCase() : '' },
+      { title: 'Direktur / Mandor', name: '' },
+    ];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`kwitansi_sig_${projectId}`, JSON.stringify(signatures));
+    }
+  }, [signatures, projectId]);
   
   const { getAccountCode, loading: loadingCOA } = useCOA();
 
@@ -192,7 +218,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
             <style>
               @page { size: A4 landscape; margin: 10mm 15mm; }
               body { margin: 0; padding: 0; background: #fff; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 10pt; color: #1e293b; }
-              .container { position: relative; border: 2px solid #0f766e; border-radius: 8px; padding: 25px 35px; height: 185mm; box-sizing: border-box; page-break-inside: avoid; }
+              .container { position: relative; border: 2px solid #0f766e; border-radius: 8px; padding: 22px 32px; min-height: 185mm; display: flex; flex-direction: column; box-sizing: border-box; }
               .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border-bottom: 3px double #0f766e; padding-bottom: 10px; }
               .logo-img { height: 45px; max-width: 150px; object-fit: contain; }
               .company-name { font-size: 16pt; font-weight: 800; color: #0f172a; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.2; }
@@ -213,7 +239,7 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               .terbilang-box { background-color: #0f766e; color: white; padding: 15px 20px; border-radius: 6px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
               .terbilang-label { font-weight: bold; text-transform: uppercase; font-size: 9pt; letter-spacing: 1px; border-right: 2px solid #2dd4bf; padding-right: 15px; margin-right: 15px; }
               .terbilang-val { font-style: italic; font-weight: bold; font-size: 12pt; color: #ccfbf1; }
-              .sig-wrapper { position: absolute; bottom: 20px; left: 35px; right: 35px; }
+              .sig-wrapper { margin-top: auto; padding-top: 18px; page-break-inside: avoid; break-inside: avoid; }
               .sig-table { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: avoid; }
               .sig-table td { text-align: center; vertical-align: bottom; padding: 0 10px; border: none; }
               .sig-space { height: 65px; }
@@ -362,7 +388,20 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
             </div>
           </div>
 
-          <div className="flex justify-end pt-4 border-t border-slate-100">
+          {showSigSettings && (
+            <div className="pt-2">
+              <SignatureSettings signatures={signatures} onChange={setSignatures} colorTheme="teal" />
+            </div>
+          )}
+
+          <div className="flex flex-wrap justify-between items-center gap-3 pt-4 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setShowSigSettings((v) => !v)}
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
+            >
+              <Settings size={16} /> {showSigSettings ? 'Tutup Pengaturan TTD' : 'Atur Tanda Tangan'}
+            </button>
             <button onClick={handleSaveAndPrint} disabled={loading || isSaving} className="bg-teal-600 hover:bg-teal-700 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-md shadow-teal-500/20 transition-all disabled:opacity-50">
               {loading || isSaving ? <Loader2 className="animate-spin" size={20} /> : <Printer size={20} />} 
               {isSaving ? 'Menyimpan...' : 'Simpan & Cetak PDF Kwitansi'}
@@ -387,14 +426,14 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
                   <tr>
                     <td style={{ verticalAlign: 'bottom' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        {projectData?.logo_url ? (
-                          <img src={projectData.logo_url} alt="Logo" style={{ height: '45px', maxWidth: '150px', objectFit: 'contain' }} />
+                        {branding.logoUrl ? (
+                          <img src={branding.logoUrl} alt="Logo" style={{ height: '50px', maxWidth: '150px', objectFit: 'contain' }} />
                         ) : (
-                          <div style={{ height: '45px', width: '45px', backgroundColor: '#f1f5f9', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#94a3b8', fontSize: '10px' }}>LOGO</div>
+                          <div style={{ height: '46px', width: '46px', backgroundColor: '#f1f5f9', border: '1.5px solid #0f172a', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', color: '#0f172a', fontSize: '11px' }}>{branding.companyInitials}</div>
                         )}
                         <div>
-                          <h2 style={{ fontSize: '18pt', fontWeight: '800', textTransform: 'uppercase', margin: 0, color: '#0f172a', letterSpacing: '0.5px', lineHeight: '1.2' }}>{projectData?.company_name || 'PT. NAMA PERUSAHAAN'}</h2>
-                          <p style={{ fontSize: '9pt', fontWeight: '600', color: '#64748b', margin: '2px 0 0 0', textTransform: 'uppercase', letterSpacing: '1px' }}>general contractor & supplier</p>
+                          <h2 style={{ fontSize: '16pt', fontWeight: '800', textTransform: 'uppercase', margin: 0, color: '#0f172a', letterSpacing: '0.4px', lineHeight: '1.2' }}>{branding.companyName}</h2>
+                          <p style={{ fontSize: '8.5pt', fontWeight: '500', color: '#475569', margin: '3px 0 0 0' }}>{branding.companyAddress}</p>
                         </div>
                       </div>
                     </td>
@@ -477,39 +516,24 @@ export function KwitansiView({ projectId, projectData, spks, showToast }: { proj
               </table>
 
               <div className="sig-wrapper">
-                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', pageBreakInside: 'avoid' }}>
                   <tbody>
                     <tr>
-                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>KA. Divisi Infra</div>
-                        <div style={{ height: '60px' }}></div>
-                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>MEI SUNARKO</div>
-                      </td>
-                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Ass. Divisi Infra</div>
-                        <div style={{ height: '60px' }}></div>
-                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>ARIF DARMAWAN</div>
-                      </td>
-                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Ka. Pembelian</div>
-                        <div style={{ height: '60px' }}></div>
-                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>M. MAULIDIN</div>
-                      </td>
-                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Site Engineer</div>
-                        <div style={{ height: '60px' }}></div>
-                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f172a' }}>SAIFUDDIN FAHMI</div>
-                      </td>
-                      <td style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 10px' }}>
-                        <div style={{ fontSize: '8.5pt', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '5px' }}>Direktur / Mandor</div>
-                        <div style={{ height: '60px' }}></div>
-                        <div style={{ borderTop: '1px solid #64748b', width: '85%', margin: '0 auto 8px auto' }}></div>
-                        <div style={{ fontWeight: 'bold', fontSize: '9.5pt', color: '#0f766e' }}>{form.vendor_name || '-'}</div>
-                      </td>
+                      {signatures.map((sig, idx) => {
+                        const isVendorCol = idx === signatures.length - 1;
+                        const displayName = (isVendorCol && form.vendor_name) ? form.vendor_name : (sig.name || '( ........................ )');
+                        return (
+                          <td key={idx} style={{ textAlign: 'center', verticalAlign: 'bottom', padding: '0 8px' }}>
+                            <div style={{ fontSize: '8pt', fontWeight: 'bold', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '4px', whiteSpace: 'pre-line' }}>
+                              {sig.title}
+                            </div>
+                            <div style={{ height: '64px' }}></div>
+                            <div style={{ borderBottom: '1.25px solid #0f172a', display: 'inline-block', minWidth: '110px', padding: '0 8px 2px 8px', fontWeight: 'bold', fontSize: '9pt', color: isVendorCol ? '#0f766e' : '#0f172a', textTransform: 'uppercase' }}>
+                              {displayName}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                   </tbody>
                 </table>

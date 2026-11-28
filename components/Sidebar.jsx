@@ -22,18 +22,18 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
     isCollapsed ? 'justify-center px-0 py-3 w-12 h-12 mx-auto' : 'gap-3 px-3 py-2.5 w-full text-sm'
   }`;
   
-  const inactiveMenu = "text-slate-400 hover:bg-slate-800/50 hover:text-white";
-  const activeMenu = "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.4)] border border-indigo-500/50";
+  const inactiveMenu = "text-slate-400 hover:bg-white/[0.06] hover:text-slate-100 border border-transparent";
+  const activeMenu = "bg-gradient-to-r from-indigo-600/95 via-blue-600/95 to-indigo-600/90 text-white shadow-[0_6px_20px_-4px_rgba(79,70,229,0.55)] border border-indigo-400/35 ring-1 ring-white/10";
 
   return (
     <aside 
-      className={`bg-[#090c15] text-slate-300 flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800/60 z-50 print:hidden transition-all duration-300 ease-in-out ${
+      className={`bg-gradient-to-b from-[#070b14] via-[#0b1120] to-[#070b14] text-slate-300 flex flex-col h-screen fixed left-0 top-0 border-r border-white/[0.07] shadow-[4px_0_24px_rgba(2,6,23,0.35)] z-50 print:hidden transition-all duration-300 ease-in-out ${
         isCollapsed ? 'w-20' : 'w-64'
       }`}
     >
       
       {/* HEADER LOGO */}
-      <div className={`h-24 flex items-center border-b border-slate-800/60 shrink-0 bg-[#090c15] transition-all duration-300 ${isCollapsed ? 'justify-center px-0' : 'px-6'}`}>
+      <div className={`h-[72px] flex items-center border-b border-white/[0.07] shrink-0 bg-[#070b14]/80 backdrop-blur-md transition-all duration-300 ${isCollapsed ? 'justify-center px-0' : 'px-6'}`}>
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="absolute inset-0 bg-blue-500 blur-md opacity-20 rounded-full"></div>

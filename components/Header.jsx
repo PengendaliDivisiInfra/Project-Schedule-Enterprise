@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { Menu, Search, Bell, ChevronDown, UserCircle, Building2, HelpCircle, WifiOff, RefreshCw } from 'lucide-react';
+import { Menu, Search, Bell, ChevronDown, Building2, HelpCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
 import { useRole } from '@/lib/hooks/useRole';
 import { useEffect, useState } from 'react';
@@ -95,8 +95,16 @@ export default function Header({ toggleSidebar, currentUser, openSearch }) {
     role ||
     'Member';
 
+  const userInitials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase() || 'U';
+
   return (
-    <header className="h-[72px] bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center justify-between px-6 sticky top-0 z-40 print:hidden transition-all">
+    <header className="h-[72px] bg-white/85 backdrop-blur-xl border-b border-slate-200/75 shadow-[0_1px_3px_rgba(15,23,42,0.03)] flex items-center justify-between px-6 sticky top-0 z-40 print:hidden transition-all">
       <div className="flex items-center gap-4">
         <button
           onClick={toggleSidebar}
@@ -113,10 +121,13 @@ export default function Header({ toggleSidebar, currentUser, openSearch }) {
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="group flex items-center gap-3 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-full transition-all shadow-sm hover:shadow-md"
           >
-            <div className="p-1.5 bg-indigo-100/50 text-indigo-600 rounded-full group-hover:bg-indigo-100 transition-colors">
+            <div className="relative p-1.5 bg-indigo-50 text-indigo-600 rounded-full group-hover:bg-indigo-100 transition-colors">
               <Building2 size={14} />
+              {activeProject && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full ring-2 ring-white" />
+              )}
             </div>
-            <span className="text-sm font-bold text-slate-700 max-w-[180px] truncate">
+            <span className="text-sm font-bold text-slate-800 max-w-[210px] truncate">
               {activeProject ? activeProject.name : 'Pilih Proyek'}
             </span>
             <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -205,9 +216,9 @@ export default function Header({ toggleSidebar, currentUser, openSearch }) {
               {displayRole}
             </div>
           </div>
-          <div className="p-0.5 bg-gradient-to-tr from-indigo-500 to-blue-500 rounded-full shadow-sm group-hover:shadow-md transition-all">
-            <div className="bg-white p-0.5 rounded-full">
-              <UserCircle size={32} className="text-slate-700" />
+          <div className="p-[2px] bg-gradient-to-tr from-indigo-600 via-blue-500 to-cyan-400 rounded-full shadow-sm group-hover:shadow-md group-hover:scale-[1.03] transition-all">
+            <div className="w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-extrabold tracking-wider">
+              {userInitials}
             </div>
           </div>
         </Link>
