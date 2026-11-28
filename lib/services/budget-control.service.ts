@@ -138,6 +138,9 @@ export async function submitBudgetedCashFlow(payload: SubmitBudgetedCashFlowInpu
     if (String(error.message || '').includes('BUDGET_EXCEEDED')) {
       throw new Error(error.message.replace(/^BUDGET_EXCEEDED:\s*/i, ''));
     }
+    if (String(error.message || '').includes('RING_FENCED_DEFICIT')) {
+      throw new Error(error.message.replace(/^RING_FENCED_DEFICIT:\s*/i, ''));
+    }
     if (error.code === '42883' || String(error.message || '').includes('rpc_submit_budgeted_cashflow')) {
       const { data: fallbackRow, error: fbErr } = await supabase
         .from('cash_flows')

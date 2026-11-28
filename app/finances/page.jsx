@@ -2,8 +2,8 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import { saveToCache, getFromCache } from '../../lib/utils/cache'; // IMPORT CACHE
-import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck, Trash2, Activity, TrendingUp, TrendingDown, Banknote, FileText, Users, Info } from 'lucide-react';
+import { saveToCache, getFromCache, invalidateCache } from '../../lib/utils/cache'; // IMPORT CACHE
+import { Wallet, ArrowDownCircle, ArrowUpCircle, Plus, X, Loader2, Save, CheckCircle2, UploadCloud, AlertTriangle, ShieldCheck, Trash2, Activity, TrendingUp, TrendingDown, Banknote, FileText, Users, Info, KeyRound } from 'lucide-react';
 import { useProject } from '../../context/ProjectContext';
 import { useRole } from '@/lib/hooks/useRole';
 import { 
@@ -16,8 +16,10 @@ import {
   getWbsBudget3Layer,
   submitBudgetedCashFlow,
 } from '@/lib/services/budget-control.service';
-import { listApprovalRules } from '@/lib/services/approval-rules.service';
-import { resolveApprovalMatrix } from '@/lib/utils/budget-control';
+import { listApprovalRules, processTieredApproval } from '@/lib/services/approval-rules.service';
+import { getMfaStatus, verifyTotpCode } from '@/lib/services/mfa.service';
+import { recordAuditEvent } from '@/lib/services/logs.service';
+import { resolveApprovalMatrix, canRoleApproveStep } from '@/lib/utils/budget-control';
 import {
   getRingFencedCashflow,
   listContractChangeOrders,
@@ -29,10 +31,10 @@ export default function CashFlowPage() {
   const { userRole, activeProjectId } = useProject(); 
   const projectId = activeProjectId; 
 
-  const { can } = useRole();
-  const canAddTransaction = can('CREATE_PO') || userRole === 'owner' || userRole === 'pm'; 
-  const canApprove = userRole === 'pm' || userRole === 'owner'; 
-  const canVoid = userRole === 'owner' || userRole === 'pm' || userRole === 'finance';
+  const { can, globalRole, projectRole, role } = useRole(projectId || undefined);
+  const canAddTransaction = can('CREATE_PO');
+  const canApprove = can('APPROVE_FINANCE');
+  const canVoid = can('VOID_PAYMENT') || can('APPROVE_FINANCE');
   
   const [flows, setFlows] = useState([]);
   const [tasks, setTasks] = useState([]); 
@@ -68,6 +70,13 @@ export default function CashFlowPage() {
   const [voidTarget, setVoidTarget] = useState(null);
   const [voidReason, setVoidReason] = useState('');
   const [isVoiding, setIsVoiding] = useState(false);
+
+  // MFA 2FA Approver Challenge State (konsisten dengan /approvals)
+  const [mfaStatus, setMfaStatus] = useState(null);
+  const [mfaModalOpen, setMfaModalOpen] = useState(false);
+  const [mfaOtp, setMfaOtp] = useState('');
+  const [verifyingMfa, setVerifyingMfa] = useState(false);
+  const [pendingApprovalAction, setPendingApprovalAction] = useState(null);
 
   const [formData, setFormData] = useState({
     type: 'OUT', category: 'Material', description: '', amount: 0, 
@@ -250,7 +259,8 @@ export default function CashFlowPage() {
   };
 
   useEffect(() => { 
-    if (projectId) fetchData(); 
+    if (projectId) fetchData();
+    getMfaStatus().then(setMfaStatus).catch(() => {});
   }, [projectId]);
 
   const handleWbsChange = (e) => {
@@ -261,27 +271,106 @@ export default function CashFlowPage() {
     setSelectedWbsBudget(wbsData ? wbsData.sisa_anggaran_plafon : null);
   };
 
-  const handleApprove = async (id) => {
-    if (!navigator.onLine) return showToast('danger', 'Tidak bisa approve saat offline.');
-    const { error } = await supabase.from('cash_flows').update({ approval_status: 'Approved' }).eq('id', id);
-    if (!error) { showToast('success', 'Transaksi di-approve!'); fetchData(); }
+  const executeTieredDecision = async (id, decision) => {
+    if (!projectId) return;
+    const prevRow = flows.find((row) => row.id === id) || null;
+    try {
+      const res = await processTieredApproval({
+        recordId: id,
+        projectId,
+        decision,
+        reason: decision === 'Rejected' ? 'Ditolak dari Ledger Arus Kas' : null,
+      });
+
+      await recordAuditEvent({
+        projectId,
+        tableName: 'cash_flows',
+        action: decision === 'Approved' ? 'APPROVE' : 'REJECT',
+        recordId: id,
+        oldData: prevRow
+          ? {
+              approval_status: prevRow.approval_status,
+              current_approval_step: prevRow.current_approval_step || 1,
+              amount: prevRow.amount,
+            }
+          : null,
+        newData: res,
+      });
+
+      invalidateCache(`finances_${projectId}`);
+      if (res.approval_status === 'Pending' && res.next_required_role) {
+        showToast(
+          'success',
+          `Tahap disetujui! Dilanjutkan ke Tahap ${res.current_approval_step}/${res.required_approval_steps} (${res.next_required_role}).`
+        );
+      } else {
+        showToast(decision === 'Approved' ? 'success' : 'danger', `Transaksi berhasil di-${res.approval_status}!`);
+      }
+      fetchData();
+    } catch (err) {
+      showToast('danger', err?.message || 'Gagal memproses persetujuan berjenjang.');
+    }
   };
 
-  const handleReject = async (id) => {
-    if (!navigator.onLine) return showToast('danger', 'Tidak bisa reject saat offline.');
-    const { error } = await supabase.from('cash_flows').update({ approval_status: 'Rejected' }).eq('id', id);
-    if (!error) { showToast('danger', 'Transaksi ditolak.'); fetchData(); }
+  const triggerApprovalDecision = async (id, decision) => {
+    if (!navigator.onLine) return showToast('danger', 'Tidak bisa memproses persetujuan saat offline.');
+    if (!canApprove) return showToast('danger', 'Akses ditolak: Hanya Approver yang berwenang.');
+
+    if (mfaStatus?.needsChallenge && mfaStatus.verifiedFactors?.[0]?.id) {
+      setPendingApprovalAction({ id, decision });
+      setMfaOtp('');
+      setMfaModalOpen(true);
+      return;
+    }
+
+    await executeTieredDecision(id, decision);
   };
+
+  const handleVerifyMfaAndApprove = async (e) => {
+    e.preventDefault();
+    const factorId = mfaStatus?.verifiedFactors?.[0]?.id;
+    if (!factorId || !pendingApprovalAction) return;
+
+    setVerifyingMfa(true);
+    try {
+      await verifyTotpCode(factorId, mfaOtp);
+      const updated = await getMfaStatus();
+      setMfaStatus(updated);
+      setMfaModalOpen(false);
+      await executeTieredDecision(pendingApprovalAction.id, pendingApprovalAction.decision);
+      setPendingApprovalAction(null);
+    } catch (err) {
+      showToast('danger', err?.message || 'Verifikasi 2FA gagal.');
+    } finally {
+      setVerifyingMfa(false);
+    }
+  };
+
+  const handleApprove = (id) => triggerApprovalDecision(id, 'Approved');
+  const handleReject = (id) => triggerApprovalDecision(id, 'Rejected');
 
   const handleVoid = async () => {
     if (!navigator.onLine) return showToast('danger', 'Tidak bisa void saat offline.');
     if (!voidTarget || !voidReason.trim()) return showToast('danger', 'Alasan VOID wajib diisi!');
     setIsVoiding(true);
     try {
+      const voidedAt = new Date().toISOString();
       const { error } = await supabase.from('cash_flows')
-        .update({ voided_at: new Date().toISOString(), void_reason: voidReason })
-        .eq('id', voidTarget.id);
+        .update({ voided_at: voidedAt, void_reason: voidReason })
+        .eq('id', voidTarget.id)
+        .eq('project_id', projectId);
       if (error) throw error;
+
+      await recordAuditEvent({
+        projectId,
+        tableName: 'cash_flows',
+        action: 'VOID',
+        recordId: voidTarget.id,
+        oldData: { amount: voidTarget.amount, approval_status: voidTarget.approval_status },
+        newData: { voided_at: voidedAt, void_reason: voidReason },
+      });
+
+      invalidateCache(`finances_${projectId}`);
       showToast('success', 'Transaksi berhasil dibatalkan (VOID).');
       setVoidTarget(null); setVoidReason(''); fetchData();
     } catch (err) { showToast('danger', err.message); } finally { setIsVoiding(false); }
@@ -566,11 +655,27 @@ export default function CashFlowPage() {
                     <td className="p-3 text-center">
                       {f.voided_at ? (
                         <span className="text-xs text-slate-400 italic">Dibatalkan</span>
-                      ) : f.approval_status === 'Pending' && canApprove ? (
-                        <div className="flex gap-2 justify-center">
-                          <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title="Approve"><ShieldCheck size={14}/></button>
-                          <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
-                        </div>
+                      ) : ['Pending', 'Pending Overbudget'].includes(f.approval_status) && canApprove ? (
+                        (() => {
+                          const chain = Array.isArray(f.approval_chain) && f.approval_chain.length > 0 ? f.approval_chain : ['Project Manager'];
+                          const totalSteps = f.required_approval_steps || chain.length;
+                          const currStep = Math.min(Math.max(1, f.current_approval_step || 1), totalSteps);
+                          const reqRole = chain[currStep - 1] || 'Project Manager';
+                          const eligible = canRoleApproveStep(reqRole, { globalRole, projectRole: projectRole || role });
+                          return eligible ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="flex gap-2 justify-center">
+                                <button onClick={() => handleApprove(f.id)} className="bg-green-100 text-green-700 hover:bg-green-200 px-2 py-1 rounded text-xs font-bold" title={`Approve Tahap ${currStep}/${totalSteps} (${reqRole})`}><ShieldCheck size={14}/></button>
+                                <button onClick={() => handleReject(f.id)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-xs font-bold" title="Reject"><X size={14}/></button>
+                              </div>
+                              {totalSteps > 1 && (
+                                <span className="text-[9px] font-bold text-indigo-600">Tahap {currStep}/{totalSteps}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic" title={`Menunggu ${reqRole}`}>Tahap {currStep}/{totalSteps}</span>
+                          );
+                        })()
                       ) : f.approval_status === 'Approved' && canVoid ? (
                         <button onClick={() => setVoidTarget(f)} className="bg-slate-100 text-slate-500 hover:bg-red-100 hover:text-red-600 px-2 py-1 rounded text-xs font-bold transition-colors" title="Batalkan (VOID)"><Trash2 size={14}/></button>
                       ) : '-'}
@@ -1034,6 +1139,53 @@ export default function CashFlowPage() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* MODAL VERIFIKASI 2FA TOTP APPROVER (LEDGER) */}
+      {mfaModalOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <form onSubmit={handleVerifyMfaAndApprove} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden p-6 space-y-4">
+            <div className="text-center">
+              <div className="w-12 h-12 mx-auto rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3">
+                <KeyRound size={22} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-800">Verifikasi 2FA Approver</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Masukkan 6 digit kode dari aplikasi Authenticator untuk menandatangani persetujuan transaksi kas ini.
+              </p>
+            </div>
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              required
+              autoFocus
+              value={mfaOtp}
+              onChange={(e) => setMfaOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              className="w-full border border-slate-300 rounded-xl py-3 text-center font-mono text-2xl tracking-[0.4em] focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMfaModalOpen(false);
+                  setPendingApprovalAction(null);
+                }}
+                className="flex-1 py-2.5 text-sm font-bold text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={verifyingMfa || mfaOtp.length !== 6}
+                className="flex-1 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {verifyingMfa ? <Loader2 className="animate-spin" size={16} /> : 'Verifikasi'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useProject } from '../context/ProjectContext';
 import { 
   Building2,
   LayoutDashboard, Calendar, ListTodo, FileText, Activity, AlertTriangle, 
@@ -13,7 +14,9 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
   const pathname = usePathname();
   const isActive = (path) => pathname === path;
   const isPathIncludes = (path) => pathname.includes(path);
-  const projectId = activeProjectId || '886c80c3-4151-4c37-82e7-58a2460af645';
+  const { activeProjectId: ctxProjectId } = useProject();
+  const resolvedProjectId = activeProjectId || ctxProjectId || null;
+  const projectHref = (subpath) => (resolvedProjectId ? `/projects/${resolvedProjectId}${subpath}` : '/projects');
 
   const baseMenu = `flex items-center rounded-xl transition-all duration-300 group ${
     isCollapsed ? 'justify-center px-0 py-3 w-12 h-12 mx-auto' : 'gap-3 px-3 py-2.5 w-full text-sm'
@@ -79,11 +82,11 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
         <div>
           {!isCollapsed && <p className="px-3 text-[10px] font-bold text-slate-600 uppercase tracking-[0.2em] mb-3">Pelaporan</p>}
           <div className="space-y-1.5">
-            <Link href={`/projects/${projectId}/reports/master`} title="Laporan Induk" className={`${baseMenu} ${isPathIncludes('/reports/master') ? activeMenu : inactiveMenu}`}>
+            <Link href={projectHref('/reports/master')} title="Laporan Induk" className={`${baseMenu} ${isPathIncludes('/reports/master') ? activeMenu : inactiveMenu}`}>
               <FileText size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Laporan Induk</span>}
             </Link>
-            <Link href={`/projects/${projectId}/reports/pnl`} title="Laba Rugi (P&L)" className={`${baseMenu} ${isPathIncludes('/reports/pnl') ? activeMenu : inactiveMenu}`}>
+            <Link href={projectHref('/reports/pnl')} title="Laba Rugi (P&L)" className={`${baseMenu} ${isPathIncludes('/reports/pnl') ? activeMenu : inactiveMenu}`}>
               <FileSpreadsheet size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Laba Rugi (P&L)</span>}
             </Link>
@@ -110,7 +113,7 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
               <Package size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Kebutuhan Material</span>}
             </Link>
-            <Link href={`/projects/${projectId}/equipment/fuel`} title="Alat & BBM" className={`${baseMenu} ${isPathIncludes('/equipment') ? activeMenu : inactiveMenu}`}>
+            <Link href={projectHref('/equipment/fuel')} title="Alat & BBM" className={`${baseMenu} ${isPathIncludes('/equipment') ? activeMenu : inactiveMenu}`}>
               <Fuel size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Alat & BBM</span>}
             </Link>
@@ -126,11 +129,11 @@ export default function Sidebar({ activeProjectId, isCollapsed }) {
               <Coins size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Arus Kas</span>}
             </Link>
-            <Link href={`/projects/${projectId}/termin`} title="Termin / Kas Masuk" className={`${baseMenu} ${isPathIncludes('/termin') ? activeMenu : inactiveMenu}`}>
+            <Link href={projectHref('/termin')} title="Termin / Kas Masuk" className={`${baseMenu} ${isPathIncludes('/termin') ? activeMenu : inactiveMenu}`}>
               <FileCheck size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Termin / Kas Masuk</span>}
             </Link>
-            <Link href={`/projects/${projectId}/subcontractors`} title="Subkontraktor" className={`${baseMenu} ${isPathIncludes('/subcontractors') ? activeMenu : inactiveMenu}`}>
+            <Link href={projectHref('/subcontractors')} title="Subkontraktor" className={`${baseMenu} ${isPathIncludes('/subcontractors') ? activeMenu : inactiveMenu}`}>
               <Users size={20} className="shrink-0 transition-transform group-hover:scale-110" /> 
               {!isCollapsed && <span>Subkontraktor</span>}
             </Link>

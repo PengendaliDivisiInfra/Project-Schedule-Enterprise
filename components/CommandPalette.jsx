@@ -1,69 +1,108 @@
-﻿'use client';
+'use client';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../lib/supabase';
-import { 
-  Search, LayoutDashboard, GanttChartSquare, ListTree, TrendingUp, 
-  FileText, CalendarDays, Box, Package, Users, Database, Settings, ShieldCheck, X 
+import { useProject } from '../context/ProjectContext';
+import { useRole } from '@/lib/hooks/useRole';
+import {
+  Search, LayoutDashboard, GanttChartSquare, ListTree, TrendingUp,
+  FileText, CalendarDays, Box, Package, Users, Database, Settings, ShieldCheck, X,
+  Coins, FileDiff, Award, GitBranch, KeyRound, HardHat, FileCheck, Fuel
 } from 'lucide-react';
 
-export default function CommandPalette({ isOpen, setIsOpen, currentUser }) {
+export default function CommandPalette({ isOpen, setIsOpen, activeProjectId: propProjectId }) {
   const router = useRouter();
+  const { activeProjectId: ctxProjectId } = useProject();
+  const activeProjectId = propProjectId || ctxProjectId || null;
+  const { can } = useRole(activeProjectId || undefined);
+
   const [query, setQuery] = useState('');
   const [tasks, setTasks] = useState([]);
+  const [loadedProjectId, setLoadedProjectId] = useState(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
 
-  const role = currentUser?.role || 'pelaksana';
+  const projectHref = (subpath) => (activeProjectId ? `/projects/${activeProjectId}${subpath}` : '/projects');
 
-  // Menu Navigasi (Di-filter berdasarkan RBAC)
   const allMenus = [
-    { name: 'Dashboard S-Curve', path: '/dashboard', icon: LayoutDashboard, roles: ['owner', 'admin', 'pelaksana'], type: 'Navigasi' },
-    { name: 'Gantt Workspace', path: '/gantt', icon: GanttChartSquare, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Tasks (WBS)', path: '/tasks', icon: ListTree, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Progress Harian', path: '/progress', icon: TrendingUp, roles: ['owner', 'admin', 'pelaksana'], type: 'Navigasi' },
-    { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'AHSP PUPR', path: '/ahsp', icon: Box, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Resources', path: '/resources', icon: Users, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'HSD', path: '/hsd', icon: Package, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Assignments', path: '/assignments', icon: Database, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Database Proyek', path: '/projects', icon: Database, roles: ['owner'], type: 'Navigasi' },
-    { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, roles: ['owner', 'admin'], type: 'Navigasi' },
-    { name: 'Audit Logs', path: '/logs', icon: ShieldCheck, roles: ['owner'], type: 'Navigasi' },
+    { name: 'Dasbor S-Curve', path: '/dashboard', icon: LayoutDashboard, type: 'Navigasi', allowed: true },
+    { name: 'Ruang Kerja Gantt', path: '/gantt', icon: GanttChartSquare, type: 'Navigasi', allowed: true },
+    { name: 'Tugas (WBS)', path: '/tasks', icon: ListTree, type: 'Navigasi', allowed: true },
+    { name: 'Progres Harian (Offline & Foto)', path: '/progress', icon: TrendingUp, type: 'Navigasi', allowed: true },
+    { name: 'Arus Kas & Kontrol Anggaran 3-Layer', path: '/finances', icon: Coins, type: 'Keuangan', allowed: true },
+    { name: 'Termin, BAKP & Bank Garansi', path: projectHref('/termin'), icon: FileCheck, type: 'Keuangan', allowed: can('TERMIN_VIEW') },
+    { name: 'Addendum / CCO & Versi RAB', path: '/change-orders', icon: FileDiff, type: 'Keuangan', allowed: true },
+    { name: 'Alur Persetujuan (Approver)', path: '/approvals', icon: ShieldCheck, type: 'Persetujuan', allowed: true },
+    { name: 'Matriks Approval Dinamis', path: '/settings/approval-matrix', icon: GitBranch, type: 'Pengaturan', allowed: true },
+    { name: 'Material, PR, PO & 3-Way Match', path: '/materials', icon: Package, type: 'Pengadaan', allowed: true },
+    { name: 'Kepatuhan Vendor, Blacklist & Scorecard', path: '/vendors/compliance', icon: Award, type: 'Pengadaan', allowed: true },
+    { name: 'Alat Berat, Accrual & Custody QR Aset', path: projectHref('/equipment/custody'), icon: Fuel, type: 'Operasional', allowed: true },
+    { name: 'QHSE & JSA / Work Permit Gate', path: '/qhse', icon: HardHat, type: 'HSE / K3', allowed: true },
+    { name: 'Manpower, Absensi & Payroll', path: '/manpower', icon: Users, type: 'SDM', allowed: true },
+    { name: 'Subkontraktor & SPK', path: projectHref('/subcontractors'), icon: Users, type: 'Pengadaan', allowed: true },
+    { name: 'AHSP PUPR', path: '/ahsp', icon: Box, type: 'Engineering', allowed: true },
+    { name: 'HSD (Harga Satuan)', path: '/hsd', icon: Package, type: 'Engineering', allowed: true },
+    { name: 'Laporan Harian', path: '/reports/daily', icon: FileText, type: 'Laporan', allowed: true },
+    { name: 'Laporan Mingguan', path: '/reports/weekly', icon: CalendarDays, type: 'Laporan', allowed: true },
+    { name: 'Keamanan Akun & 2FA TOTP', path: '/settings/security', icon: KeyRound, type: 'Keamanan', allowed: true },
+    { name: 'Log Audit (Immutable)', path: '/logs', icon: ShieldCheck, type: 'Keamanan', allowed: true },
+    { name: 'Manajemen Proyek', path: '/projects', icon: Database, type: 'Sistem', allowed: true },
+    { name: 'Kalender Kerja', path: '/settings/calendar', icon: Settings, type: 'Pengaturan', allowed: true },
   ];
 
-  const visibleMenus = allMenus.filter(m => m.roles.includes(role));
+  const visibleMenus = allMenus.filter((m) => m.allowed);
 
-  // Fetch Tasks untuk pencarian (hanya jika user membuka palette)
+  // Reset cache task saat proyek aktif berubah agar WBS antar-proyek tidak pernah tercampur
+  useEffect(() => {
+    setTasks([]);
+    setLoadedProjectId(null);
+  }, [activeProjectId]);
+
+  // Fetch WBS Tasks khusus proyek aktif saja
   useEffect(() => {
     if (isOpen) {
       inputRef.current?.focus();
-      if (tasks.length === 0) {
-        supabase.from('wbs_tasks').select('id, wbs_code, name').then(({ data }) => {
-          if (data) setTasks(data.map(t => ({ name: `[${t.wbs_code}] ${t.name}`, path: `/tasks?search=${t.wbs_code}`, icon: ListTree, type: 'Task' })));
-        });
+      if (activeProjectId && loadedProjectId !== activeProjectId) {
+        supabase
+          .from('wbs_tasks')
+          .select('id, wbs_code, name')
+          .eq('project_id', activeProjectId)
+          .order('wbs_code')
+          .then(({ data }) => {
+            if (data) {
+              setTasks(
+                data.map((t) => ({
+                  name: `[${t.wbs_code}] ${t.name}`,
+                  path: `/tasks?search=${encodeURIComponent(t.wbs_code)}`,
+                  icon: ListTree,
+                  type: 'Task WBS',
+                }))
+              );
+              setLoadedProjectId(activeProjectId);
+            }
+          });
       }
     } else {
       setQuery('');
       setSelectedIndex(0);
     }
-  }, [isOpen]);
+  }, [isOpen, activeProjectId, loadedProjectId]);
 
-  // Kombinasi Hasil Pencarian
   const allResults = [...visibleMenus, ...tasks];
-  const filteredResults = query === '' 
-    ? visibleMenus.slice(0, 5) // Tampilkan 5 menu default jika kosong
-    : allResults.filter(item => item.name.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+  const filteredResults =
+    query === ''
+      ? visibleMenus.slice(0, 7)
+      : allResults
+          .filter((item) => item.name.toLowerCase().includes(query.toLowerCase()))
+          .slice(0, 10);
 
-  // Keyboard Navigation (Panah Atas/Bawah & Enter)
   const handleKeyDown = (e) => {
-    if (e.key === 'ArrowDown') {
+    if (e.key === 'ArrowDown' && filteredResults.length > 0) {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % filteredResults.length);
-    } else if (e.key === 'ArrowUp') {
+      setSelectedIndex((prev) => (prev + 1) % filteredResults.length);
+    } else if (e.key === 'ArrowUp' && filteredResults.length > 0) {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredResults.length) % filteredResults.length);
+      setSelectedIndex((prev) => (prev - 1 + filteredResults.length) % filteredResults.length);
     } else if (e.key === 'Enter' && filteredResults.length > 0) {
       e.preventDefault();
       handleSelect(filteredResults[selectedIndex]);
@@ -80,48 +119,69 @@ export default function CommandPalette({ isOpen, setIsOpen, currentUser }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh] bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={() => setIsOpen(false)}>
-      <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl overflow-hidden animate-scale-in border border-slate-200" onClick={e => e.stopPropagation()}>
-        
-        {/* Search Input */}
+    <div
+      className="fixed inset-0 z-[9999] flex items-start justify-center pt-[14vh] bg-slate-900/40 backdrop-blur-sm animate-fade-in"
+      onClick={() => setIsOpen(false)}
+    >
+      <div
+        className="bg-white w-full max-w-xl rounded-xl shadow-2xl overflow-hidden animate-scale-in border border-slate-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center px-4 border-b border-slate-100 bg-slate-50/50">
           <Search size={20} className="text-slate-400" />
           <input
             ref={inputRef}
             type="text"
-            placeholder="Cari menu, task, atau WBS..."
+            placeholder="Cari menu enterprise, task, atau kode WBS proyek aktif..."
             value={query}
-            onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setSelectedIndex(0);
+            }}
             onKeyDown={handleKeyDown}
             className="w-full px-4 py-4 bg-transparent outline-none text-slate-800 placeholder-slate-400"
           />
-          <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-400">
+          <button
+            onClick={() => setIsOpen(false)}
+            className="p-1 hover:bg-slate-200 rounded-md transition-colors text-slate-400"
+          >
             <X size={18} />
           </button>
         </div>
 
-        {/* Results List */}
         <div className="max-h-[60vh] overflow-y-auto p-2">
           {filteredResults.length === 0 ? (
-            <div className="text-center py-10 text-slate-500 text-sm">Tidak ada hasil yang ditemukan untuk "{query}"</div>
+            <div className="text-center py-10 text-slate-500 text-sm">
+              Tidak ada hasil yang ditemukan untuk "{query}"
+            </div>
           ) : (
             filteredResults.map((item, index) => {
               const Icon = item.icon;
               const isSelected = index === selectedIndex;
               return (
                 <button
-                  key={index}
+                  key={`${item.path}-${index}`}
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setSelectedIndex(index)}
-                  className={`w-full flex items-center justify-between px-3 py-3 rounded-lg text-left transition-colors ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'text-slate-700 hover:bg-slate-100'}`}
+                  className={`w-full flex items-center justify-between px-3 py-3 rounded-lg text-left transition-colors ${
+                    isSelected ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-700 hover:bg-slate-100'
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-1.5 rounded-md ${isSelected ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`p-1.5 rounded-md shrink-0 ${
+                        isSelected ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
                       <Icon size={16} />
                     </div>
-                    <span className="font-medium text-sm">{item.name}</span>
+                    <span className="font-medium text-sm truncate">{item.name}</span>
                   </div>
-                  <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded ${isSelected ? 'bg-blue-700 text-blue-200' : 'bg-slate-100 text-slate-400'}`}>
+                  <span
+                    className={`text-[10px] uppercase font-bold px-2 py-1 rounded shrink-0 ml-2 ${
+                      isSelected ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 text-slate-400'
+                    }`}
+                  >
                     {item.type}
                   </span>
                 </button>
@@ -130,13 +190,13 @@ export default function CommandPalette({ isOpen, setIsOpen, currentUser }) {
           )}
         </div>
 
-        {/* Footer Palette */}
         <div className="bg-slate-50 border-t border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-500">
           <div className="flex gap-4">
             <span><kbd className="bg-white border border-slate-300 rounded px-1.5 py-0.5 mr-1">↑↓</kbd> Navigasi</span>
             <span><kbd className="bg-white border border-slate-300 rounded px-1.5 py-0.5 mr-1">Enter</kbd> Pilih</span>
             <span><kbd className="bg-white border border-slate-300 rounded px-1.5 py-0.5 mr-1">Esc</kbd> Tutup</span>
           </div>
+          <span className="text-[11px] text-slate-400">Filter Proyek Aktif</span>
         </div>
       </div>
     </div>

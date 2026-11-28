@@ -264,7 +264,6 @@ export default function QhsePage() {
             </div>
           </div>
         )}
-      </div>
 
         {/* TAB CONTENT: JSA & WORK PERMIT COMPLIANCE GATE */}
         {activeTab === 'permits' && activeProjectId && (
@@ -272,6 +271,7 @@ export default function QhsePage() {
             <HsePermitGateManager projectId={activeProjectId} showToast={showToast} />
           </div>
         )}
+      </div>
 
       {/* MODAL QA/QC */}
       {isQcModalOpen && (
