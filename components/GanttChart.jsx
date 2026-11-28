@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 export default function GanttChart({ tasks }) {
   if (!tasks || tasks.length === 0) {
