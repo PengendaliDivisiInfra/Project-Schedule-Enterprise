@@ -121,6 +121,8 @@ export default function WeeklyReportPage() {
     return { rows, contractValue, totalPctKumulatif };
   }, [tasks, records, dateStart, dateEnd, prevDateStart, prevDateEnd, projectInfo.contract_value]);
 
+  const branding = resolveProjectBranding(projectInfo);
+
   if (loading) return <LoadingSpinner text="Menyusun laporan..." />;
 
   return (
