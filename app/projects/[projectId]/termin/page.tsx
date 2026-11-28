@@ -24,7 +24,7 @@ import { Plus, FileText, CheckCircle, Landmark, Pencil, AlertTriangle } from 'lu
 export default function TerminPage() {
   const params = useParams();
   const projectId = params?.projectId as string;
-  const { can } = useRole();
+  const { can, loading: roleLoading } = useRole(projectId);
 
   const [contract, setContract] = useState<ClientContract | null>(null);
   const [termins, setTermins] = useState<ProjectTermin[]>([]);
@@ -96,6 +96,16 @@ export default function TerminPage() {
     setSelectedTermin(termin);
     setIsPencairanModalOpen(true);
   };
+
+  if (roleLoading) {
+    return (
+      <div className="p-6 w-full bg-slate-50 min-h-screen">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <SkeletonLoader rows={6} cols={5} />
+        </div>
+      </div>
+    );
+  }
 
   if (!can('TERMIN_VIEW')) {
     return <div className="p-8 text-center text-red-500 font-bold">Anda tidak memiliki akses ke modul Termin.</div>;
