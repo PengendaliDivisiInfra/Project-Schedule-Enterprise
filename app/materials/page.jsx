@@ -35,20 +35,50 @@ export default function MaterialsPage() {
     setLoading(true);
     try {
       const { data: tasks } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId);
-      
-      const { data, error } = await supabase.from('task_material_requirements')
-        .select(`
-          id, volume_requirement, waste_factor, actual_requirement,
-          wbs_tasks ( name, wbs_code, duration ),
-          master_hsd ( id, nama_item, satuan, harga_dasar )
-        `)
-        .order('created_at', { ascending: false });
+      const safeTasks = tasks || [];
+      const taskIds = safeTasks.map(t => t.id).filter(Boolean);
+
+      let data = [];
+      if (taskIds.length > 0) {
+        const reqRes = await supabase.from('task_material_requirements')
+          .select(`
+            id, task_id, volume_requirement, waste_factor, actual_requirement,
+            wbs_tasks!inner ( id, project_id, name, wbs_code, duration ),
+            master_hsd ( id, nama_item, satuan, harga_dasar )
+          `)
+          .eq('wbs_tasks.project_id', activeProjectId)
+          .order('created_at', { ascending: false });
+
+        if (!reqRes.error && reqRes.data) {
+          data = reqRes.data;
+        } else {
+          const fallbackRes = await supabase.from('task_material_requirements')
+            .select(`
+              id, task_id, volume_requirement, waste_factor, actual_requirement,
+              wbs_tasks ( id, project_id, name, wbs_code, duration ),
+              master_hsd ( id, nama_item, satuan, harga_dasar )
+            `)
+            .in('task_id', taskIds)
+            .order('created_at', { ascending: false });
+          data = fallbackRes.data || [];
+        }
+      }
 
       const { data: inventoryData } = await supabase.from('inventory_materials').select('*').eq('project_id', activeProjectId);
 
-      if (data && tasks) {
-        const processedMat = data.map(mat => {
-          const task = tasks.find(t => t.wbs_code === mat.wbs_tasks?.wbs_code);
+      if (safeTasks.length === 0 || data.length === 0) {
+        setMaterials([]);
+      } else {
+        const processedMat = data
+          .filter(mat => {
+            const relTaskId = mat.task_id || mat.wbs_tasks?.id;
+            if (relTaskId) return safeTasks.some(t => t.id === relTaskId);
+            return safeTasks.some(t => t.wbs_code === mat.wbs_tasks?.wbs_code);
+          })
+          .map(mat => {
+            const relTaskId = mat.task_id || mat.wbs_tasks?.id;
+            const task = safeTasks.find(t => relTaskId && t.id === relTaskId)
+              || safeTasks.find(t => t.wbs_code === mat.wbs_tasks?.wbs_code);
           const stokTersedia = inventoryData?.find(inv => inv.hsd_id === mat.master_hsd?.id)?.stok_on_hand || 0;
 
           if (task && task.volume > 0) {

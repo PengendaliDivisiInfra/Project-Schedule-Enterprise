@@ -13,7 +13,7 @@ import { FileText, Image as ImageIcon, Trash2, Plus, ExternalLink, FolderOpen } 
 export default function VaultPage() {
   const params = useParams();
   const projectId = params?.projectId as string;
-  const { can } = useRole();
+  const { can, loading: roleLoading } = useRole(projectId);
 
   const [docs, setDocs] = useState<ProjectDocument[]>([]);
   const [photos, setPhotos] = useState<ProjectPhoto[]>([]);
@@ -48,6 +48,16 @@ export default function VaultPage() {
   useEffect(() => {
     loadData();
   }, [projectId]);
+
+  if (roleLoading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto bg-slate-50 min-h-screen">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <SkeletonLoader rows={5} cols={4} />
+        </div>
+      </div>
+    );
+  }
 
   if (!can('VAULT_VIEW')) {
     return <div className="p-8 text-center text-red-500 font-bold">Anda tidak memiliki akses ke Vault.</div>;

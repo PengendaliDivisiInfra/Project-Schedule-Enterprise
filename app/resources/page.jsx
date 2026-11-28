@@ -56,13 +56,43 @@ export default function ResourcesPage() {
 
     try {
       const { data: tasks } = await supabase.from('wbs_tasks').select('*').eq('project_id', activeProjectId);
-      const { data: resReq } = await supabase.from('v_resource_requirements').select('*').order('wbs_code');
+      const safeTasks = tasks || [];
+      const taskIdSet = new Set(safeTasks.map(t => t.id));
+      const taskWbsSet = new Set(safeTasks.map(t => t.wbs_code));
 
-      if (tasks && resReq) {
+      let resReq = [];
+      if (safeTasks.length > 0) {
+        const scopedRes = await supabase
+          .from('v_resource_requirements')
+          .select('*')
+          .eq('project_id', activeProjectId)
+          .order('wbs_code');
+
+        if (!scopedRes.error && scopedRes.data) {
+          resReq = scopedRes.data;
+        } else {
+          const fallbackRes = await supabase
+            .from('v_resource_requirements')
+            .select('*')
+            .order('wbs_code');
+          resReq = (fallbackRes.data || []).filter((req) => {
+            if (req.project_id) return req.project_id === activeProjectId;
+            if (req.task_id) return taskIdSet.has(req.task_id);
+            return taskWbsSet.has(req.wbs_code);
+          });
+        }
+      }
+
+      if (safeTasks.length === 0 || resReq.length === 0) {
+        setPlanData([]);
+      } else {
         const uniqueResReq = resReq.filter((v, i, a) => a.findIndex(t => (t.wbs_code === v.wbs_code && t.resource_name === v.resource_name && t.unit === v.unit)) === i);
 
-        const processedPlan = uniqueResReq.map(req => {
-          const task = tasks.find(t => t.wbs_code === req.wbs_code);
+        const processedPlan = uniqueResReq
+          .filter(req => (req.task_id ? taskIdSet.has(req.task_id) : taskWbsSet.has(req.wbs_code)))
+          .map(req => {
+            const task = safeTasks.find(t => req.task_id && t.id === req.task_id)
+              || safeTasks.find(t => t.wbs_code === req.wbs_code);
           
           if (task && task.volume > 0) {
             const actualVol = task.actual_vol || (task.volume * (task.progress_percent / 100));

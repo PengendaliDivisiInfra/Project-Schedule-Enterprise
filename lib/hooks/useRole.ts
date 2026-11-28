@@ -7,6 +7,7 @@ import {
   type PermissionKey,
 } from '../config/permissions';
 import { getFromCache, saveToCache } from '../utils/cache';
+import { useProject } from '@/context/ProjectContext';
 
 interface CachedRoleState {
   role: string;
@@ -15,6 +16,9 @@ interface CachedRoleState {
 }
 
 export function useRole(projectId?: string) {
+  const { activeProjectId } = useProject();
+  const effectiveProjectId = projectId || activeProjectId || undefined;
+
   const [role, setRole] = useState<string | null>(null);
   const [globalRole, setGlobalRole] = useState<string | null>(null);
   const [projectRole, setProjectRole] = useState<string | null>(null);
@@ -22,7 +26,7 @@ export function useRole(projectId?: string) {
 
   useEffect(() => {
     const fetchRole = async (userId: string) => {
-      const cacheKey = `user_hybrid_role_${userId}_${projectId || 'global'}`;
+      const cacheKey = `user_hybrid_role_${userId}_${effectiveProjectId || 'global'}`;
 
       try {
         if (typeof window !== 'undefined' && !navigator.onLine) {
@@ -59,11 +63,11 @@ export function useRole(projectId?: string) {
 
         // 2. Ambil Project Role dari project_members
         let resolvedProject: string | null = null;
-        if (projectId) {
+        if (effectiveProjectId) {
           const { data: member } = await supabase
             .from('project_members')
             .select('role')
-            .eq('project_id', projectId)
+            .eq('project_id', effectiveProjectId)
             .eq('user_id', userId)
             .maybeSingle();
 
@@ -111,7 +115,7 @@ export function useRole(projectId?: string) {
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [projectId]);
+  }, [effectiveProjectId]);
 
   const can = (permissionKey: PermissionKey) => {
     if (role === 'Guest' && !globalRole) return false;
