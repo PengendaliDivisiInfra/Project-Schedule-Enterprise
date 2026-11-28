@@ -957,6 +957,14 @@ export default function MasterReportPage() {
             )}
             <div>
               <div className="rev-box">REV: 01 | {new Date().toLocaleDateString('id-ID')}</div>
+              <div style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', color: '#1e3a8a', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                {projectInfo?.company_name || projectInfo?.contractor_name || 'NAMA PERUSAHAAN BELUM DIATUR'}
+              </div>
+              {projectInfo?.contractor_address && (
+                <div style={{ fontSize: '9.5px', color: '#475569', marginBottom: '4px' }}>
+                  {projectInfo.contractor_address}
+                </div>
+              )}
               <h1>PROJECT MASTER PROGRAM (PMP) - TIME SCHEDULE</h1>
               <h2>{projectInfo?.name || '-'}</h2>
               <div className="header-meta">

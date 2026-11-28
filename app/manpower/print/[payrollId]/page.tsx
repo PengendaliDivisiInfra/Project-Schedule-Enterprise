@@ -472,18 +472,18 @@ export default function PayrollPrintPage({ params }: PayrollPrintPageProps) {
                 <tbody>
                   <tr>
                     <td style={{ width: '33%', verticalAlign: 'top' }}>
-                      <p style={{ marginBottom: '30px', color: '#475569' }}>Dibuat Oleh (HR/Admin),</p>
-                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1px solid #0f172a', display: 'inline-block', minWidth: '160px', color: '#0f172a' }}>{signatures.adminName || '........................'}</p>
+                      <p style={{ marginBottom: '64px', color: '#475569' }}>Dibuat Oleh (HR/Admin),</p>
+                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1.25px solid #0f172a', textTransform: 'uppercase', display: 'inline-block', minWidth: '160px', color: '#0f172a' }}>{signatures.adminName || '........................'}</p>
                       <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569' }}>{signatures.adminTitle || '........................'}</p>
                     </td>
                     <td style={{ width: '34%', verticalAlign: 'top' }}>
-                      <p style={{ marginBottom: '30px', color: '#475569' }}>Diperiksa Oleh (Finance),</p>
-                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1px solid #0f172a', display: 'inline-block', minWidth: '160px', color: '#0f172a' }}>{signatures.financeName || '........................'}</p>
+                      <p style={{ marginBottom: '64px', color: '#475569' }}>Diperiksa Oleh (Finance),</p>
+                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1.25px solid #0f172a', textTransform: 'uppercase', display: 'inline-block', minWidth: '160px', color: '#0f172a' }}>{signatures.financeName || '........................'}</p>
                       <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569' }}>{signatures.financeTitle || '........................'}</p>
                     </td>
                     <td style={{ width: '33%', verticalAlign: 'top' }}>
-                      <p style={{ marginBottom: '30px', color: '#475569' }}>Disetujui Oleh (PM),</p>
-                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1px solid #0f172a', display: 'inline-block', minWidth: '160px', color: '#0f172a' }}>{signatures.pmName || '........................'}</p>
+                      <p style={{ marginBottom: '64px', color: '#475569' }}>Disetujui Oleh (PM),</p>
+                      <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1.25px solid #0f172a', textTransform: 'uppercase', display: 'inline-block', minWidth: '160px', color: '#0f172a' }}>{signatures.pmName || '........................'}</p>
                       <p style={{ margin: '6px 0 0 0', fontSize: '11px', color: '#475569' }}>{signatures.pmTitle || '........................'}</p>
                     </td>
                   </tr>
@@ -640,12 +640,12 @@ export default function PayrollPrintPage({ params }: PayrollPrintPageProps) {
                     <tbody>
                       <tr>
                         <td style={{ width: '50%', verticalAlign: 'top' }}>
-                          <p style={{ marginBottom: '30px', color: '#475569' }}>Diterima & Disetujui Oleh (Karyawan),</p>
-                          <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1px solid #0f172a', display: 'inline-block', minWidth: '200px', color: '#0f172a' }}>{item.employees?.name}</p>
+                          <p style={{ marginBottom: '64px', color: '#475569' }}>Diterima & Disetujui Oleh (Karyawan),</p>
+                          <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1.25px solid #0f172a', textTransform: 'uppercase', display: 'inline-block', minWidth: '200px', color: '#0f172a' }}>{item.employees?.name}</p>
                         </td>
                         <td style={{ width: '50%', verticalAlign: 'top' }}>
-                          <p style={{ marginBottom: '30px', color: '#475569' }}>Diterbitkan Oleh (HR / Finance),</p>
-                          <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1px solid #0f172a', display: 'inline-block', minWidth: '200px', color: '#0f172a' }}>{signatures.adminName || '........................'}</p>
+                          <p style={{ marginBottom: '64px', color: '#475569' }}>Diterbitkan Oleh (HR / Finance),</p>
+                          <p style={{ margin: 0, fontWeight: 'bold', fontSize: '12px', padding: '0 10px 4px 10px', borderBottom: '1.25px solid #0f172a', textTransform: 'uppercase', display: 'inline-block', minWidth: '200px', color: '#0f172a' }}>{signatures.adminName || '........................'}</p>
                           <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#475569' }}>{signatures.adminTitle || '........................'}</p>
                         </td>
                       </tr>

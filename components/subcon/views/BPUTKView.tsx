@@ -7,6 +7,7 @@ import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { BPUTKData, BPUTKItem, SignatureItem } from '@/lib/types/subcon';
 import { MoneyText } from '@/components/ui/MoneyText';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 import { supabase } from '@/lib/supabase';
 
 interface BPUTKViewProps {
@@ -32,15 +33,29 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
   const [editTarget, setEditTarget] = useState<any | null>(null);
 
   const [showSigSettings, setShowSigSettings] = useState(false);
-  const [signatures, setSignatures] = useState<SignatureItem[]>([
-    { title: 'Disetujui Oleh,\nDireksi', name: 'RIZQI BILLAH BASALAMAH' },
-    { title: 'KA. DIVISI INFRA', name: 'MEI SUNARKO' },
-    { title: 'Ass. KA. DIVISI INFRA', name: 'ARIF DARMAWAN' },
-    { title: 'Ka. Pembelian', name: 'M. MAULIDIN' },
-    { title: 'Pengendali', name: 'PENGENDALI' },
-    { title: 'Site Engineer', name: 'SAIFUDDIN FAHMI' },
-    { title: 'Dibuat Oleh,\nKepala Mandor', name: 'HAERUL' },
-  ]);  
+  const [signatures, setSignatures] = useState<SignatureItem[]>(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`bputk_sig_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [
+      { title: 'Disetujui Oleh,\nDireksi', name: '' },
+      { title: 'KA. DIVISI INFRA', name: '' },
+      { title: 'Ass. KA. DIVISI INFRA', name: '' },
+      { title: 'Ka. Pembelian', name: '' },
+      { title: 'Pengendali', name: '' },
+      { title: 'Site Engineer', name: '' },
+      { title: 'Dibuat Oleh,\nKepala Mandor', name: '' },
+    ];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`bputk_sig_${projectId}`, JSON.stringify(signatures));
+    }
+  }, [signatures, projectId]);
 
   const currentMonthRoman = new Date().toLocaleString('id-ID', { month: 'long' });
   
@@ -83,13 +98,26 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
       });
       setEditableVolumes(initialVols);
 
-      if (res.contract.subcontractors?.contact_person) {
-        setSignatures(prev => {
-          const newSigs = [...prev];
-          newSigs[6].name = res.contract.subcontractors.contact_person.toUpperCase();
-          return newSigs;
-        });
-      }
+      setSignatures((prev) => {
+        const newSigs = [...prev];
+        const projPic = res.contract.projects?.contractor_pic_name;
+        const projTitle = res.contract.projects?.contractor_pic_title;
+        if (projPic && newSigs[5] && !newSigs[5].name) {
+          newSigs[5] = {
+            ...newSigs[5],
+            title: projTitle || newSigs[5].title,
+            name: String(projPic).toUpperCase(),
+          };
+        }
+        if (res.contract.subcontractors?.contact_person && newSigs.length > 0) {
+          const lastIdx = newSigs.length - 1;
+          newSigs[lastIdx] = {
+            ...newSigs[lastIdx],
+            name: res.contract.subcontractors.contact_person.toUpperCase(),
+          };
+        }
+        return newSigs;
+      });
       
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -282,7 +310,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
               .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 30px; page-break-inside: avoid; box-sizing: border-box; }
               .sig-table td { width: 14.28%; vertical-align: bottom; padding: 0 5px; box-sizing: border-box; }
               .sig-space { height: 70px; }
-              .sig-name { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 9pt; }
+              .sig-name { font-weight: bold; border-bottom: 1.25px solid #0f172a; display: inline-block; min-width: 105px; padding: 0 6px 2px 6px; margin-bottom: 3px; font-size: 8.5pt; text-transform: uppercase; }
               .sig-title { font-size: 8.5pt; white-space: pre-wrap; }
               
               .ui-only { display: none !important; }
@@ -355,7 +383,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
     .bputk-preview .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 30px; page-break-inside: avoid; box-sizing: border-box; }
     .bputk-preview .sig-table td { width: 14.28%; vertical-align: bottom; padding: 0 5px; box-sizing: border-box; }
     .bputk-preview .sig-space { height: 70px; }
-    .bputk-preview .sig-name { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 9pt; }
+    .bputk-preview .sig-name { font-weight: bold; border-bottom: 1.25px solid #0f172a; display: inline-block; min-width: 105px; padding: 0 6px 2px 6px; margin-bottom: 3px; font-size: 8.5pt; text-transform: uppercase; }
     .bputk-preview .sig-title { font-size: 8.5pt; white-space: pre-wrap; }
     
     .input-inline { width: 100%; text-align: right; background-color: #fef08a; border: 1px solid #ca8a04; border-radius: 3px; padding: 2px 4px; font-size: 8pt; font-weight: bold; outline: none; transition: border-color 0.2s; box-sizing: border-box; }
@@ -439,6 +467,26 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
           </div>
 
           <div id="bputk-print-area" className="bputk-preview">
+            {(() => {
+              const b = resolveProjectBranding(currentData.contract.projects);
+              return (
+                <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '2.5px double #0f172a', marginBottom: '12px' }}>
+                  <tbody>
+                    <tr>
+                      {b.logoUrl && (
+                        <td style={{ width: '74px', paddingBottom: '8px', verticalAlign: 'middle' }}>
+                          <img src={b.logoUrl} alt="Logo" style={{ maxHeight: '48px', maxWidth: '120px', objectFit: 'contain', display: 'block' }} />
+                        </td>
+                      )}
+                      <td style={{ paddingBottom: '8px', verticalAlign: 'middle', textAlign: b.logoUrl ? 'left' : 'center' }}>
+                        <div style={{ fontSize: '13.5pt', fontWeight: 800, textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.4px' }}>{b.companyName}</div>
+                        <div style={{ fontSize: '8.5pt', color: '#475569', marginTop: '2px' }}>{b.companyAddress}</div>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              );
+            })()}
             <div className="header-title">BIAYA PEMBAYARAN UPAH TENAGA KERJA</div>
             <table style={{ width: '60%', marginBottom: '15px', fontSize: '9pt' }}>
               <tbody>
@@ -616,7 +664,7 @@ export function BPUTKView({ projectId, spks, showToast }: BPUTKViewProps) {
                     <td key={idx}>
                       <div className="sig-title" style={{ marginBottom: '5px' }}>{sig.title}</div>
                       <div className="sig-space"></div>
-                      <div className="sig-name">{sig.name}</div>
+                      <div className="sig-name">{sig.name || '( ........................ )'}</div>
                     </td>
                   ))}
                 </tr>

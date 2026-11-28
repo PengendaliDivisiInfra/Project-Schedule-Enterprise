@@ -22,6 +22,7 @@ import {
 } from '@/lib/services/asset-custody.service';
 import { buildAssetQrPayload } from '@/lib/utils/vendor-equipment-controls';
 import { generateQrSvg } from '@/lib/utils/qr-svg';
+import { resolveProjectBranding, escapePrintHtml } from '@/lib/utils/print-branding';
 
 export default function EquipmentCustodyPage({ params }: { params: { projectId: string } }) {
   const projectId = params.projectId;
@@ -32,6 +33,7 @@ export default function EquipmentCustodyPage({ params }: { params: { projectId: 
   const [units, setUnits] = useState<any[]>([]);
   const [transfers, setTransfers] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [activeProjectInfo, setActiveProjectInfo] = useState<any | null>(null);
 
   // QR Modal
   const [qrUnit, setQrUnit] = useState<any | null>(null);
@@ -53,14 +55,16 @@ export default function EquipmentCustodyPage({ params }: { params: { projectId: 
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [uData, tData, pRes] = await Promise.all([
+      const [uData, tData, pRes, activeProjRes] = await Promise.all([
         listProjectAssetUnits(projectId),
         listAssetCustodyTransfers(projectId),
         supabase.from('projects').select('id, name').order('name'),
+        supabase.from('projects').select('id, name, company_name, contractor_name, contractor_address, logo_url').eq('id', projectId).maybeSingle(),
       ]);
       setUnits(uData || []);
       setTransfers(tData || []);
       setProjects(pRes.data || []);
+      setActiveProjectInfo(activeProjRes.data || null);
     } catch (err: any) {
       emitToast('error', err?.message || 'Gagal memuat data custody aset.');
     } finally {
@@ -138,20 +142,24 @@ export default function EquipmentCustodyPage({ params }: { params: { projectId: 
     const tag = qrUnit.asset_tag || `AST-${qrUnit.unit_code}`;
     const payload = buildAssetQrPayload({ assetTag: tag, unitId: qrUnit.id, projectId });
     const svg = generateQrSvg(payload, 200);
-    const win = window.open('', '_blank', 'width=420,height=520');
+    const branding = resolveProjectBranding(activeProjectInfo);
+    const win = window.open('', '_blank', 'width=440,height=560');
     if (!win) return;
     win.document.write(`
       <!doctype html>
       <html>
-        <head><title>QR Asset Tag - ${tag}</title></head>
-        <body style="font-family:sans-serif;text-align:center;padding:24px;">
-          <div style="border:2px solid #0f172a;border-radius:12px;padding:18px;display:inline-block;">
-            <div style="font-size:11px;font-weight:700;letter-spacing:2px;color:#4f46e5;">PT. BANGUN KONSTRUKSI PERSADA</div>
-            <h2 style="margin:6px 0 4px;">${tag}</h2>
-            <div style="font-size:13px;font-weight:700;margin-bottom:10px;">${qrUnit.unit_code} • ${qrUnit.equipment_categories?.name || 'Aset Proyek'}</div>
+        <head><title>QR Asset Tag - ${escapePrintHtml(tag)}</title></head>
+        <body style="font-family:'Segoe UI',Arial,sans-serif;text-align:center;padding:24px;">
+          <div style="border:2px solid #0f172a;border-radius:14px;padding:20px;display:inline-block;max-width:340px;">
+            ${branding.logoUrl ? `<img src="${escapePrintHtml(branding.logoUrl)}" alt="Logo" style="max-height:38px;max-width:120px;object-fit:contain;margin-bottom:6px;" />` : ''}
+            <div style="font-size:11px;font-weight:800;letter-spacing:1.2px;color:#312e81;text-transform:uppercase;">${escapePrintHtml(branding.companyName)}</div>
+            <div style="font-size:9px;color:#64748b;margin-top:2px;">${escapePrintHtml(branding.companyAddress)}</div>
+            <div style="border-top:1px solid #cbd5e1;margin:8px 0;"></div>
+            <h2 style="margin:4px 0;">${escapePrintHtml(tag)}</h2>
+            <div style="font-size:12px;font-weight:700;margin-bottom:10px;color:#1e293b;">${escapePrintHtml(qrUnit.unit_code)} &bull; ${escapePrintHtml(qrUnit.equipment_categories?.name || 'Aset Proyek')}</div>
             ${svg}
-            <div style="font-size:11px;margin-top:8px;color:#334155;">Custodian: <b>${qrUnit.custodian_name || 'Site PM'}</b></div>
-            <div style="font-size:9px;margin-top:4px;color:#64748b;font-family:monospace;">${payload}</div>
+            <div style="font-size:11px;margin-top:8px;color:#334155;">Custodian: <b>${escapePrintHtml(qrUnit.custodian_name || 'Site PM')}</b></div>
+            <div style="font-size:9px;margin-top:4px;color:#64748b;font-family:monospace;">${escapePrintHtml(payload)}</div>
           </div>
           <script>window.onload = function(){ window.print(); };</script>
         </body>

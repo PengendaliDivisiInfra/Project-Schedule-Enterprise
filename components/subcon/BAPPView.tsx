@@ -14,6 +14,7 @@ import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { BAPPData, SignatureItem } from '@/lib/types/subcon';
 import { MoneyText } from '@/components/ui/MoneyText';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 import { supabase } from '@/lib/supabase';
 
 interface BAPPViewProps {
@@ -54,14 +55,28 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
 
   const [showSigSettings, setShowSigSettings] = useState(false);
 
-  const [signatures, setSignatures] = useState<SignatureItem[]>([
-    { title: 'Direksi', name: 'RIZQI BILLAH BASALAMAH' },
-    { title: 'KA. Divisi Infra', name: 'MEI SUNARKO' },
-    { title: 'Ass. Divisi Infra', name: 'ARIF DARMAWAN' },
-    { title: 'Ka. Pembelian', name: 'M. MAULIDIN' },
-    { title: 'Site Engineer', name: 'SAIFUDDIN FAHMI' },
-    { title: 'Mandor / Direktur', name: 'HAERUL' },
-  ]);
+  const [signatures, setSignatures] = useState<SignatureItem[]>(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      try {
+        const saved = localStorage.getItem(`bapp_sig_${projectId}`);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [
+      { title: 'Direksi', name: '' },
+      { title: 'KA. Divisi Infra', name: '' },
+      { title: 'Ass. Divisi Infra', name: '' },
+      { title: 'Ka. Pembelian', name: '' },
+      { title: 'Site Engineer', name: '' },
+      { title: 'Mandor / Direktur', name: '' },
+    ];
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && projectId) {
+      localStorage.setItem(`bapp_sig_${projectId}`, JSON.stringify(signatures));
+    }
+  }, [signatures, projectId]);
 
   const loadHistory = async () => {
     try {
@@ -141,16 +156,26 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
       );
       setData(res);
 
-      if (res.contract.subcontractors?.contact_person) {
-        setSignatures((prev) => {
-          const newSigs = [...prev];
-          newSigs[5] = {
-            ...newSigs[5],
+      setSignatures((prev) => {
+        const newSigs = [...prev];
+        const projPic = res.contract.projects?.contractor_pic_name;
+        const projTitle = res.contract.projects?.contractor_pic_title;
+        if (projPic && newSigs[4] && !newSigs[4].name) {
+          newSigs[4] = {
+            ...newSigs[4],
+            title: projTitle || newSigs[4].title,
+            name: String(projPic).toUpperCase(),
+          };
+        }
+        if (res.contract.subcontractors?.contact_person && newSigs.length > 0) {
+          const lastIdx = newSigs.length - 1;
+          newSigs[lastIdx] = {
+            ...newSigs[lastIdx],
             name: res.contract.subcontractors.contact_person.toUpperCase(),
           };
-          return newSigs;
-        });
-      }
+        }
+        return newSigs;
+      });
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -258,8 +283,8 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
               .font-bold { font-weight: bold; }
               .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 12px; page-break-inside: avoid; }
               .sig-table td { width: 16.6%; vertical-align: bottom; padding: 0 5px; }
-              .sig-space { height: 40px; }
-              .sig-name { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 8pt; }
+              .sig-space { height: 56px; }
+              .sig-name { font-weight: bold; border-bottom: 1.25px solid #0f172a; display: inline-block; min-width: 105px; padding: 0 6px 2px 6px; margin-bottom: 3px; font-size: 8pt; text-transform: uppercase; }
               .sig-title { font-size: 7pt; color: #475569; }
             </style>
           </head>
@@ -406,8 +431,8 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
     .bapp-preview .font-bold { font-weight: bold; }
     .bapp-preview .sig-table { width: 100%; border-collapse: collapse; text-align: center; margin-top: 12px; page-break-inside: avoid; }
     .bapp-preview .sig-table td { width: 16.6%; vertical-align: bottom; padding: 0 5px; }
-    .bapp-preview .sig-space { height: 40px; }
-    .bapp-preview .sig-name { font-weight: bold; text-decoration: underline; margin-bottom: 2px; font-size: 8pt; }
+    .bapp-preview .sig-space { height: 56px; }
+    .bapp-preview .sig-name { font-weight: bold; border-bottom: 1.25px solid #0f172a; display: inline-block; min-width: 105px; padding: 0 6px 2px 6px; margin-bottom: 3px; font-size: 8pt; text-transform: uppercase; }
     .bapp-preview .sig-title { font-size: 7pt; color: #475569; }
   `;
 
@@ -521,6 +546,26 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
         <div className="w-full flex flex-col items-center pb-10 overflow-x-auto bg-slate-200 p-6 rounded-2xl print:hidden">
           <div id="bapp-print-area" className="bapp-preview">
             <div style={{ position: 'relative' }}>
+              {(() => {
+                const b = resolveProjectBranding(data.contract.projects);
+                return (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '2.5px double #0f172a', marginBottom: '10px' }}>
+                    <tbody>
+                      <tr>
+                        {b.logoUrl && (
+                          <td style={{ width: '70px', paddingBottom: '8px', verticalAlign: 'middle' }}>
+                            <img src={b.logoUrl} alt="Logo" style={{ maxHeight: '46px', maxWidth: '110px', objectFit: 'contain', display: 'block' }} />
+                          </td>
+                        )}
+                        <td style={{ paddingBottom: '8px', verticalAlign: 'middle', textAlign: b.logoUrl ? 'left' : 'center' }}>
+                          <div style={{ fontSize: '13pt', fontWeight: 800, textTransform: 'uppercase', color: '#0f172a', letterSpacing: '0.4px' }}>{b.companyName}</div>
+                          <div style={{ fontSize: '8pt', color: '#475569', marginTop: '2px' }}>{b.companyAddress}</div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
               <div className="header-title">
                 BERITA ACARA PEMBAYARAN PRESTASI (BAPP)
               </div>
@@ -976,7 +1021,7 @@ export function BAPPView({ projectId, spks, showToast, onSuccess }: BAPPViewProp
                     {signatures.map((sig, idx) => (
                       <td key={idx}>
                         <div className="sig-space"></div>
-                        <div className="sig-name">{sig.name}</div>
+                        <div className="sig-name">{sig.name || '( ........................ )'}</div>
                         <div className="sig-title">{sig.title}</div>
                       </td>
                     ))}

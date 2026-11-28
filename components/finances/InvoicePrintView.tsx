@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Printer, FileText, Settings, Loader2 } from 'lucide-react';
 import { hitungSAK } from '@/lib/utils/sak-calculator';
 import { SignatureSettings } from '@/components/shared/SignatureSettings';
+import { resolveProjectBranding, buildEnterpriseSignatureHtml, escapePrintHtml } from '@/lib/utils/print-branding';
 import { supabase } from '@/lib/supabase';
 import { terbilang } from '@/lib/utils/terbilang';
 
@@ -85,6 +86,7 @@ export default function InvoicePrintView({ projectId, projectData, bappData, sho
       if (form.status === 'DRAFT') watermarkHtml = '<div class="watermark">DRAFT</div>';
       if (form.status === 'PAID') watermarkHtml = '<div class="watermark" style="color: rgba(16, 185, 129, 0.1);">LUNAS</div>';
 
+      const branding = resolveProjectBranding(projectData);
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -96,7 +98,7 @@ export default function InvoicePrintView({ projectId, projectData, bappData, sho
               body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 9pt; color: #1e293b; margin: 0; padding: 0; }
               
               /* CONTAINER LOCK */
-              .container { position: relative; min-height: 260mm; display: block; }
+              .container { position: relative; min-height: 262mm; display: flex; flex-direction: column; }
               
               /* WATERMARK */
               .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 150px; font-weight: bold; color: rgba(0,0,0,0.06); z-index: -1; text-transform: uppercase; }
@@ -134,7 +136,7 @@ export default function InvoicePrintView({ projectId, projectData, bappData, sho
               .terbilang-box { background-color: #f8fafc; border: 1px solid #cbd5e1; padding: 12px; font-style: italic; font-weight: bold; margin-bottom: 20px; }
               
               /* TANDA TANGAN (ABSOLUTE BOTTOM) */
-              .sig-wrapper { position: absolute; bottom: 0; width: 100%; page-break-inside: avoid; }
+              .sig-wrapper { margin-top: auto; padding-top: 24px; width: 100%; page-break-inside: avoid; break-inside: avoid; }
               .sig-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
               .sig-table td { text-align: center; vertical-align: bottom; padding: 0 10px; }
               .sig-space { height: 70px; }
@@ -149,9 +151,16 @@ export default function InvoicePrintView({ projectId, projectData, bappData, sho
               <!-- KOP SURAT -->
               <table class="header-table">
                 <tr>
-                  <td style="width: 60%;">
-                    <img src="${projectData?.logo_url || ''}" style="max-height: 45px; max-width: 150px; object-fit: contain; margin-bottom: 5px;" />
-                    <h2 class="company-name">${projectData?.company_name || 'PT. BANGUN KONSTRUKSI PERSADA'}</h2>
+                  <td style="width: 62%;">
+                    <table style="border-collapse: collapse; width: 100%;">
+                      <tr>
+                        ${branding.logoUrl ? `<td style="width: 68px; padding-right: 12px; padding-bottom: 0; vertical-align: middle;"><img src="${escapePrintHtml(branding.logoUrl)}" style="max-height: 54px; max-width: 130px; object-fit: contain; display: block;" /></td>` : ''}
+                        <td style="padding-bottom: 0; vertical-align: middle;">
+                          <h2 class="company-name">${escapePrintHtml(branding.companyName)}</h2>
+                          <p style="font-size: 8.5pt; color: #475569; margin: 3px 0 0 0; line-height: 1.35;">${escapePrintHtml(branding.companyAddress)}</p>
+                        </td>
+                      </tr>
+                    </table>
                   </td>
                   <td style="width: 40%; text-align: right;">
                     <h1 class="doc-title">INVOICE PENAGIHAN</h1>
@@ -234,19 +243,12 @@ export default function InvoicePrintView({ projectId, projectData, bappData, sho
                 Terbilang: <span style="color: #0f766e;">${terbilang(totalTagihan)} Rupiah</span>
               </div>
 
-              <!-- TANDA TANGAN (3 PIHAK) -->
+              <!-- TANDA TANGAN PROFESIONAL (ANTI-OVERLAP) -->
               <div class="sig-wrapper">
-                <table class="sig-table">
-                  <tr>
-                    ${signatures.map(sig => `
-                      <td>
-                        <div class="sig-title">${sig.title}</div>
-                        <div class="sig-space"></div>
-                        <div class="sig-name">${sig.name}</div>
-                      </td>
-                    `).join('')}
-                  </tr>
-                </table>
+                ${buildEnterpriseSignatureHtml(
+                  signatures.map((sig: any) => ({ title: sig.title, name: sig.name })),
+                  { spaceHeightPx: 64, marginTopPx: 10 }
+                )}
               </div>
 
             </div>

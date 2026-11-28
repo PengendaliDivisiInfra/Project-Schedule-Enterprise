@@ -9,6 +9,7 @@ import {
   getBalanceSheetHistory, 
   softDeleteBalanceSheetSnapshot 
 } from '@/lib/services/balance-sheet.service';
+import { resolveProjectBranding, buildEnterpriseSignatureHtml } from '@/lib/utils/print-branding';
 
 export default function BalanceSheetPage() {
   const params = useParams();
@@ -134,8 +135,9 @@ export default function BalanceSheetPage() {
 
       // 3. Lanjut Generate PDF
       const project = data.project;
-      const companyName = project?.contractor_name || project?.company_name || 'PT. BANGUN KONSTRUKSI PERSADA';
-      const companyAddress = project?.contractor_address || project?.address || 'Alamat Perusahaan Belum Diatur';
+      const branding = resolveProjectBranding(project);
+      const companyName = branding.companyName;
+      const companyAddress = branding.companyAddress;
       
       const docNumber = `DOC/FIN-BS/${new Date().getFullYear()}/${(new Date().getMonth()+1).toString().padStart(2, '0')}/${Date.now().toString().slice(-4)}`;
       const printTime = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -152,7 +154,7 @@ export default function BalanceSheetPage() {
         `;
       };
 
-      const logoUrl = project?.logo_url || '';
+      const logoUrl = branding.logoUrl;
 
       const html = `
         <!DOCTYPE html>
@@ -303,28 +305,11 @@ export default function BalanceSheetPage() {
                   * Catatan: Neraca Proyek ini di-generate secara otomatis (Strict Accrual). Pos PPh Final dan Retensi disesuaikan dengan sisa outstanding pada invoice. Total Aset dan Liabilitas+Ekuitas telah tervalidasi SEIMBANG (Balance).
                 </div>
 
-                <table style="width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 20px; page-break-inside: avoid;">
-                  <tr>
-                    <td style="width: 33.33%; text-align: center; vertical-align: top; padding: 0 10px;">
-                      <p style="font-size: 9pt; color: #475569; margin: 0;">Disiapkan Oleh,</p>
-                      <div style="height: 60px;"></div>
-                      <p style="font-weight: 700; font-size: 9pt; margin: 0; border-bottom: 1px solid #000; display: inline-block; min-width: 160px; padding-bottom: 2px; min-height: 18px;">${signatures.financeName || '........................'}</p>
-                      <p style="font-size: 8.5pt; color: #475569; margin: 4px 0 0 0;">${signatures.financeTitle || 'Finance / Admin'}</p>
-                    </td>
-                    <td style="width: 33.33%; text-align: center; vertical-align: top; padding: 0 10px;">
-                      <p style="font-size: 9pt; color: #475569; margin: 0;">Diperiksa Oleh,</p>
-                      <div style="height: 60px;"></div>
-                      <p style="font-weight: 700; font-size: 9pt; margin: 0; border-bottom: 1px solid #000; display: inline-block; min-width: 160px; padding-bottom: 2px; min-height: 18px;">${signatures.pmName || '........................'}</p>
-                      <p style="font-size: 8.5pt; color: #475569; margin: 4px 0 0 0;">${signatures.pmTitle || 'Project Manager'}</p>
-                    </td>
-                    <td style="width: 33.33%; text-align: center; vertical-align: top; padding: 0 10px;">
-                      <p style="font-size: 9pt; color: #475569; margin: 0;">Disetujui Oleh,</p>
-                      <div style="height: 60px;"></div>
-                      <p style="font-weight: 700; font-size: 9pt; margin: 0; border-bottom: 1px solid #000; display: inline-block; min-width: 160px; padding-bottom: 2px; min-height: 18px;">${signatures.kadivName || '........................'}</p>
-                      <p style="font-size: 8.5pt; color: #475569; margin: 4px 0 0 0;">${signatures.kadivTitle || 'KaDiv Infra'}</p>
-                    </td>
-                  </tr>
-                </table>
+                ${buildEnterpriseSignatureHtml([
+                  { roleLabel: 'Disiapkan Oleh,', name: signatures.financeName, subtitle: signatures.financeTitle || 'Finance / Admin' },
+                  { roleLabel: 'Diperiksa Oleh,', name: signatures.pmName, subtitle: signatures.pmTitle || 'Project Manager' },
+                  { roleLabel: 'Disetujui Oleh,', name: signatures.kadivName, subtitle: signatures.kadivTitle || 'KaDiv Infra' },
+                ], { spaceHeightPx: 64, marginTopPx: 20 })}
 
                 <div class="footer-meta">
                   <table style="width: 100%;">

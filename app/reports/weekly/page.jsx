@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../../../lib/supabase';
 import LoadingSpinner from '../../../components/LoadingSpinner';
 import { useProject } from '../../../context/ProjectContext';
+import { resolveProjectBranding } from '@/lib/utils/print-branding';
 
 export default function WeeklyReportPage() {
   const { activeProjectId } = useProject();
@@ -148,12 +149,23 @@ export default function WeeklyReportPage() {
         </div>
 
         <div className="print-container bg-white mx-auto p-6 shadow-xl border border-gray-300 text-[9px] text-black" style={{ width: '297mm', minHeight: '210mm' }}>
-          <h1 className="text-center font-bold text-lg mb-2 uppercase">Laporan Mingguan / Bulanan Progress Fisik Konstruksi</h1>
+          {/* KOP SURAT OTOMATIS DARI PENGATURAN PROYEK */}
+          <div className="flex items-center gap-4 pb-2.5 mb-3 border-b-[3px] border-double border-slate-900">
+            {branding.logoUrl && (
+              <img src={branding.logoUrl} alt="Logo Perusahaan" className="h-12 max-w-[120px] object-contain shrink-0" />
+            )}
+            <div className={branding.logoUrl ? 'text-left flex-1' : 'text-center flex-1'}>
+              <div className="font-extrabold text-sm uppercase tracking-wide text-slate-900">{branding.companyName}</div>
+              <div className="text-[9px] text-slate-600">{branding.companyAddress}</div>
+            </div>
+          </div>
+
+          <h1 className="text-center font-bold text-base mb-2 uppercase tracking-wide underline">Laporan Mingguan / Bulanan Progress Fisik Konstruksi</h1>
           
           <div className="flex justify-between mb-2 border-b-2 border-black pb-2">
             <div className="space-y-1 w-1/2">
               <div className="grid grid-cols-[120px_10px_1fr]"><span>Nama Paket Proyek</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{projectInfo.name || 'Nama Proyek'}</span></div>
-              <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{projectInfo.contractor_name || 'PT. Kontraktor'}</span></div>
+              <div className="grid grid-cols-[120px_10px_1fr]"><span>Kontraktor Pelaksana</span><span>:</span><span className="border-b border-dashed border-gray-400 px-1" contentEditable suppressContentEditableWarning>{branding.companyName}</span></div>
               <div className="grid grid-cols-[120px_10px_1fr]"><span>Total Nilai Kontrak</span><span>:</span><span className="px-1 font-bold">Rp {reportData.contractValue.toLocaleString('id-ID')}</span></div>
             </div>
             <div className="space-y-1 w-1/2 text-right">
@@ -233,10 +245,28 @@ export default function WeeklyReportPage() {
             </tbody>
           </table>
 
-          <div className="mt-8 grid grid-cols-3 gap-4 text-center text-xs">
-            <div><p contentEditable suppressContentEditableWarning>Kontraktor Pelaksana</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>{projectInfo.contractor_name || 'PT. SAKA GRAHA INDONESIA'}</p></div>
-            <div><p contentEditable suppressContentEditableWarning>Konsultan Pengawas</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>{projectInfo.consultant_name || 'PT. ELEMEN TIGA TIGA'}</p></div>
-            <div><p contentEditable suppressContentEditableWarning>Disetujui Oleh, Pemilik Proyek (PPK)</p><div className="h-16"></div><p className="font-bold border-b border-black inline-block px-8" contentEditable suppressContentEditableWarning>{projectInfo.ppk_name || '( __________________ )'}</p></div>
+          <div className="mt-8 grid grid-cols-3 gap-6 text-center text-[10px]" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div>
+              <p className="text-slate-600" contentEditable suppressContentEditableWarning>Diajukan Oleh,</p>
+              <p className="font-bold uppercase text-slate-900" contentEditable suppressContentEditableWarning>{branding.companyName}</p>
+              <div className="h-16"></div>
+              <p className="font-bold border-b border-slate-900 inline-block min-w-[150px] px-4 pb-0.5 uppercase" contentEditable suppressContentEditableWarning>{branding.picName || '( ............................ )'}</p>
+              <p className="text-[9px] text-slate-600 mt-0.5" contentEditable suppressContentEditableWarning>{branding.picTitle}</p>
+            </div>
+            <div>
+              <p className="text-slate-600" contentEditable suppressContentEditableWarning>Diperiksa Oleh,</p>
+              <p className="font-bold uppercase text-slate-900" contentEditable suppressContentEditableWarning>{branding.consultantName}</p>
+              <div className="h-16"></div>
+              <p className="font-bold border-b border-slate-900 inline-block min-w-[150px] px-4 pb-0.5 uppercase" contentEditable suppressContentEditableWarning>( ............................ )</p>
+              <p className="text-[9px] text-slate-600 mt-0.5" contentEditable suppressContentEditableWarning>Konsultan Pengawas</p>
+            </div>
+            <div>
+              <p className="text-slate-600" contentEditable suppressContentEditableWarning>Disetujui Oleh,</p>
+              <p className="font-bold uppercase text-slate-900" contentEditable suppressContentEditableWarning>{branding.ownerName}</p>
+              <div className="h-16"></div>
+              <p className="font-bold border-b border-slate-900 inline-block min-w-[150px] px-4 pb-0.5 uppercase" contentEditable suppressContentEditableWarning>{projectInfo.ppk_name || '( ............................ )'}</p>
+              <p className="text-[9px] text-slate-600 mt-0.5" contentEditable suppressContentEditableWarning>Pemilik Proyek (PPK)</p>
+            </div>
           </div>
         </div>
       </div>
